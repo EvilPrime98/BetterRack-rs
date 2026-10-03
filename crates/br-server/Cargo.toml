@@ -1,0 +1,26 @@
+[package]
+name = "br-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+br-core = { path = "../br-core" }
+br-wiki = { path = "../br-wiki" }
+axum = "0.8"
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "stream"] }
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+sha1 = "0.10"
+futures-util = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+serde_json = "1"
+tempfile = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+image = { version = "0.25", default-features = false, features = ["png", "webp"] }
+tower = { version = "0.5", features = ["util"] }

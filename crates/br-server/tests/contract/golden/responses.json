@@ -1,0 +1,1604 @@
+{
+  "GET /api/comic-data": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "4852f33b-4674-3bbf-95ca-c6ed8756fb2e": {
+        "comic": {
+          "appearing": {
+            "antagonists": [],
+            "concepts": [],
+            "featuredCharacters": [],
+            "items": [],
+            "locations": [],
+            "otherCharacters": [],
+            "supportingCharacters": []
+          },
+          "cover": "",
+          "coverVariants": [],
+          "credits": {
+            "artists": [],
+            "colorists": [],
+            "editors": [],
+            "executiveEditors": [],
+            "inkers": [],
+            "letterers": [],
+            "writers": []
+          },
+          "event": "",
+          "issue": "1",
+          "notes": [],
+          "pageId": 0,
+          "rating": "",
+          "releaseDate": {
+            "releaseDay": "",
+            "releaseMonth": "",
+            "releaseYear": "2020"
+          },
+          "sourceWiki": "",
+          "storyTitles": [],
+          "synopsis": "",
+          "title": "Tagged Issue",
+          "trivia": [],
+          "volume": ""
+        },
+        "identified": true,
+        "metaSource": "comicinfo",
+        "prefId": 0,
+        "sourceWiki": "",
+        "uid": "4852f33b-4674-3bbf-95ca-c6ed8756fb2e"
+      },
+      "8fdcd224-dad2-8643-5e2d-b816781ed4d6": {
+        "identified": false,
+        "uid": "8fdcd224-dad2-8643-5e2d-b816781ed4d6"
+      },
+      "b5e1aec3-5712-42a3-3a62-4587296d21bc": {
+        "identified": false,
+        "uid": "b5e1aec3-5712-42a3-3a62-4587296d21bc"
+      }
+    },
+    "status": 200
+  },
+  "GET /api/directories": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "directories": [
+        "C:\\br-test-lib",
+        "C:\\br-test-lib\\Alpha",
+        "C:\\br-test-lib\\Beta",
+        "C:\\br-test-lib\\Beta\\Nested",
+        "C:\\br-test-lib\\Empty folder",
+        "C:\\br-test-lib\\Rar"
+      ]
+    },
+    "status": 200
+  },
+  "GET /api/downloads/jobs": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "jobs": []
+    },
+    "status": 200
+  },
+  "GET /api/library": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "groups": [
+        {
+          "entries": [
+            {
+              "did": true,
+              "name": "Alpha",
+              "path": "C:\\br-test-lib\\Alpha",
+              "uid": "00dad325-ed91-1295-1b36-9b0d6da33008"
+            },
+            {
+              "did": true,
+              "name": "Beta",
+              "path": "C:\\br-test-lib\\Beta",
+              "uid": "26c50b9c-5dc4-c856-f860-7c09f408bccf"
+            },
+            {
+              "did": true,
+              "name": "Empty folder",
+              "path": "C:\\br-test-lib\\Empty folder",
+              "uid": "544729c3-d559-870e-0e72-4cf505129529"
+            },
+            {
+              "did": true,
+              "name": "Nested",
+              "parentId": "26c50b9c-5dc4-c856-f860-7c09f408bccf",
+              "path": "C:\\br-test-lib\\Beta\\Nested",
+              "uid": "4eadbddf-5fb9-20be-a8dd-3d14ac90dce1"
+            },
+            {
+              "did": true,
+              "name": "Rar",
+              "path": "C:\\br-test-lib\\Rar",
+              "uid": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8"
+            },
+            {
+              "did": false,
+              "identified": false,
+              "name": "Alpha 001.cbz",
+              "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+              "path": "C:\\br-test-lib\\Alpha\\Alpha 001.cbz",
+              "uid": "b5e1aec3-5712-42a3-3a62-4587296d21bc"
+            },
+            {
+              "did": false,
+              "name": "Alpha 002.cbz",
+              "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+              "path": "C:\\br-test-lib\\Alpha\\Alpha 002.cbz",
+              "uid": "a903f66c-e752-8d41-03fc-c5349b752ab0"
+            },
+            {
+              "did": false,
+              "name": "Beta Vol 1.cbz",
+              "parentId": "4eadbddf-5fb9-20be-a8dd-3d14ac90dce1",
+              "path": "C:\\br-test-lib\\Beta\\Nested\\Beta Vol 1.cbz",
+              "uid": "6727b64b-4726-2a0a-9bf5-c747965128ba"
+            },
+            {
+              "did": false,
+              "name": "rar4-solid.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar4-solid.cbr",
+              "uid": "2a5605e1-d01b-74ff-94df-2245f39097b0"
+            },
+            {
+              "did": false,
+              "name": "rar4.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar4.cbr",
+              "uid": "1b5d24b0-34ed-4171-a0ce-8739fcb628e0"
+            },
+            {
+              "did": false,
+              "name": "rar5-solid.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar5-solid.cbr",
+              "uid": "b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050"
+            },
+            {
+              "did": false,
+              "name": "rar5.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar5.cbr",
+              "uid": "5e70a738-2ae7-2108-cf40-1cec8d9924b6"
+            },
+            {
+              "comic": {
+                "appearing": {
+                  "antagonists": [],
+                  "concepts": [],
+                  "featuredCharacters": [],
+                  "items": [],
+                  "locations": [],
+                  "otherCharacters": [],
+                  "supportingCharacters": []
+                },
+                "cover": "",
+                "coverVariants": [],
+                "credits": {
+                  "artists": [],
+                  "colorists": [],
+                  "editors": [],
+                  "executiveEditors": [],
+                  "inkers": [],
+                  "letterers": [],
+                  "writers": []
+                },
+                "event": "",
+                "issue": "1",
+                "notes": [],
+                "pageId": 0,
+                "rating": "",
+                "releaseDate": {
+                  "releaseDay": "",
+                  "releaseMonth": "",
+                  "releaseYear": "2020"
+                },
+                "sourceWiki": "",
+                "storyTitles": [],
+                "synopsis": "",
+                "title": "Tagged Issue",
+                "trivia": [],
+                "volume": ""
+              },
+              "did": false,
+              "identified": true,
+              "metaSource": "comicinfo",
+              "name": "Tagged 001.cbz",
+              "path": "C:\\br-test-lib\\Tagged 001.cbz",
+              "uid": "4852f33b-4674-3bbf-95ca-c6ed8756fb2e"
+            },
+            {
+              "did": false,
+              "identified": false,
+              "name": "Unicode ñandú #1.cbz",
+              "path": "C:\\br-test-lib\\Unicode ñandú #1.cbz",
+              "uid": "8fdcd224-dad2-8643-5e2d-b816781ed4d6"
+            }
+          ],
+          "name": "br-test-lib",
+          "path": "C:\\br-test-lib",
+          "uid": "2b931fe8-7774-ccb5-655e-7a0bd4c6d262"
+        }
+      ],
+      "hasMore": false,
+      "limit": 100,
+      "offset": 0,
+      "total": 14
+    },
+    "status": 200
+  },
+  "GET /api/library/00dad325-ed91-1295-1b36-9b0d6da33008/identify": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": true,
+      "message": "Comic not found."
+    },
+    "status": 500
+  },
+  "GET /api/library/4852f33b-4674-3bbf-95ca-c6ed8756fb2e/identify": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "comic": {
+        "appearing": {
+          "antagonists": [],
+          "concepts": [],
+          "featuredCharacters": [],
+          "items": [],
+          "locations": [],
+          "otherCharacters": [],
+          "supportingCharacters": []
+        },
+        "cover": "",
+        "coverVariants": [],
+        "credits": {
+          "artists": [],
+          "colorists": [],
+          "editors": [],
+          "executiveEditors": [],
+          "inkers": [],
+          "letterers": [],
+          "writers": []
+        },
+        "event": "",
+        "issue": "1",
+        "notes": [],
+        "pageId": 0,
+        "rating": "",
+        "releaseDate": {
+          "releaseDay": "",
+          "releaseMonth": "",
+          "releaseYear": "2020"
+        },
+        "sourceWiki": "",
+        "storyTitles": [],
+        "synopsis": "",
+        "title": "Tagged Issue",
+        "trivia": [],
+        "volume": ""
+      },
+      "identified": true,
+      "metaSource": "comicinfo"
+    },
+    "status": 200
+  },
+  "GET /api/library/8fdcd224-dad2-8643-5e2d-b816781ed4d6/identify": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "identified": false
+    },
+    "status": 200
+  },
+  "GET /api/library/b5e1aec3-5712-42a3-3a62-4587296d21bc/identify": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "identified": false
+    },
+    "status": 200
+  },
+  "GET /api/library/by-series": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "groups": [
+        {
+          "entries": [
+            {
+              "did": false,
+              "identified": false,
+              "name": "Alpha 001.cbz",
+              "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+              "path": "C:\\br-test-lib\\Alpha\\Alpha 001.cbz",
+              "uid": "b5e1aec3-5712-42a3-3a62-4587296d21bc"
+            },
+            {
+              "did": false,
+              "name": "Alpha 002.cbz",
+              "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+              "path": "C:\\br-test-lib\\Alpha\\Alpha 002.cbz",
+              "uid": "a903f66c-e752-8d41-03fc-c5349b752ab0"
+            }
+          ],
+          "name": "Alpha",
+          "path": "",
+          "uid": "8fc7e3bc-1660-3d91-34b1-e18b9e0b3cb0"
+        },
+        {
+          "entries": [
+            {
+              "did": false,
+              "name": "Beta Vol 1.cbz",
+              "parentId": "4eadbddf-5fb9-20be-a8dd-3d14ac90dce1",
+              "path": "C:\\br-test-lib\\Beta\\Nested\\Beta Vol 1.cbz",
+              "uid": "6727b64b-4726-2a0a-9bf5-c747965128ba"
+            }
+          ],
+          "name": "Beta Vol 1",
+          "path": "",
+          "uid": "3430827c-a21c-c3dc-989d-7ee5f30b8a9f"
+        },
+        {
+          "entries": [
+            {
+              "did": false,
+              "name": "rar4.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar4.cbr",
+              "uid": "1b5d24b0-34ed-4171-a0ce-8739fcb628e0"
+            },
+            {
+              "did": false,
+              "name": "rar5.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar5.cbr",
+              "uid": "5e70a738-2ae7-2108-cf40-1cec8d9924b6"
+            }
+          ],
+          "name": "rar",
+          "path": "",
+          "uid": "9d87ab70-4afc-80df-d7f4-65186adddff3"
+        },
+        {
+          "entries": [
+            {
+              "did": false,
+              "name": "rar4-solid.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar4-solid.cbr",
+              "uid": "2a5605e1-d01b-74ff-94df-2245f39097b0"
+            }
+          ],
+          "name": "rar4-solid",
+          "path": "",
+          "uid": "86f966b7-00af-55c8-4947-b4989c036883"
+        },
+        {
+          "entries": [
+            {
+              "did": false,
+              "name": "rar5-solid.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar5-solid.cbr",
+              "uid": "b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050"
+            }
+          ],
+          "name": "rar5-solid",
+          "path": "",
+          "uid": "c1710925-cc9f-fcac-cef7-61eedf1a04a6"
+        },
+        {
+          "entries": [
+            {
+              "comic": {
+                "appearing": {
+                  "antagonists": [],
+                  "concepts": [],
+                  "featuredCharacters": [],
+                  "items": [],
+                  "locations": [],
+                  "otherCharacters": [],
+                  "supportingCharacters": []
+                },
+                "cover": "",
+                "coverVariants": [],
+                "credits": {
+                  "artists": [],
+                  "colorists": [],
+                  "editors": [],
+                  "executiveEditors": [],
+                  "inkers": [],
+                  "letterers": [],
+                  "writers": []
+                },
+                "event": "",
+                "issue": "1",
+                "notes": [],
+                "pageId": 0,
+                "rating": "",
+                "releaseDate": {
+                  "releaseDay": "",
+                  "releaseMonth": "",
+                  "releaseYear": "2020"
+                },
+                "sourceWiki": "",
+                "storyTitles": [],
+                "synopsis": "",
+                "title": "Tagged Issue",
+                "trivia": [],
+                "volume": ""
+              },
+              "did": false,
+              "identified": true,
+              "metaSource": "comicinfo",
+              "name": "Tagged 001.cbz",
+              "path": "C:\\br-test-lib\\Tagged 001.cbz",
+              "uid": "4852f33b-4674-3bbf-95ca-c6ed8756fb2e"
+            }
+          ],
+          "name": "Tagged",
+          "path": "",
+          "uid": "421e95b9-f019-10ff-45f3-a2b1cc4405b8"
+        },
+        {
+          "entries": [
+            {
+              "did": false,
+              "identified": false,
+              "name": "Unicode ñandú #1.cbz",
+              "path": "C:\\br-test-lib\\Unicode ñandú #1.cbz",
+              "uid": "8fdcd224-dad2-8643-5e2d-b816781ed4d6"
+            }
+          ],
+          "name": "Unicode ñandú",
+          "path": "",
+          "uid": "3c3351e6-ee9f-3d51-ee3c-3f3a7894d205"
+        }
+      ],
+      "hasMore": false,
+      "limit": 100,
+      "offset": 0,
+      "total": 9
+    },
+    "status": 200
+  },
+  "GET /api/library/by-series?limit=4&offset=1": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "groups": [
+        {
+          "entries": [
+            {
+              "did": false,
+              "name": "Alpha 002.cbz",
+              "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+              "path": "C:\\br-test-lib\\Alpha\\Alpha 002.cbz",
+              "uid": "a903f66c-e752-8d41-03fc-c5349b752ab0"
+            }
+          ],
+          "name": "Alpha",
+          "path": "",
+          "uid": "8fc7e3bc-1660-3d91-34b1-e18b9e0b3cb0"
+        },
+        {
+          "entries": [
+            {
+              "did": false,
+              "name": "Beta Vol 1.cbz",
+              "parentId": "4eadbddf-5fb9-20be-a8dd-3d14ac90dce1",
+              "path": "C:\\br-test-lib\\Beta\\Nested\\Beta Vol 1.cbz",
+              "uid": "6727b64b-4726-2a0a-9bf5-c747965128ba"
+            }
+          ],
+          "name": "Beta Vol 1",
+          "path": "",
+          "uid": "3430827c-a21c-c3dc-989d-7ee5f30b8a9f"
+        },
+        {
+          "entries": [
+            {
+              "did": false,
+              "name": "rar4.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar4.cbr",
+              "uid": "1b5d24b0-34ed-4171-a0ce-8739fcb628e0"
+            },
+            {
+              "did": false,
+              "name": "rar5.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar5.cbr",
+              "uid": "5e70a738-2ae7-2108-cf40-1cec8d9924b6"
+            }
+          ],
+          "name": "rar",
+          "path": "",
+          "uid": "9d87ab70-4afc-80df-d7f4-65186adddff3"
+        }
+      ],
+      "hasMore": true,
+      "limit": 4,
+      "offset": 1,
+      "total": 9
+    },
+    "status": 200
+  },
+  "GET /api/library/identify/all": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "state": "idle"
+    },
+    "status": 200
+  },
+  "GET /api/library/index": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": [
+      {
+        "count": 14,
+        "name": "br-test-lib",
+        "uid": "2b931fe8-7774-ccb5-655e-7a0bd4c6d262"
+      }
+    ],
+    "status": 200
+  },
+  "GET /api/library/nope/identify": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": true,
+      "message": "Comic not found."
+    },
+    "status": 500
+  },
+  "GET /api/library/preferences/00dad325-ed91-1295-1b36-9b0d6da33008": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": true,
+      "message": "No preferences found for this uid."
+    },
+    "status": 404
+  },
+  "GET /api/library/preferences/nope": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": true,
+      "message": "No preferences found for this uid."
+    },
+    "status": 404
+  },
+  "GET /api/library/reading": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "items": []
+    },
+    "status": 200
+  },
+  "GET /api/library/recent": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "items": [
+        {
+          "did": false,
+          "name": "rar5.cbr",
+          "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+          "path": "C:\\br-test-lib\\Rar\\rar5.cbr",
+          "uid": "5e70a738-2ae7-2108-cf40-1cec8d9924b6"
+        },
+        {
+          "did": false,
+          "name": "rar5-solid.cbr",
+          "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+          "path": "C:\\br-test-lib\\Rar\\rar5-solid.cbr",
+          "uid": "b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050"
+        },
+        {
+          "did": false,
+          "name": "rar4.cbr",
+          "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+          "path": "C:\\br-test-lib\\Rar\\rar4.cbr",
+          "uid": "1b5d24b0-34ed-4171-a0ce-8739fcb628e0"
+        },
+        {
+          "did": false,
+          "name": "rar4-solid.cbr",
+          "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+          "path": "C:\\br-test-lib\\Rar\\rar4-solid.cbr",
+          "uid": "2a5605e1-d01b-74ff-94df-2245f39097b0"
+        },
+        {
+          "did": false,
+          "name": "Unicode ñandú #1.cbz",
+          "path": "C:\\br-test-lib\\Unicode ñandú #1.cbz",
+          "uid": "8fdcd224-dad2-8643-5e2d-b816781ed4d6"
+        },
+        {
+          "did": false,
+          "name": "Tagged 001.cbz",
+          "path": "C:\\br-test-lib\\Tagged 001.cbz",
+          "uid": "4852f33b-4674-3bbf-95ca-c6ed8756fb2e"
+        },
+        {
+          "did": false,
+          "name": "Beta Vol 1.cbz",
+          "parentId": "4eadbddf-5fb9-20be-a8dd-3d14ac90dce1",
+          "path": "C:\\br-test-lib\\Beta\\Nested\\Beta Vol 1.cbz",
+          "uid": "6727b64b-4726-2a0a-9bf5-c747965128ba"
+        },
+        {
+          "did": false,
+          "name": "Alpha 002.cbz",
+          "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+          "path": "C:\\br-test-lib\\Alpha\\Alpha 002.cbz",
+          "uid": "a903f66c-e752-8d41-03fc-c5349b752ab0"
+        },
+        {
+          "did": false,
+          "name": "Alpha 001.cbz",
+          "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+          "path": "C:\\br-test-lib\\Alpha\\Alpha 001.cbz",
+          "uid": "b5e1aec3-5712-42a3-3a62-4587296d21bc"
+        }
+      ],
+      "windowHours": 24
+    },
+    "status": 200
+  },
+  "GET /api/library/recent?windowHours=168": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "items": [
+        {
+          "did": false,
+          "name": "rar5.cbr",
+          "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+          "path": "C:\\br-test-lib\\Rar\\rar5.cbr",
+          "uid": "5e70a738-2ae7-2108-cf40-1cec8d9924b6"
+        },
+        {
+          "did": false,
+          "name": "rar5-solid.cbr",
+          "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+          "path": "C:\\br-test-lib\\Rar\\rar5-solid.cbr",
+          "uid": "b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050"
+        },
+        {
+          "did": false,
+          "name": "rar4.cbr",
+          "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+          "path": "C:\\br-test-lib\\Rar\\rar4.cbr",
+          "uid": "1b5d24b0-34ed-4171-a0ce-8739fcb628e0"
+        },
+        {
+          "did": false,
+          "name": "rar4-solid.cbr",
+          "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+          "path": "C:\\br-test-lib\\Rar\\rar4-solid.cbr",
+          "uid": "2a5605e1-d01b-74ff-94df-2245f39097b0"
+        },
+        {
+          "did": false,
+          "name": "Unicode ñandú #1.cbz",
+          "path": "C:\\br-test-lib\\Unicode ñandú #1.cbz",
+          "uid": "8fdcd224-dad2-8643-5e2d-b816781ed4d6"
+        },
+        {
+          "did": false,
+          "name": "Tagged 001.cbz",
+          "path": "C:\\br-test-lib\\Tagged 001.cbz",
+          "uid": "4852f33b-4674-3bbf-95ca-c6ed8756fb2e"
+        },
+        {
+          "did": false,
+          "name": "Beta Vol 1.cbz",
+          "parentId": "4eadbddf-5fb9-20be-a8dd-3d14ac90dce1",
+          "path": "C:\\br-test-lib\\Beta\\Nested\\Beta Vol 1.cbz",
+          "uid": "6727b64b-4726-2a0a-9bf5-c747965128ba"
+        },
+        {
+          "did": false,
+          "name": "Alpha 002.cbz",
+          "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+          "path": "C:\\br-test-lib\\Alpha\\Alpha 002.cbz",
+          "uid": "a903f66c-e752-8d41-03fc-c5349b752ab0"
+        },
+        {
+          "did": false,
+          "name": "Alpha 001.cbz",
+          "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+          "path": "C:\\br-test-lib\\Alpha\\Alpha 001.cbz",
+          "uid": "b5e1aec3-5712-42a3-3a62-4587296d21bc"
+        }
+      ],
+      "windowHours": 168
+    },
+    "status": 200
+  },
+  "GET /api/library/refresh?limit=3": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "message": "Library re-scan completed.",
+      "page": {
+        "groups": [
+          {
+            "entries": [
+              {
+                "did": true,
+                "name": "Alpha",
+                "path": "C:\\br-test-lib\\Alpha",
+                "uid": "00dad325-ed91-1295-1b36-9b0d6da33008"
+              },
+              {
+                "did": true,
+                "name": "Beta",
+                "path": "C:\\br-test-lib\\Beta",
+                "uid": "26c50b9c-5dc4-c856-f860-7c09f408bccf"
+              },
+              {
+                "did": true,
+                "name": "Empty folder",
+                "path": "C:\\br-test-lib\\Empty folder",
+                "uid": "544729c3-d559-870e-0e72-4cf505129529"
+              }
+            ],
+            "name": "br-test-lib",
+            "path": "C:\\br-test-lib",
+            "uid": "2b931fe8-7774-ccb5-655e-7a0bd4c6d262"
+          }
+        ],
+        "hasMore": true,
+        "limit": 3,
+        "offset": 0,
+        "total": 14
+      }
+    },
+    "status": 200
+  },
+  "GET /api/library?limit=0": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "groups": [
+        {
+          "entries": [
+            {
+              "did": true,
+              "name": "Alpha",
+              "path": "C:\\br-test-lib\\Alpha",
+              "uid": "00dad325-ed91-1295-1b36-9b0d6da33008"
+            }
+          ],
+          "name": "br-test-lib",
+          "path": "C:\\br-test-lib",
+          "uid": "2b931fe8-7774-ccb5-655e-7a0bd4c6d262"
+        }
+      ],
+      "hasMore": true,
+      "limit": 1,
+      "offset": 0,
+      "total": 14
+    },
+    "status": 200
+  },
+  "GET /api/library?limit=3&offset=2": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "groups": [
+        {
+          "entries": [
+            {
+              "did": true,
+              "name": "Empty folder",
+              "path": "C:\\br-test-lib\\Empty folder",
+              "uid": "544729c3-d559-870e-0e72-4cf505129529"
+            },
+            {
+              "did": true,
+              "name": "Nested",
+              "parentId": "26c50b9c-5dc4-c856-f860-7c09f408bccf",
+              "path": "C:\\br-test-lib\\Beta\\Nested",
+              "uid": "4eadbddf-5fb9-20be-a8dd-3d14ac90dce1"
+            },
+            {
+              "did": true,
+              "name": "Rar",
+              "path": "C:\\br-test-lib\\Rar",
+              "uid": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8"
+            }
+          ],
+          "name": "br-test-lib",
+          "path": "C:\\br-test-lib",
+          "uid": "2b931fe8-7774-ccb5-655e-7a0bd4c6d262"
+        }
+      ],
+      "hasMore": true,
+      "limit": 3,
+      "offset": 2,
+      "total": 14
+    },
+    "status": 200
+  },
+  "GET /api/library?limit=9999&offset=abc": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "groups": [
+        {
+          "entries": [
+            {
+              "did": true,
+              "name": "Alpha",
+              "path": "C:\\br-test-lib\\Alpha",
+              "uid": "00dad325-ed91-1295-1b36-9b0d6da33008"
+            },
+            {
+              "did": true,
+              "name": "Beta",
+              "path": "C:\\br-test-lib\\Beta",
+              "uid": "26c50b9c-5dc4-c856-f860-7c09f408bccf"
+            },
+            {
+              "did": true,
+              "name": "Empty folder",
+              "path": "C:\\br-test-lib\\Empty folder",
+              "uid": "544729c3-d559-870e-0e72-4cf505129529"
+            },
+            {
+              "did": true,
+              "name": "Nested",
+              "parentId": "26c50b9c-5dc4-c856-f860-7c09f408bccf",
+              "path": "C:\\br-test-lib\\Beta\\Nested",
+              "uid": "4eadbddf-5fb9-20be-a8dd-3d14ac90dce1"
+            },
+            {
+              "did": true,
+              "name": "Rar",
+              "path": "C:\\br-test-lib\\Rar",
+              "uid": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8"
+            },
+            {
+              "did": false,
+              "name": "Alpha 001.cbz",
+              "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+              "path": "C:\\br-test-lib\\Alpha\\Alpha 001.cbz",
+              "uid": "b5e1aec3-5712-42a3-3a62-4587296d21bc"
+            },
+            {
+              "did": false,
+              "name": "Alpha 002.cbz",
+              "parentId": "00dad325-ed91-1295-1b36-9b0d6da33008",
+              "path": "C:\\br-test-lib\\Alpha\\Alpha 002.cbz",
+              "uid": "a903f66c-e752-8d41-03fc-c5349b752ab0"
+            },
+            {
+              "did": false,
+              "name": "Beta Vol 1.cbz",
+              "parentId": "4eadbddf-5fb9-20be-a8dd-3d14ac90dce1",
+              "path": "C:\\br-test-lib\\Beta\\Nested\\Beta Vol 1.cbz",
+              "uid": "6727b64b-4726-2a0a-9bf5-c747965128ba"
+            },
+            {
+              "did": false,
+              "name": "rar4-solid.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar4-solid.cbr",
+              "uid": "2a5605e1-d01b-74ff-94df-2245f39097b0"
+            },
+            {
+              "did": false,
+              "name": "rar4.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar4.cbr",
+              "uid": "1b5d24b0-34ed-4171-a0ce-8739fcb628e0"
+            },
+            {
+              "did": false,
+              "name": "rar5-solid.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar5-solid.cbr",
+              "uid": "b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050"
+            },
+            {
+              "did": false,
+              "name": "rar5.cbr",
+              "parentId": "51fc1122-3fbc-1737-27c7-12bb7ba5d0b8",
+              "path": "C:\\br-test-lib\\Rar\\rar5.cbr",
+              "uid": "5e70a738-2ae7-2108-cf40-1cec8d9924b6"
+            },
+            {
+              "did": false,
+              "name": "Tagged 001.cbz",
+              "path": "C:\\br-test-lib\\Tagged 001.cbz",
+              "uid": "4852f33b-4674-3bbf-95ca-c6ed8756fb2e"
+            },
+            {
+              "did": false,
+              "name": "Unicode ñandú #1.cbz",
+              "path": "C:\\br-test-lib\\Unicode ñandú #1.cbz",
+              "uid": "8fdcd224-dad2-8643-5e2d-b816781ed4d6"
+            }
+          ],
+          "name": "br-test-lib",
+          "path": "C:\\br-test-lib",
+          "uid": "2b931fe8-7774-ccb5-655e-7a0bd4c6d262"
+        }
+      ],
+      "hasMore": false,
+      "limit": 500,
+      "offset": 0,
+      "total": 14
+    },
+    "status": 200
+  },
+  "GET /api/nope": {
+    "headers": {
+      "content-type": "text/plain; charset=UTF-8"
+    },
+    "length": 9,
+    "sha256": "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5",
+    "status": 404
+  },
+  "GET /api/settings": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "apiUrl": "",
+      "downloadDir": "",
+      "outputDirs": [
+        "C:\\br-test-lib"
+      ],
+      "rescanOnStartup": true,
+      "wikiSearch": false
+    },
+    "status": 200
+  },
+  "GET /healthz": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "app": "betterrack",
+      "version": "1.0.0"
+    },
+    "status": 200
+  },
+  "GET /read/00000000-0000-0000-0000-000000000000": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": true,
+      "message": "File not found in library",
+      "pages": []
+    },
+    "status": 500
+  },
+  "GET /read/1b5d24b0-34ed-4171-a0ce-8739fcb628e0": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "message": "Comic pages listed successfully",
+      "pages": [
+        "001.jpg",
+        "002.jpg",
+        "010.jpg"
+      ],
+      "totalPages": 3
+    },
+    "status": 200
+  },
+  "GET /read/1b5d24b0-34ed-4171-a0ce-8739fcb628e0/bookmarks": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "bookmarks": [
+        {
+          "label": "Cover",
+          "page": 1
+        }
+      ],
+      "error": false,
+      "message": "Comic bookmarks listed successfully"
+    },
+    "status": 200
+  },
+  "GET /read/1b5d24b0-34ed-4171-a0ce-8739fcb628e0/pages/1": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"8a8a09e3be7d4553c6aa2278ea822529771d49dd\""
+    },
+    "length": 409,
+    "sha256": "fef1e5c05afc82b7fdd3067e2364d07e7710bc7df49858d976c41ba5bfa4bff4",
+    "status": 200
+  },
+  "GET /read/1b5d24b0-34ed-4171-a0ce-8739fcb628e0/pages/2": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"8a309c526dd4a32b4dd675bf4b78741780350134\""
+    },
+    "length": 409,
+    "sha256": "84d0d379f9863ffadbdb07e57008259a8b6db7d3ddf81464c184c228b490922e",
+    "status": 200
+  },
+  "GET /read/1b5d24b0-34ed-4171-a0ce-8739fcb628e0/pages/3": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"88335ce4899f5bfe746569ca80319f611ab8accf\""
+    },
+    "length": 409,
+    "sha256": "2871cc8ba745ad4dbc6cdbeaa6e0d734097d24bf11a8c7913dab3c16fb011238",
+    "status": 200
+  },
+  "GET /read/2a5605e1-d01b-74ff-94df-2245f39097b0": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "message": "Comic pages listed successfully",
+      "pages": [
+        "001.jpg",
+        "002.jpg",
+        "010.jpg"
+      ],
+      "totalPages": 3
+    },
+    "status": 200
+  },
+  "GET /read/2a5605e1-d01b-74ff-94df-2245f39097b0/bookmarks": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "bookmarks": [
+        {
+          "label": "Cover",
+          "page": 1
+        }
+      ],
+      "error": false,
+      "message": "Comic bookmarks listed successfully"
+    },
+    "status": 200
+  },
+  "GET /read/2a5605e1-d01b-74ff-94df-2245f39097b0/pages/1": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"773e482716bb9ba4baef4f6014e2b8393baf5428\""
+    },
+    "length": 409,
+    "sha256": "fef1e5c05afc82b7fdd3067e2364d07e7710bc7df49858d976c41ba5bfa4bff4",
+    "status": 200
+  },
+  "GET /read/2a5605e1-d01b-74ff-94df-2245f39097b0/pages/2": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"f1319365c91465ba6cd820a8cd4006630119b30c\""
+    },
+    "length": 409,
+    "sha256": "84d0d379f9863ffadbdb07e57008259a8b6db7d3ddf81464c184c228b490922e",
+    "status": 200
+  },
+  "GET /read/2a5605e1-d01b-74ff-94df-2245f39097b0/pages/3": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"31e7a6d6f225055be70bd95606bc80d07f4a30fa\""
+    },
+    "length": 409,
+    "sha256": "2871cc8ba745ad4dbc6cdbeaa6e0d734097d24bf11a8c7913dab3c16fb011238",
+    "status": 200
+  },
+  "GET /read/4852f33b-4674-3bbf-95ca-c6ed8756fb2e": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "message": "Comic pages listed successfully",
+      "pages": [
+        "1.png",
+        "2.png",
+        "3.png"
+      ],
+      "totalPages": 3
+    },
+    "status": 200
+  },
+  "GET /read/4852f33b-4674-3bbf-95ca-c6ed8756fb2e/bookmarks": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "bookmarks": [],
+      "error": false,
+      "message": "Comic bookmarks listed successfully"
+    },
+    "status": 200
+  },
+  "GET /read/4852f33b-4674-3bbf-95ca-c6ed8756fb2e/pages/1": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"be39ee2997982192c0fb78e393f526ca3e2267a1\""
+    },
+    "length": 74,
+    "sha256": "7526974fad42f88dcc3d52ec2769cf637e8020623499b1da8511a472dff8ec7e",
+    "status": 200
+  },
+  "GET /read/4852f33b-4674-3bbf-95ca-c6ed8756fb2e/pages/2": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"7d1b1f2c15f4f3390183dda31c53b46e77a21c98\""
+    },
+    "length": 73,
+    "sha256": "835e581ac808dfe062ebc0d85ba6d602dca45e2feb2be5302408fa3d847d4daf",
+    "status": 200
+  },
+  "GET /read/4852f33b-4674-3bbf-95ca-c6ed8756fb2e/pages/3": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"5e7be005fb546bf02e4855073c059239b53ae178\""
+    },
+    "length": 73,
+    "sha256": "4ed56e010841192da1f788c680a1e9c014b40fba83b9a3354f26b93fc3bf98ad",
+    "status": 200
+  },
+  "GET /read/5e70a738-2ae7-2108-cf40-1cec8d9924b6": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "message": "Comic pages listed successfully",
+      "pages": [
+        "001.jpg",
+        "002.jpg",
+        "010.jpg"
+      ],
+      "totalPages": 3
+    },
+    "status": 200
+  },
+  "GET /read/5e70a738-2ae7-2108-cf40-1cec8d9924b6/bookmarks": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "bookmarks": [
+        {
+          "label": "Cover",
+          "page": 1
+        }
+      ],
+      "error": false,
+      "message": "Comic bookmarks listed successfully"
+    },
+    "status": 200
+  },
+  "GET /read/5e70a738-2ae7-2108-cf40-1cec8d9924b6/pages/1": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"a971479d0dcecc48850bca37ac83b4e8b0cba9c2\""
+    },
+    "length": 409,
+    "sha256": "fef1e5c05afc82b7fdd3067e2364d07e7710bc7df49858d976c41ba5bfa4bff4",
+    "status": 200
+  },
+  "GET /read/5e70a738-2ae7-2108-cf40-1cec8d9924b6/pages/2": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"4ac51b63b8fe4d6c2ec2d5769a95626d5e14e97f\""
+    },
+    "length": 409,
+    "sha256": "84d0d379f9863ffadbdb07e57008259a8b6db7d3ddf81464c184c228b490922e",
+    "status": 200
+  },
+  "GET /read/5e70a738-2ae7-2108-cf40-1cec8d9924b6/pages/3": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"b5dcdc0ed28908bbef6d4cd1f8938dcbc193d777\""
+    },
+    "length": 409,
+    "sha256": "2871cc8ba745ad4dbc6cdbeaa6e0d734097d24bf11a8c7913dab3c16fb011238",
+    "status": 200
+  },
+  "GET /read/6727b64b-4726-2a0a-9bf5-c747965128ba": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "message": "Comic pages listed successfully",
+      "pages": [
+        "page1.png",
+        "page2.png"
+      ],
+      "totalPages": 2
+    },
+    "status": 200
+  },
+  "GET /read/6727b64b-4726-2a0a-9bf5-c747965128ba/bookmarks": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "bookmarks": [],
+      "error": false,
+      "message": "Comic bookmarks listed successfully"
+    },
+    "status": 200
+  },
+  "GET /read/6727b64b-4726-2a0a-9bf5-c747965128ba/pages/1": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"92366ab87cca2d98d77b4fc48c30d48da2bd10b3\""
+    },
+    "length": 74,
+    "sha256": "ece8572131a82f08b402b854bf850ed7202a61f3c63346ba0ba1be654b265401",
+    "status": 200
+  },
+  "GET /read/6727b64b-4726-2a0a-9bf5-c747965128ba/pages/2": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"7a386d6a10bd558603c03f0ee2d16df7059e58cb\""
+    },
+    "length": 74,
+    "sha256": "d37a246ad60abaf7bb22c37f34a46df323fc507baac2df8a67e53e979e394dd1",
+    "status": 200
+  },
+  "GET /read/8fdcd224-dad2-8643-5e2d-b816781ed4d6": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "message": "Comic pages listed successfully",
+      "pages": [
+        "page1.png",
+        "page2.png"
+      ],
+      "totalPages": 2
+    },
+    "status": 200
+  },
+  "GET /read/8fdcd224-dad2-8643-5e2d-b816781ed4d6/bookmarks": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "bookmarks": [],
+      "error": false,
+      "message": "Comic bookmarks listed successfully"
+    },
+    "status": 200
+  },
+  "GET /read/8fdcd224-dad2-8643-5e2d-b816781ed4d6/pages/1": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"b5147e9e16d1b2e191e390696a65c6af899be6d3\""
+    },
+    "length": 74,
+    "sha256": "ece8572131a82f08b402b854bf850ed7202a61f3c63346ba0ba1be654b265401",
+    "status": 200
+  },
+  "GET /read/8fdcd224-dad2-8643-5e2d-b816781ed4d6/pages/2": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"3d63410969850891fec1f01b7b78cf3b48a721e7\""
+    },
+    "length": 74,
+    "sha256": "d37a246ad60abaf7bb22c37f34a46df323fc507baac2df8a67e53e979e394dd1",
+    "status": 200
+  },
+  "GET /read/a903f66c-e752-8d41-03fc-c5349b752ab0": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "message": "Comic pages listed successfully",
+      "pages": [
+        "page1.png",
+        "page2.png",
+        "page3.png"
+      ],
+      "totalPages": 3
+    },
+    "status": 200
+  },
+  "GET /read/a903f66c-e752-8d41-03fc-c5349b752ab0/bookmarks": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "bookmarks": [],
+      "error": false,
+      "message": "Comic bookmarks listed successfully"
+    },
+    "status": 200
+  },
+  "GET /read/a903f66c-e752-8d41-03fc-c5349b752ab0/pages/1": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"24777cd58f846f88b6e27bee9653d16a31d32234\""
+    },
+    "length": 74,
+    "sha256": "ece8572131a82f08b402b854bf850ed7202a61f3c63346ba0ba1be654b265401",
+    "status": 200
+  },
+  "GET /read/a903f66c-e752-8d41-03fc-c5349b752ab0/pages/2": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"d4165778b1a0ae20dc17efea6a9c86372e999430\""
+    },
+    "length": 74,
+    "sha256": "d37a246ad60abaf7bb22c37f34a46df323fc507baac2df8a67e53e979e394dd1",
+    "status": 200
+  },
+  "GET /read/a903f66c-e752-8d41-03fc-c5349b752ab0/pages/3": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"54b8530a1716433236e4879d90178331b1041f56\""
+    },
+    "length": 74,
+    "sha256": "f45b13c0397b586098639e07195937ed0675f1b4b5ef6b005c69757915e3f62b",
+    "status": 200
+  },
+  "GET /read/b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "message": "Comic pages listed successfully",
+      "pages": [
+        "001.jpg",
+        "002.jpg",
+        "010.jpg"
+      ],
+      "totalPages": 3
+    },
+    "status": 200
+  },
+  "GET /read/b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050/bookmarks": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "bookmarks": [
+        {
+          "label": "Cover",
+          "page": 1
+        }
+      ],
+      "error": false,
+      "message": "Comic bookmarks listed successfully"
+    },
+    "status": 200
+  },
+  "GET /read/b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050/pages/1": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"2cc185ee5663fb2dc45eca9a25d3f6c62f181209\""
+    },
+    "length": 409,
+    "sha256": "fef1e5c05afc82b7fdd3067e2364d07e7710bc7df49858d976c41ba5bfa4bff4",
+    "status": 200
+  },
+  "GET /read/b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050/pages/2": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"e7d4d5c4fa96c013a5282efb3217bb519fd60e99\""
+    },
+    "length": 409,
+    "sha256": "84d0d379f9863ffadbdb07e57008259a8b6db7d3ddf81464c184c228b490922e",
+    "status": 200
+  },
+  "GET /read/b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050/pages/3": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/jpeg",
+      "etag": "\"5cfd98adf6e370f1a7b1b8c06dac0c69b201d871\""
+    },
+    "length": 409,
+    "sha256": "2871cc8ba745ad4dbc6cdbeaa6e0d734097d24bf11a8c7913dab3c16fb011238",
+    "status": 200
+  },
+  "GET /read/b5e1aec3-5712-42a3-3a62-4587296d21bc": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": false,
+      "message": "Comic pages listed successfully",
+      "pages": [
+        "page1.png",
+        "page2.png",
+        "page3.png",
+        "page10.png",
+        "page11.png"
+      ],
+      "totalPages": 5
+    },
+    "status": 200
+  },
+  "GET /read/b5e1aec3-5712-42a3-3a62-4587296d21bc/bookmarks": {
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    },
+    "json": {
+      "bookmarks": [],
+      "error": false,
+      "message": "Comic bookmarks listed successfully"
+    },
+    "status": 200
+  },
+  "GET /read/b5e1aec3-5712-42a3-3a62-4587296d21bc/pages/0": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": true,
+      "message": "Invalid page number"
+    },
+    "status": 400
+  },
+  "GET /read/b5e1aec3-5712-42a3-3a62-4587296d21bc/pages/1": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"ee0045f9d220243ed48d3429cd82a4936804eb15\""
+    },
+    "length": 74,
+    "sha256": "ece8572131a82f08b402b854bf850ed7202a61f3c63346ba0ba1be654b265401",
+    "status": 200
+  },
+  "GET /read/b5e1aec3-5712-42a3-3a62-4587296d21bc/pages/2": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"18099451b9ee549868c406ea3442db0dc14a8cfd\""
+    },
+    "length": 74,
+    "sha256": "d37a246ad60abaf7bb22c37f34a46df323fc507baac2df8a67e53e979e394dd1",
+    "status": 200
+  },
+  "GET /read/b5e1aec3-5712-42a3-3a62-4587296d21bc/pages/3": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"ff964c139740fc89733c8bfdc1d785947b49a3e7\""
+    },
+    "length": 74,
+    "sha256": "f45b13c0397b586098639e07195937ed0675f1b4b5ef6b005c69757915e3f62b",
+    "status": 200
+  },
+  "GET /read/b5e1aec3-5712-42a3-3a62-4587296d21bc/pages/4": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"625808b2d0d0dcbea8e40fa2b1205c041a7defff\""
+    },
+    "length": 74,
+    "sha256": "1ca07a6d634093ce86023c3238bb2883626e9dfa63e48db28ccdbed860c37904",
+    "status": 200
+  },
+  "GET /read/b5e1aec3-5712-42a3-3a62-4587296d21bc/pages/5": {
+    "headers": {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+      "etag": "\"60d16add13c2eebe55fd7afa18291bf1197f103f\""
+    },
+    "length": 74,
+    "sha256": "9522ca618bf0ddbbf514e0de93f03ebdfe5a384d4577f288cde928fc22e7f166",
+    "status": 200
+  },
+  "GET /read/b5e1aec3-5712-42a3-3a62-4587296d21bc/pages/99": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": true,
+      "message": "Page not found"
+    },
+    "status": 404
+  },
+  "GET /read/b5e1aec3-5712-42a3-3a62-4587296d21bc/pages/abc": {
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": true,
+      "message": "Invalid page number"
+    },
+    "status": 400
+  }
+}
