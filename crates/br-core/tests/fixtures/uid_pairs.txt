@@ -1,0 +1,16 @@
+# uid<TAB>path, captured from the Bun server on the shared test library (C:\br-test-lib, see crates/br-server/tests/contract/make_test_library.py)
+2b931fe8-7774-ccb5-655e-7a0bd4c6d262	C:\br-test-lib
+00dad325-ed91-1295-1b36-9b0d6da33008	C:\br-test-lib\Alpha
+b5e1aec3-5712-42a3-3a62-4587296d21bc	C:\br-test-lib\Alpha\Alpha 001.cbz
+a903f66c-e752-8d41-03fc-c5349b752ab0	C:\br-test-lib\Alpha\Alpha 002.cbz
+26c50b9c-5dc4-c856-f860-7c09f408bccf	C:\br-test-lib\Beta
+4eadbddf-5fb9-20be-a8dd-3d14ac90dce1	C:\br-test-lib\Beta\Nested
+6727b64b-4726-2a0a-9bf5-c747965128ba	C:\br-test-lib\Beta\Nested\Beta Vol 1.cbz
+544729c3-d559-870e-0e72-4cf505129529	C:\br-test-lib\Empty folder
+51fc1122-3fbc-1737-27c7-12bb7ba5d0b8	C:\br-test-lib\Rar
+2a5605e1-d01b-74ff-94df-2245f39097b0	C:\br-test-lib\Rar\rar4-solid.cbr
+1b5d24b0-34ed-4171-a0ce-8739fcb628e0	C:\br-test-lib\Rar\rar4.cbr
+b1c0ba7b-fa23-c221-6aad-a6eeb5ed9050	C:\br-test-lib\Rar\rar5-solid.cbr
+5e70a738-2ae7-2108-cf40-1cec8d9924b6	C:\br-test-lib\Rar\rar5.cbr
+4852f33b-4674-3bbf-95ca-c6ed8756fb2e	C:\br-test-lib\Tagged 001.cbz
+8fdcd224-dad2-8643-5e2d-b816781ed4d6	C:\br-test-lib\Unicode ñandú #1.cbz

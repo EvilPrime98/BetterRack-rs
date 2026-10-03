@@ -1,0 +1,35 @@
+[package]
+name = "br-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sha2 = "0.10"
+thiserror = "2"
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = "0.37"
+regex = "1"
+unicode-normalization = "0.1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+webp = { version = "0.3", default-features = false }
+
+tokio = { version = "1", features = ["rt", "time", "sync", "macros", "fs", "io-util"] }
+tokio-util = "0.7"
+reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "stream"] }
+futures-util = "0.3"
+scraper = "0.23"
+html-escape = "0.2"
+url = "2"
+fastrand = "2"
+base64 = "0.22"
+
+[dev-dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tempfile = "3"
