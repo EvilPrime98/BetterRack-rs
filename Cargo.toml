@@ -7,7 +7,7 @@ license = "GPL-3.0-or-later"
 version = "0.1.0"
 
 [package]
-name = "betterrack-gpui"
+name = "better-rack-rus"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"

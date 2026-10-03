@@ -4,7 +4,7 @@
 #   SEVEN_ZIP_DIR=/path/to/BetterRack/vendor/7zip packaging/stage.sh
 #
 # Layout (must match `platform::server_process::seven_zip_exe`):
-#   betterrack-gpui(.exe)                 the app, backend (br-core/br-server) linked in
+#   better-rack-rus(.exe)                 the app, backend (br-core/br-server) linked in
 #   bin/7z(.exe) [+ 7z.dll]               bundled 7-Zip (SEVEN_ZIP_PATH)
 #   LICENSE, NOTICE.txt
 #
@@ -30,7 +30,7 @@ echo "==> cargo build --release"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/bin"
-cp "$HERE/target/release/betterrack-gpui$EXE" "$OUT/"
+cp "$HERE/target/release/better-rack-rus$EXE" "$OUT/"
 
 echo "==> 7-Zip"
 cp "$SEVEN_ZIP_DIR/$SEVEN/"* "$OUT/bin/"

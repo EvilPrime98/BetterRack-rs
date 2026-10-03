@@ -13,7 +13,7 @@ AppPublisher=AminPerez
 DefaultDirName={autopf}\BetterRack
 DefaultGroupName=Better Rack
 UninstallDisplayName=Better Rack {#AppVersion}
-UninstallDisplayIcon={app}\betterrack-gpui.exe
+UninstallDisplayIcon={app}\better-rack-rus.exe
 SetupIconFile=..\icon.ico
 OutputDir=..\..\dist
 OutputBaseFilename=BetterRack-Setup-{#AppVersion}
@@ -35,11 +35,11 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 Source: "..\..\dist\BetterRack\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\Better Rack"; Filename: "{app}\betterrack-gpui.exe"
-Name: "{autodesktop}\Better Rack"; Filename: "{app}\betterrack-gpui.exe"; Tasks: desktopicon
+Name: "{group}\Better Rack"; Filename: "{app}\better-rack-rus.exe"
+Name: "{autodesktop}\Better Rack"; Filename: "{app}\better-rack-rus.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\betterrack-gpui.exe"; Description: "Launch Better Rack"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\better-rack-rus.exe"; Description: "Launch Better Rack"; Flags: nowait postinstall skipifsilent
 
 [Code]
 // Same question as build/installer.nsh: offer to delete the app data (library database, settings,
