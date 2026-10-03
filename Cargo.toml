@@ -1,0 +1,60 @@
+[workspace]
+members = [".", "crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0-or-later"
+version = "0.1.0"
+
+[package]
+name = "betterrack-gpui"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+build = "build.rs"
+
+[dependencies]
+gpui-ce = "0.2.2"
+gpui_ce_platform = "0.1.0"
+
+br-core = { path = "crates/br-core" }
+br-server = { path = "crates/br-server" }
+br-wiki = { path = "crates/br-wiki" }
+axum = "0.8"
+http = "1"
+tower = { version = "0.5", features = ["util"] }
+
+anyhow = "1"
+dirs = "6"
+futures-util = "0.3"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+rfd = "0.15"
+rust-embed = "8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "process", "time", "io-util", "macros", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
+open = "5"
+
+[build-dependencies]
+winresource = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 1
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_Security", "Win32_System_Threading"] }

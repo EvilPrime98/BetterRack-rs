@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Better Rack
+Comment=Local comic book library reader
+Exec=betterrack-gpui
+Icon=betterrack
+Categories=Graphics;Viewer;
+Terminal=false
+StartupWMClass=betterrack

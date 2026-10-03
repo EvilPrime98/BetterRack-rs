@@ -1,0 +1,17 @@
+# Rust build output
+target/
+
+# graphify output
+graphify-out/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Env / local files
+.env
+.env.*
+*.log

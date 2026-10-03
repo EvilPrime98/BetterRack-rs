@@ -1,0 +1,11 @@
+BetterRack is free software, licensed under the GNU General Public License, version 3 or
+(at your option) any later version.
+
+This distribution bundles third-party software:
+
+- 7-Zip (https://www.7-zip.org/), used for every archive type. Licensed under the GNU LGPL, with
+  the unRAR license restriction on the RAR decoder. See bin/License.txt.
+- libwebp (https://chromium.googlesource.com/webm/libwebp), statically linked into
+  the application binary for thumbnails (BSD-3-Clause).
+- Geist and Geist Mono fonts, copyright (c) 2023 Vercel, in collaboration with basement.studio,
+  licensed under the SIL Open Font License 1.1 (embedded in the application).
