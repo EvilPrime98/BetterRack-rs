@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use gpui::{
     AppContext as _, Context, Entity, EventEmitter, InteractiveElement, IntoElement, ParentElement,
-    Render, SharedString, StatefulInteractiveElement, Styled, UniformListScrollHandle, Window, div,
+    Render, SharedString, StatefulInteractiveElement, Styled, UniformListScrollHandle, Window, deferred, div,
     prelude::*, px, rgb, rgba, uniform_list,
 };
 
@@ -20,6 +20,17 @@ use crate::ui::icons::{Icon, icon};
 use crate::ui::theme;
 
 const ROW_H: f32 = 36.0;
+
+/// Uppercases the first letter of every word ("Recently added" -> "Recently Added").
+fn capitalize_words(s: &str) -> String {
+    s.split(' ')
+        .map(|w| {
+            let mut c = w.chars();
+            c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+        })
+        .collect::<Vec<String>>()
+        .join(" ")
+}
 
 #[derive(Clone)]
 enum Row {
@@ -39,6 +50,7 @@ pub struct Sidebar {
     expanded_rev: u64,
     scroll: UniformListScrollHandle,
     memo: Option<RowsMemo>,
+    group_menu_open: bool,
     /// Set by `AppRoot` so the current page's nav link is highlighted.
     pub current: Route,
 }
@@ -77,6 +89,7 @@ impl Sidebar {
             expanded_rev: 0,
             scroll: UniformListScrollHandle::new(),
             memo: None,
+            group_menu_open: false,
             current: Route::home(),
         }
     }
@@ -141,7 +154,7 @@ impl Sidebar {
             .hover(|s| s.bg(rgba(0xffffff0f)))
             .on_click(cx.listener(move |this, _, _, cx| this.go(route.clone(), cx)))
             .child(icon(glyph, px(16.0)).text_color(if active { theme::accent() } else { rgb(0xd8d8d8) }))
-            .child(label)
+            .child(capitalize_words(label))
     }
 
     fn section(title: &'static str) -> gpui::Div {
@@ -246,7 +259,7 @@ impl Render for Sidebar {
                 .text_size(px(13.0))
                 .text_color(rgb(0x9a9a9a))
                 .text_center()
-                .child(if loading { "Loading library…" } else { "No folders found" })
+                .child(if loading { "Loading Library…" } else { "No Folders Found" })
                 .into_any_element()
         } else {
             let rows_for_list = rows.clone();
@@ -279,9 +292,9 @@ impl Render for Sidebar {
                                         cx.notify();
                                     }))
                                     .child(icon(Icon::Folder, px(16.0)).text_color(rgb(0xd8d8d8)))
-                                    .child(div().flex_1().min_w_0().truncate().child(name))
+                                    .child(div().flex_1().min_w_0().truncate().child(capitalize_words(&name)))
                                     .child(
-                                        icon(if expanded { Icon::ChevronDown } else { Icon::ArrowRight }, px(14.0))
+                                        icon(if expanded { Icon::ChevronDown } else { Icon::ChevronRight }, px(14.0))
                                             .text_color(rgb(0xd8d8d8)),
                                     )
                             }
@@ -302,7 +315,7 @@ impl Render for Sidebar {
                                     .hover(|s| s.bg(rgba(0xffffff0f)))
                                     .on_click(cx.listener(move |this, _, _, cx| this.open_dir(open.clone(), cx)))
                                     .child(icon(Icon::Folder, px(16.0)).text_color(rgb(0xd8d8d8)))
-                                    .child(div().flex_1().min_w_0().truncate().child(name))
+                                    .child(div().flex_1().min_w_0().truncate().child(capitalize_words(&name)))
                             }
                         })
                         .collect()
@@ -313,6 +326,7 @@ impl Render for Sidebar {
             .into_any_element()
         };
 
+        let menu_open = self.group_menu_open;
         let structure_label = match structure {
             LibraryStructure::Folders => "Folders",
             LibraryStructure::Series => "Series",
@@ -330,7 +344,7 @@ impl Render for Sidebar {
             .child(
                 div().mx(px(16.0)).my(px(6.0)).child(button(
                     "sidebar-compact",
-                    if compact { "Show more" } else { "Show less" },
+                    if compact { "Show More" } else { "Show Less" },
                     ButtonVariant::Ghost,
                     cx.listener(|this, _, _, cx| {
                         this.stores.prefs.update(cx, |p, cx| p.update(cx, |p| p.sidebar_compact = !p.sidebar_compact));
@@ -340,30 +354,100 @@ impl Render for Sidebar {
             .child(
                 Self::section("Group by").child(
                     div()
-                        .id("group-by")
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .px(px(10.0))
-                        .py(px(8.0))
-                        .rounded(px(6.0))
-                        .border_1()
-                        .border_color(rgba(0xffffff1f))
-                        .bg(rgba(0xffffff0a))
-                        .text_size(px(14.0))
-                        .text_color(rgb(0xd8d8d8))
-                        .cursor_pointer()
-                        .hover(|s| s.bg(rgba(0xffffff0f)))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            let next = match this.stores.library.read(cx).structure {
-                                LibraryStructure::Folders => LibraryStructure::Series,
-                                LibraryStructure::Series => LibraryStructure::Folders,
-                            };
-                            this.stores.prefs.update(cx, |p, cx| p.update(cx, |p| p.structure = next));
-                            this.stores.library.update(cx, |s, cx| s.set_structure(next, cx));
-                        }))
-                        .child(structure_label)
-                        .child(icon(Icon::ChevronDown, px(12.0)).text_color(rgb(0xd8d8d8))),
+                        .relative()
+                        .child(
+                            div()
+                                .id("group-by")
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .px(px(10.0))
+                                .py(px(8.0))
+                                .rounded(px(6.0))
+                                .border_1()
+                                .border_color(if menu_open { theme::accent() } else { rgba(0xffffff1f) })
+                                .bg(rgba(0xffffff0a))
+                                .text_size(px(14.0))
+                                .text_color(rgb(0xd8d8d8))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgba(0xffffff0f)))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.group_menu_open = !this.group_menu_open;
+                                    cx.notify();
+                                }))
+                                .child(structure_label)
+                                .child(icon(Icon::ChevronDown, px(12.0)).text_color(rgb(0xd8d8d8))),
+                        )
+                        .when(menu_open, |s| {
+                            // Click-away backdrop: a bounds-based `on_mouse_down_out` on the wrapper
+                            // would also fire for clicks on the menu (it lies outside the wrapper's
+                            // bounds) and close it before the option's click lands.
+                            s.child(
+                                deferred(
+                                    div()
+                                        .absolute()
+                                        .top(px(-3000.0))
+                                        .left(px(-3000.0))
+                                        .w(px(8000.0))
+                                        .h(px(8000.0))
+                                        .occlude()
+                                        .on_mouse_down(
+                                            gpui::MouseButton::Left,
+                                            cx.listener(|this, _, _, cx| {
+                                                this.group_menu_open = false;
+                                                cx.notify();
+                                            }),
+                                        ),
+                                )
+                                .with_priority(1),
+                            )
+                            .child(deferred(
+                                div()
+                                    .absolute()
+                                    .top(px(40.0))
+                                    .left_0()
+                                    .right_0()
+                                    .occlude()
+                                    .flex()
+                                    .flex_col()
+                                    .p(px(4.0))
+                                    .rounded(px(6.0))
+                                    .border_1()
+                                    .border_color(rgba(0xffffff24))
+                                    .bg(theme::bg_panel())
+                                    .shadow_lg()
+                                    .children(
+                                        [
+                                            (LibraryStructure::Folders, "Folders"),
+                                            (LibraryStructure::Series, "Series"),
+                                        ]
+                                        .into_iter()
+                                        .map(|(value, label)| {
+                                            let selected = value == structure;
+                                            div()
+                                                .id(label)
+                                                .px(px(10.0))
+                                                .py(px(7.0))
+                                                .rounded(px(4.0))
+                                                .cursor_pointer()
+                                                .text_size(px(14.0))
+                                                .text_color(if selected { theme::accent() } else { rgb(0xd8d8d8) })
+                                                .hover(|s| s.bg(rgba(0xffffff0f)))
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.group_menu_open = false;
+                                                    if this.stores.library.read(cx).structure != value {
+                                                        this.stores.prefs.update(cx, |p, cx| {
+                                                            p.update(cx, |p| p.structure = value)
+                                                        });
+                                                        this.stores.library.update(cx, |s, cx| s.set_structure(value, cx));
+                                                    }
+                                                    cx.notify();
+                                                }))
+                                                .child(label)
+                                        }),
+                                    ),
+                            ).with_priority(2))
+                        }),
                 ),
             )
             .children(folded)

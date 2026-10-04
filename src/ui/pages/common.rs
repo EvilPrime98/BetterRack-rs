@@ -8,6 +8,7 @@ use gpui::{
 use crate::model::{ComicsType, ReadFilter};
 use crate::state::prefs::PrefsStore;
 use crate::ui::components::button::{ButtonVariant, button};
+use crate::ui::components::dropdown::dropdown;
 use crate::ui::components::items_grid::PAGE_PAD_X;
 use crate::ui::icons::{Icon, icon};
 use crate::ui::theme;
@@ -91,27 +92,67 @@ pub fn cycle_button(
     button(id, label, ButtonVariant::Secondary, on_click)
 }
 
-/// `StateFilter` + `LayoutSelector`: the two cycle buttons that live in every grid page header.
+fn capitalize(s: &str) -> SharedString {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect::<String>()).unwrap_or_default().into()
+}
+
+/// Dropdown whose open state lives in the prefs store, so it works from stateless render code.
+pub fn prefs_dropdown<V: Copy + PartialEq + 'static>(
+    id: &'static str,
+    options: impl IntoIterator<Item = (V, &'static str)>,
+    current: V,
+    align_right: bool,
+    prefs: &gpui::Entity<PrefsStore>,
+    cx: &App,
+    apply: impl Fn(&mut PrefsStore, V, &mut gpui::Context<PrefsStore>) + 'static,
+) -> impl IntoElement {
+    let open = prefs.read(cx).open_menu == Some(id);
+    let for_open = prefs.clone();
+    let for_select = prefs.clone();
+    dropdown(
+        id,
+        options.into_iter().map(|(v, l)| (v, capitalize(l))).collect(),
+        current,
+        open,
+        align_right,
+        move |open, cx| for_open.update(cx, |p, cx| p.set_menu_open(id, open, cx)),
+        move |v, cx| for_select.update(cx, |p, cx| apply(p, v, cx)),
+    )
+}
+
+/// `StateFilter` + `LayoutSelector`: the two dropdowns that live in every grid page header.
 pub fn view_controls(
     read_filter: ReadFilter,
     kind: ComicsType,
     with_read_filter: bool,
     prefs: &gpui::Entity<PrefsStore>,
+    cx: &App,
 ) -> impl IntoElement {
-    let for_filter = prefs.clone();
-    let for_layout = prefs.clone();
     div()
         .flex()
         .items_center()
         .gap(px(10.0))
         .when(with_read_filter, |s| {
-            s.child(cycle_button("read-filter", read_filter.label(), move |_, _, cx| {
-                for_filter.update(cx, |p, cx| p.cycle_read_filter(cx))
-            }))
+            s.child(prefs_dropdown(
+                "read-filter",
+                [ReadFilter::All, ReadFilter::Read, ReadFilter::Unread, ReadFilter::Reading].map(|v| (v, v.label())),
+                read_filter,
+                true,
+                prefs,
+                cx,
+                |p, v, cx| p.set_read_filter(v, cx),
+            ))
         })
-        .child(cycle_button("layout", kind.label(), move |_, _, cx| {
-            for_layout.update(cx, |p, cx| p.cycle_comics_type(cx))
-        }))
+        .child(prefs_dropdown(
+            "layout",
+            [ComicsType::Cover, ComicsType::Detail].map(|v| (v, v.label())),
+            kind,
+            true,
+            prefs,
+            cx,
+            |p, v, cx| p.set_comics_type(v, cx),
+        ))
 }
 
 use gpui::prelude::FluentBuilder as _;

@@ -16,6 +16,7 @@ pub enum Icon {
     Bookmark,
     Burger,
     ChevronDown,
+    ChevronRight,
     Close,
     Download,
     Folder,
@@ -43,7 +44,8 @@ impl Icon {
             Self::Bookmark => "icons/bookmark.svg",
             Self::Burger => "icons/burger.svg",
             Self::ChevronDown => "icons/chevron-down.svg",
-            Self::Close => "icons/close.svg",
+            Self::ChevronRight => "icons/chevron-right.svg",
+            Self::Close =>"icons/close.svg",
             Self::Download => "icons/download.svg",
             Self::Folder => "icons/folder.svg",
             Self::FolderPlus => "icons/folder-plus.svg",
@@ -79,8 +81,8 @@ mod tests {
     fn every_icon_asset_is_embedded() {
         use Icon::*;
         for i in [
-            ArrowLeft, ArrowRight, BookOpen, Bookmark, Burger, ChevronDown, Close, Download, Folder,
-            FolderPlus, Gear, Menu, Refresh, Search, Shop, Star, Trash, Wand, Xml, WinMinimize,
+            ArrowLeft, ArrowRight, BookOpen, Bookmark, Burger, ChevronDown, ChevronRight, Close, Download,
+            Folder, FolderPlus, Gear, Menu, Refresh, Search, Shop, Star, Trash, Wand, Xml, WinMinimize,
             WinMaximize, WinRestore,
         ] {
             assert!(Assets.load(i.path()).unwrap().is_some(), "missing {}", i.path());

@@ -64,11 +64,13 @@ impl Prefs {
 pub struct PrefsStore {
     pub prefs: Prefs,
     pub read_filter: ReadFilter,
+    /// Id of the header dropdown that is open, if any (one at a time).
+    pub open_menu: Option<&'static str>,
 }
 
 impl PrefsStore {
     pub fn load() -> Self {
-        Self { prefs: Prefs::load(), read_filter: ReadFilter::All }
+        Self { prefs: Prefs::load(), read_filter: ReadFilter::All, open_menu: None }
     }
 
     /// Mutate a persisted preference and write it out.
@@ -78,13 +80,22 @@ impl PrefsStore {
         cx.notify();
     }
 
-    pub fn cycle_read_filter(&mut self, cx: &mut gpui::Context<Self>) {
-        self.read_filter = self.read_filter.next();
+    pub fn set_read_filter(&mut self, value: ReadFilter, cx: &mut gpui::Context<Self>) {
+        self.read_filter = value;
         cx.notify();
     }
 
-    pub fn cycle_comics_type(&mut self, cx: &mut gpui::Context<Self>) {
-        self.update(cx, |p| p.comic_type = p.comic_type.next());
+    pub fn set_comics_type(&mut self, value: ComicsType, cx: &mut gpui::Context<Self>) {
+        self.update(cx, |p| p.comic_type = value);
+    }
+
+    pub fn set_menu_open(&mut self, id: &'static str, open: bool, cx: &mut gpui::Context<Self>) {
+        if open {
+            self.open_menu = Some(id);
+        } else if self.open_menu == Some(id) {
+            self.open_menu = None;
+        }
+        cx.notify();
     }
 }
 

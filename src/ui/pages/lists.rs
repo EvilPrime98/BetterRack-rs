@@ -229,7 +229,7 @@ impl Render for ListPage {
                         .flex()
                         .items_center()
                         .gap(px(10.0))
-                        .child(view_controls(read_filter, kind, true, &self.stores.prefs))
+                        .child(view_controls(read_filter, kind, true, &self.stores.prefs, cx))
                         .child(cycle_button(
                             "recent-window",
                             label,
@@ -250,7 +250,7 @@ impl Render for ListPage {
                         .gap(px(12.0))
                         .child(back_button("page-back", home_click(cx)))
                         .child(summary("Keep reading", "Currently reading")),
-                    view_controls(read_filter, kind, false, &self.stores.prefs),
+                    view_controls(read_filter, kind, false, &self.stores.prefs, cx),
                 ),
                 "Nothing in progress.".to_string(),
             ),
@@ -285,7 +285,7 @@ impl Render for ListPage {
                             .child(back_button("page-back", home_click(cx)))
                             .child(summary("Filtered by writer", title))
                             .children(clear),
-                        view_controls(read_filter, kind, true, &self.stores.prefs),
+                        view_controls(read_filter, kind, true, &self.stores.prefs, cx),
                     ),
                     "No comics in your library yet.".to_string(),
                 )
@@ -299,7 +299,7 @@ impl Render for ListPage {
                         .child(back_button("page-back", home_click(cx)))
                         .child(summary("Search", format!("\"{query}\"")))
                         .child(counter(visible.len())),
-                    div().flex().items_center().gap(px(10.0)).child(view_controls(read_filter, kind, true, &self.stores.prefs)),
+                    div().flex().items_center().gap(px(10.0)).child(view_controls(read_filter, kind, true, &self.stores.prefs, cx)),
                 ),
                 "No items to show.".to_string(),
             ),

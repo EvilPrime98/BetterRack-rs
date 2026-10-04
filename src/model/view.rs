@@ -11,15 +11,6 @@ pub enum ComicsType {
     Detail,
 }
 
-impl ComicsType {
-    pub fn next(self) -> Self {
-        match self {
-            Self::Cover => Self::Detail,
-            Self::Detail => Self::Cover,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReadFilter {
@@ -31,16 +22,6 @@ pub enum ReadFilter {
 }
 
 impl ReadFilter {
-    /// `all → read → unread → reading → all` (cycle order is a guess; verify in Phase 1).
-    pub fn next(self) -> Self {
-        match self {
-            Self::All => Self::Read,
-            Self::Read => Self::Unread,
-            Self::Unread => Self::Reading,
-            Self::Reading => Self::All,
-        }
-    }
-
     /// `matchesReadFilter(filter, readPer)`.
     pub fn matches(self, read_per: f32) -> bool {
         match self {
@@ -69,14 +50,6 @@ impl FilterOption {
             Self::Alphabetically => "Alphabetically",
             Self::CreationDate => "Creation Date",
             Self::ReleaseDate => "Release Date",
-        }
-    }
-
-    pub fn next(self) -> Self {
-        match self {
-            Self::Alphabetically => Self::CreationDate,
-            Self::CreationDate => Self::ReleaseDate,
-            Self::ReleaseDate => Self::Alphabetically,
         }
     }
 }
