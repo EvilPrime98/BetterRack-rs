@@ -24,7 +24,7 @@ impl Default for AppSettings {
             api_url: String::new(),
             download_dir: String::new(),
             wiki_search: false,
-            rescan_on_startup: true,
+            rescan_on_startup: false,
         }
     }
 }
@@ -180,7 +180,7 @@ mod tests {
             .update_app_settings(&obj(json!({"apiUrl": "https://x.test/", "wikiSearch": true, "bogus": 1, "downloadDir": null})))
             .unwrap();
         assert_eq!(s.api_url, "https://x.test/");
-        assert!(s.wiki_search && s.rescan_on_startup);
+        assert!(s.wiki_search && !s.rescan_on_startup);
         assert_eq!(s.download_dir, "");
         let s = p.update_app_settings(&obj(json!({"outputDirs": ["C:\\a", "C:\\b"]}))).unwrap();
         assert_eq!(s.output_dirs, vec!["C:\\a", "C:\\b"]);
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn settings_serialize_as_camel_case() {
         let v = serde_json::to_value(AppSettings::default()).unwrap();
-        assert_eq!(v, json!({"outputDirs": [], "apiUrl": "", "downloadDir": "", "wikiSearch": false, "rescanOnStartup": true}));
+        assert_eq!(v, json!({"outputDirs": [], "apiUrl": "", "downloadDir": "", "wikiSearch": false, "rescanOnStartup": false}));
     }
 
     #[test]

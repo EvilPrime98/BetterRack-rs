@@ -50,7 +50,7 @@ async fn healthz_and_unknown_route() {
 async fn settings_round_trip_and_output_dirs_are_protected() {
     let h = harness(None);
     let (_, v) = json_call(&h, "GET", "/api/settings", None).await;
-    assert_eq!(v, json!({"outputDirs": [], "apiUrl": "", "downloadDir": "", "wikiSearch": false, "rescanOnStartup": true}));
+    assert_eq!(v, json!({"outputDirs": [], "apiUrl": "", "downloadDir": "", "wikiSearch": false, "rescanOnStartup": false}));
 
     let (s, v) = json_call(&h, "PUT", "/api/settings", Some(json!({"apiUrl": "https://x.test", "wikiSearch": true, "outputDirs": ["C:\\evil"]}))).await;
     assert_eq!(s, StatusCode::OK);
