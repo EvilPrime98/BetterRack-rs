@@ -93,7 +93,6 @@ impl SettingsPage {
         }
     }
 
-    /// `useEffect(() => setDraft(settings), [settings])`.
     fn reset_draft(&mut self, cx: &mut Context<Self>) {
         let s = self.stores.settings.read(cx).settings.clone();
         self.api_url
