@@ -1,4 +1,4 @@
-//! Windows only: embed the app icon and version info into the .exe (what electron-builder did).
+//! Windows only: embed the app icon and version info into the .exe.
 //! Failing to do so (no `rc.exe`) must not break the build, so it only warns.
 
 fn main() {

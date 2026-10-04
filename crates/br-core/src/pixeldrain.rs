@@ -46,8 +46,10 @@ impl PixelDrain {
             api_key: None,
             fetch,
             api: format!("{scheme}://{host}/api"),
-            file_re: Regex::new(&format!("(?i){h}/(?:u|d|api/file)/([a-zA-Z0-9]+)")).expect("file regex"),
-            list_re: Regex::new(&format!("(?i){h}/(?:l|api/list)/([a-zA-Z0-9]+)")).expect("list regex"),
+            file_re: Regex::new(&format!("(?i){h}/(?:u|d|api/file)/([a-zA-Z0-9]+)"))
+                .expect("file regex"),
+            list_re: Regex::new(&format!("(?i){h}/(?:l|api/list)/([a-zA-Z0-9]+)"))
+                .expect("list regex"),
             bare_id_re: Regex::new("^[a-zA-Z0-9]+$").expect("id regex"),
         }
     }
@@ -89,7 +91,11 @@ impl PixelDrain {
     async fn get_json(&self, url: &str) -> PdResult<(u16, Value)> {
         let auth = self.auth_headers();
         let extra: Vec<(&str, &str)> = auth.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let res = self.fetch.fetch(url, &extra, None).await.map_err(|e| e.to_string())?;
+        let res = self
+            .fetch
+            .fetch(url, &extra, None)
+            .await
+            .map_err(|e| e.to_string())?;
         let status = res.status().as_u16();
         if !res.status().is_success() {
             return Ok((status, Value::Null));
@@ -112,12 +118,17 @@ impl PixelDrain {
 
     pub async fn get_file_info(&self, id_or_url: &str) -> PdResult<PixelDrainFile> {
         let (Ref::File(id) | Ref::List(id)) = self.parse_ref(id_or_url)?;
-        let (status, body) = self.get_json(&format!("{}/file/{id}/info", self.api)).await?;
+        let (status, body) = self
+            .get_json(&format!("{}/file/{id}/info", self.api))
+            .await?;
         if !(200..300).contains(&status) {
             return Err(format!("PixelDrain info failed for {id}: HTTP {status}"));
         }
         if body["success"].as_bool() != Some(true) {
-            return Err(format!("PixelDrain: {}", body["message"].as_str().unwrap_or("file unavailable")));
+            return Err(format!(
+                "PixelDrain: {}",
+                body["message"].as_str().unwrap_or("file unavailable")
+            ));
         }
         Ok(self.file_from(&body))
     }
@@ -129,14 +140,24 @@ impl PixelDrain {
             return Err(format!("PixelDrain list failed for {id}: HTTP {status}"));
         }
         if body["success"].as_bool() != Some(true) {
-            return Err(format!("PixelDrain: {}", body["message"].as_str().unwrap_or("list unavailable")));
+            return Err(format!(
+                "PixelDrain: {}",
+                body["message"].as_str().unwrap_or("list unavailable")
+            ));
         }
-        Ok(body["files"].as_array().map(|a| a.iter().map(|f| self.file_from(f)).collect()).unwrap_or_default())
+        Ok(body["files"]
+            .as_array()
+            .map(|a| a.iter().map(|f| self.file_from(f)).collect())
+            .unwrap_or_default())
     }
 
     /// Follow the redirect chain of a masked link to its real PixelDrain URL.
     async fn unhash_link(&self, url: &str) -> PdResult<String> {
-        let res = self.fetch.fetch(url, &[], None).await.map_err(|e| e.to_string())?;
+        let res = self
+            .fetch
+            .fetch(url, &[], None)
+            .await
+            .map_err(|e| e.to_string())?;
         Ok(res.url().to_string())
     }
 
@@ -160,15 +181,31 @@ mod tests {
     #[test]
     fn parses_refs() {
         let p = pd();
-        assert_eq!(p.parse_ref("https://pixeldrain.com/u/aB3xK9m2").unwrap(), Ref::File("aB3xK9m2".into()));
-        assert_eq!(p.parse_ref("https://pixeldrain.com/api/file/zz9?download").unwrap(), Ref::File("zz9".into()));
-        assert_eq!(p.parse_ref("https://pixeldrain.com/l/LIST1").unwrap(), Ref::List("LIST1".into()));
-        assert_eq!(p.parse_ref(" bareId1 ").unwrap(), Ref::File("bareId1".into()));
+        assert_eq!(
+            p.parse_ref("https://pixeldrain.com/u/aB3xK9m2").unwrap(),
+            Ref::File("aB3xK9m2".into())
+        );
+        assert_eq!(
+            p.parse_ref("https://pixeldrain.com/api/file/zz9?download")
+                .unwrap(),
+            Ref::File("zz9".into())
+        );
+        assert_eq!(
+            p.parse_ref("https://pixeldrain.com/l/LIST1").unwrap(),
+            Ref::List("LIST1".into())
+        );
+        assert_eq!(
+            p.parse_ref(" bareId1 ").unwrap(),
+            Ref::File("bareId1".into())
+        );
         assert!(p.parse_ref("https://example.com/x").is_err());
     }
 
     #[test]
     fn direct_link_has_download_flag() {
-        assert_eq!(pd().direct_download_link("abc"), "https://pixeldrain.com/api/file/abc?download");
+        assert_eq!(
+            pd().direct_download_link("abc"),
+            "https://pixeldrain.com/api/file/abc?download"
+        );
     }
 }

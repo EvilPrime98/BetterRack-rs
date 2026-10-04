@@ -1,10 +1,10 @@
-//! `toast.service.ts` (Notyf): top-center, 2.5 s (errors 5 s), accent left border.
+//! Toasts: top-center, 2.5 s (errors 5 s), accent left border.
 
 use std::time::Duration;
 
-use gpui::{AppContext as _,
-    App, Context, Entity, Global, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, Styled, Window, div, px,
+use gpui::{
+    App, AppContext as _, Context, Entity, Global, InteractiveElement, IntoElement, ParentElement,
+    Render, SharedString, Styled, Window, div, px,
 };
 
 use crate::ui::theme;
@@ -45,7 +45,9 @@ pub fn error(cx: &mut App, text: impl Into<SharedString>) {
 }
 
 fn push(cx: &mut App, kind: Kind, text: SharedString) {
-    let Some(host) = cx.try_global::<ToastGlobal>().map(|g| g.0.clone()) else { return };
+    let Some(host) = cx.try_global::<ToastGlobal>().map(|g| g.0.clone()) else {
+        return;
+    };
     host.update(cx, |host, cx| {
         let id = host.next_id;
         host.next_id += 1;
@@ -53,7 +55,9 @@ fn push(cx: &mut App, kind: Kind, text: SharedString) {
         cx.notify();
         let ttl = if kind == Kind::Error { 5000 } else { 2500 };
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(ttl)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(ttl))
+                .await;
             this.update(cx, |host, cx| {
                 host.items.retain(|t| t.id != id);
                 cx.notify();
@@ -76,7 +80,11 @@ impl Render for ToastHost {
             .items_center()
             .gap(px(8.0))
             .children(self.items.iter().map(|t| {
-                let border = if t.kind == Kind::Error { theme::error() } else { theme::accent() };
+                let border = if t.kind == Kind::Error {
+                    theme::error()
+                } else {
+                    theme::accent()
+                };
                 div()
                     .id(("toast", t.id))
                     .occlude()

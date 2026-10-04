@@ -1,15 +1,15 @@
 use br_core::archive::Archives;
 use br_core::comic_data::ComicDataStore;
+use br_core::config::Config;
 use br_core::download::{Downloader, RetryOpts};
 use br_core::downloads::DownloadService;
+use br_core::jobs::JobStore;
+use br_core::library::Library;
 use br_core::pack::PackExtractor;
 use br_core::pixeldrain::{self, PixelDrain};
 use br_core::rotating_fetch::RotatingFetch;
-use br_core::store::{StoreApi, StoreTiming};
-use br_core::config::Config;
-use br_core::jobs::JobStore;
-use br_core::library::Library;
 use br_core::settings::Preferences;
+use br_core::store::{StoreApi, StoreTiming};
 use br_core::thumbnail::{CACHE_DIR_NAME, Thumbnails};
 use br_core::wiki::{NoWiki, WikiLookup};
 use std::sync::Arc;
@@ -42,7 +42,12 @@ pub struct NetOptions {
 
 impl Default for NetOptions {
     fn default() -> Self {
-        Self { store_timing: StoreTiming::default(), download_retry: RetryOpts::default(), rotating: None, pixeldrain: None }
+        Self {
+            store_timing: StoreTiming::default(),
+            download_retry: RetryOpts::default(),
+            rotating: None,
+            pixeldrain: None,
+        }
     }
 }
 
@@ -57,13 +62,23 @@ impl AppState {
         Self::open_with(config, wiki, NetOptions::default())
     }
 
-    pub fn open_with(config: Config, wiki: Arc<dyn WikiLookup>, net: NetOptions) -> br_core::Result<Self> {
+    pub fn open_with(
+        config: Config,
+        wiki: Arc<dyn WikiLookup>,
+        net: NetOptions,
+    ) -> br_core::Result<Self> {
         let prefs = Arc::new(Preferences::open(&config.preferences_db())?);
         let comic_data = Arc::new(ComicDataStore::open(&config.comic_data_db())?);
         let jobs = JobStore::open(&config.jobs_db())?;
         let archives = Arc::new(Archives::new(config.seven_zip_path.clone()));
         let cwd = config.data_dir.to_string_lossy().into_owned();
-        let library = Library::new(prefs.clone(), comic_data.clone(), archives.clone(), wiki.clone(), cwd.clone());
+        let library = Library::new(
+            prefs.clone(),
+            comic_data.clone(),
+            archives.clone(),
+            wiki.clone(),
+            cwd.clone(),
+        );
         let thumbnails = Thumbnails::new(config.data_dir.join(CACHE_DIR_NAME), archives.clone());
 
         let client = reqwest::Client::new();
@@ -71,15 +86,35 @@ impl AppState {
         if let Some((retries, backoff, jitter)) = net.rotating {
             rotating = rotating.with_timing(retries, backoff, jitter);
         }
-        let (pd_host, pd_scheme) = net.pixeldrain.clone().unwrap_or_else(|| (pixeldrain::HOST.to_string(), "https".to_string()));
+        let (pd_host, pd_scheme) = net
+            .pixeldrain
+            .clone()
+            .unwrap_or_else(|| (pixeldrain::HOST.to_string(), "https".to_string()));
         let pixel = Arc::new(PixelDrain::for_host(rotating.clone(), &pd_host, &pd_scheme));
-        let store = Arc::new(StoreApi::new(prefs.clone(), client.clone(), pixel, net.store_timing));
+        let store = Arc::new(StoreApi::new(
+            prefs.clone(),
+            client.clone(),
+            pixel,
+            net.store_timing,
+        ));
         let pack = Arc::new(PackExtractor::new(archives.clone()));
         let pd_hostname = pd_host.split(':').next().unwrap_or(&pd_host).to_string();
-        let downloader = Arc::new(Downloader::new(client, rotating, Some(pack), net.download_retry, &pd_hostname));
+        let downloader = Arc::new(Downloader::new(
+            client,
+            rotating,
+            Some(pack),
+            net.download_retry,
+            &pd_hostname,
+        ));
         let jobs = Arc::new(jobs);
         let library = Arc::new(library);
-        let downloads = Arc::new(DownloadService::new(jobs.clone(), store.clone(), downloader, library.clone(), cwd));
+        let downloads = Arc::new(DownloadService::new(
+            jobs.clone(),
+            store.clone(),
+            downloader,
+            library.clone(),
+            cwd,
+        ));
         Ok(Self {
             config: Arc::new(config),
             prefs,

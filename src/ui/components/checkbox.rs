@@ -21,9 +21,17 @@ pub fn checkbox(
         .flex_none()
         .rounded(px(4.0))
         .border_1()
-        .border_color(if checked { theme::accent() } else { gpui::rgba(0xffffff4d).into() });
+        .border_color(if checked {
+            theme::accent()
+        } else {
+            gpui::rgba(0xffffff4d).into()
+        });
     if checked {
-        tick = tick.bg(theme::accent()).text_size(px(12.0)).text_color(gpui::rgb(0x0a2226)).child("✓");
+        tick = tick
+            .bg(theme::accent())
+            .text_size(px(12.0))
+            .text_color(gpui::rgb(0x0a2226))
+            .child("✓");
     }
     div()
         .id(id)

@@ -1,6 +1,6 @@
-//! `comicCache.store.ts`: per-comic progress/rating/read flag, loaded once at startup.
+//! Per-comic progress/rating/read flag, loaded once at startup.
 //! Writes update locally at once and debounce the PATCH 400 ms per uid. `flush_pending` must run
-//! before views that read server-side progress (Reading) and on exit (gotcha #3).
+//! before views that read server-side progress (Reading) and on exit.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -46,7 +46,7 @@ impl ComicCacheStore {
         self.cache.get(uid)
     }
 
-    /// 0..=100; `read == true` forces 100 (as the React card does).
+    /// 0..=100; `read == true` forces 100.
     pub fn read_per(&self, uid: &str) -> f32 {
         match self.cache.get(uid) {
             Some(c) if c.read => 100.0,
@@ -79,7 +79,9 @@ impl ComicCacheStore {
                 .flatten();
             if let Some((client, data)) = send {
                 let id = uid.clone();
-                if let Err(e) = runtime::run(async move { client.patch_comic_data(&id, &data).await }).await {
+                if let Err(e) =
+                    runtime::run(async move { client.patch_comic_data(&id, &data).await }).await
+                {
                     tracing::warn!("saving progress for {uid} failed: {e}");
                 }
             }
@@ -116,7 +118,9 @@ impl ComicCacheStore {
             for (uid, data) in batch {
                 let c = client.clone();
                 let id = uid.clone();
-                if let Err(e) = runtime::run(async move { c.patch_comic_data(&id, &data).await }).await {
+                if let Err(e) =
+                    runtime::run(async move { c.patch_comic_data(&id, &data).await }).await
+                {
                     tracing::warn!("flushing progress for {uid} failed: {e}");
                 }
             }

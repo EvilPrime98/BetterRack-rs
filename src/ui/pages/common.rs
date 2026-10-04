@@ -76,12 +76,20 @@ pub fn summary(eyebrow: &'static str, title: impl Into<SharedString>) -> impl In
 }
 
 pub fn counter(count: usize) -> impl IntoElement {
-    div().text_size(px(12.0)).text_color(rgb(0x9a9a9a)).child(format!("{count} comics"))
+    div()
+        .text_size(px(12.0))
+        .text_color(rgb(0x9a9a9a))
+        .child(format!("{count} comics"))
 }
 
 /// Centered note in place of the grid ("Nothing in progress.", errors, loading).
 pub fn note(text: impl Into<SharedString>) -> impl IntoElement {
-    div().py(px(40.0)).text_center().text_size(px(13.0)).text_color(rgb(0x808080)).child(text.into())
+    div()
+        .py(px(40.0))
+        .text_center()
+        .text_size(px(13.0))
+        .text_color(rgb(0x808080))
+        .child(text.into())
 }
 
 pub fn cycle_button(
@@ -94,7 +102,10 @@ pub fn cycle_button(
 
 fn capitalize(s: &str) -> SharedString {
     let mut c = s.chars();
-    c.next().map(|f| f.to_uppercase().chain(c).collect::<String>()).unwrap_or_default().into()
+    c.next()
+        .map(|f| f.to_uppercase().chain(c).collect::<String>())
+        .unwrap_or_default()
+        .into()
 }
 
 /// Dropdown whose open state lives in the prefs store, so it works from stateless render code.
@@ -112,7 +123,10 @@ pub fn prefs_dropdown<V: Copy + PartialEq + 'static>(
     let for_select = prefs.clone();
     dropdown(
         id,
-        options.into_iter().map(|(v, l)| (v, capitalize(l))).collect(),
+        options
+            .into_iter()
+            .map(|(v, l)| (v, capitalize(l)))
+            .collect(),
         current,
         open,
         align_right,
@@ -136,7 +150,13 @@ pub fn view_controls(
         .when(with_read_filter, |s| {
             s.child(prefs_dropdown(
                 "read-filter",
-                [ReadFilter::All, ReadFilter::Read, ReadFilter::Unread, ReadFilter::Reading].map(|v| (v, v.label())),
+                [
+                    ReadFilter::All,
+                    ReadFilter::Read,
+                    ReadFilter::Unread,
+                    ReadFilter::Reading,
+                ]
+                .map(|v| (v, v.label())),
                 read_filter,
                 true,
                 prefs,

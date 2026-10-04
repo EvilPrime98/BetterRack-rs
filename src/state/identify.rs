@@ -14,7 +14,11 @@ use crate::runtime;
 #[derive(Clone, Debug)]
 pub enum Ident {
     Loading,
-    Resolved { comic: Option<WikiComic>, meta_source: Option<MetaSource>, identified: bool },
+    Resolved {
+        comic: Option<WikiComic>,
+        meta_source: Option<MetaSource>,
+        identified: bool,
+    },
 }
 
 #[derive(Default)]
@@ -40,7 +44,11 @@ impl IdentifyStore {
                 identified: item.identified != Some(false),
                 loading: true,
             },
-            Some(Ident::Resolved { comic, meta_source, identified }) => CardInfo {
+            Some(Ident::Resolved {
+                comic,
+                meta_source,
+                identified,
+            }) => CardInfo {
                 comic: comic.clone(),
                 meta_source: *meta_source,
                 identified: *identified,
@@ -60,22 +68,27 @@ impl IdentifyStore {
         if item.did || item.identified.is_some() || self.states.contains_key(&item.uid) {
             return;
         }
-        let Some(client) = self.client.clone() else { return };
+        let Some(client) = self.client.clone() else {
+            return;
+        };
         let uid = item.uid.clone();
         self.states.insert(uid.clone(), Ident::Loading);
         cx.spawn(async move |this, cx| {
             let id = uid.clone();
             let resolved = runtime::run(async move { client.identify_lazy(&id).await }).await;
             this.update(cx, |s, cx| {
-                // A failed lookup is not retried until the library is reloaded (as in React:
-                // `.catch(() => {})`), but the card stops spinning.
+                // A failed lookup is not retried until the library is reloaded but the card stops spinning.
                 let state = match resolved {
                     Ok(r) => Ident::Resolved {
                         comic: r.comic,
                         meta_source: r.meta_source,
                         identified: r.identified == Some(true),
                     },
-                    Err(_) => Ident::Resolved { comic: None, meta_source: None, identified: false },
+                    Err(_) => Ident::Resolved {
+                        comic: None,
+                        meta_source: None,
+                        identified: false,
+                    },
                 };
                 s.states.insert(uid, state);
                 cx.notify();
@@ -99,9 +112,22 @@ impl IdentifyStore {
     }
 
     /// Identify modal committed a pick, or the user un-identified.
-    pub fn set_identified(&mut self, uid: &str, comic: Option<WikiComic>, meta: Option<MetaSource>, cx: &mut Context<Self>) {
+    pub fn set_identified(
+        &mut self,
+        uid: &str,
+        comic: Option<WikiComic>,
+        meta: Option<MetaSource>,
+        cx: &mut Context<Self>,
+    ) {
         let identified = comic.is_some();
-        self.states.insert(uid.to_string(), Ident::Resolved { comic, meta_source: meta, identified });
+        self.states.insert(
+            uid.to_string(),
+            Ident::Resolved {
+                comic,
+                meta_source: meta,
+                identified,
+            },
+        );
         cx.notify();
     }
 

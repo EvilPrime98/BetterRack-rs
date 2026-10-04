@@ -1,20 +1,30 @@
-//! Routing (MIGRATION.md §5.2). GPUI has no router: an `enum Route` plus a back/forward stack.
+//! Routing. GPUI has no router: an `enum Route` plus a back/forward stack.
 
-/// Pages from `react/src/App.tsx`.
+/// App pages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
     /// `/`, `/:uid` (folder/group/series uid). `search` is the `?search=` query that swaps in the
     /// search page.
-    Library { uid: Option<String>, search: Option<String> },
+    Library {
+        uid: Option<String>,
+        search: Option<String>,
+    },
     /// `/:uid/reader`
-    Reader { uid: String },
+    Reader {
+        uid: String,
+    },
     /// `/details/:pageId?sourceWiki=`
-    Details { page_id: String, source_wiki: Option<String> },
+    Details {
+        page_id: String,
+        source_wiki: Option<String>,
+    },
     Settings,
     Store,
     StoreDownloads,
     /// `/filters?writer=<name>`
-    Filtered { writer: String },
+    Filtered {
+        writer: String,
+    },
     /// `/new`: recently added.
     Recent,
     Reading,
@@ -22,13 +32,18 @@ pub enum Route {
 
 impl Route {
     pub fn home() -> Self {
-        Self::Library { uid: None, search: None }
+        Self::Library {
+            uid: None,
+            search: None,
+        }
     }
 
-    /// Page name for the window title (`"<page> · BetterRack"`, see `documentTitle.store.ts`).
+    /// Page name for the window title (`"<page> · BetterRack"`).
     pub fn title(&self) -> &'static str {
         match self {
-            Self::Library { search: Some(_), .. } => "Search",
+            Self::Library {
+                search: Some(_), ..
+            } => "Search",
             Self::Library { .. } => "Library",
             Self::Reader { .. } => "Reader",
             Self::Details { .. } => "Details",
@@ -60,7 +75,10 @@ pub struct History {
 
 impl Default for History {
     fn default() -> Self {
-        Self { stack: vec![Route::home()], index: 0 }
+        Self {
+            stack: vec![Route::home()],
+            index: 0,
+        }
     }
 }
 
@@ -103,7 +121,7 @@ impl History {
         true
     }
 
-    /// `history.back()` with fallback to `/` (what the React code does).
+    /// `history.back()` with fallback to `/`.
     pub fn back_or_home(&mut self) {
         if !self.back() {
             self.push(Route::home());

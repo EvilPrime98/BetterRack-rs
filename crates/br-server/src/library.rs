@@ -1,4 +1,4 @@
-//! `/api/library*`: port of `libraryController`. Handlers keep the Bun answers: every failure is a
+//! `/api/library*`: Every failure is a
 //! 500 `{ error: true, message }` with the controller's own wording (identify and re-identify pass
 //! the model's message through, a rejected move is a 400).
 
@@ -32,16 +32,25 @@ fn server_error(message: &str) -> Response {
 }
 
 fn ok(message: &str) -> Response {
-    reply(StatusCode::OK, json!({ "error": false, "message": message }))
+    reply(
+        StatusCode::OK,
+        json!({ "error": false, "message": message }),
+    )
 }
 
 fn now_ms() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as f64)
+        .unwrap_or(0.0)
 }
 
-/// Hono's `c.req.query(name)`: the first value.
+/// The first value of query parameter `name`.
 fn query<'a>(params: &'a [(String, String)], name: &str) -> Option<&'a str> {
-    params.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
+    params
+        .iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v.as_str())
 }
 
 /// `await c.req.json()` then destructuring: bad JSON and `null` throw, other non-objects have no
@@ -69,7 +78,10 @@ fn truthy(v: Option<&Value>) -> bool {
 }
 
 /// Run model work on a blocking thread once the library scan has settled.
-async fn model<T: Send + 'static>(s: AppState, f: impl FnOnce(&AppState) -> T + Send + 'static) -> Option<T> {
+async fn model<T: Send + 'static>(
+    s: AppState,
+    f: impl FnOnce(&AppState) -> T + Send + 'static,
+) -> Option<T> {
     tokio::task::spawn_blocking(move || {
         s.library.wait_ready();
         f(&s)
@@ -80,12 +92,21 @@ async fn model<T: Send + 'static>(s: AppState, f: impl FnOnce(&AppState) -> T + 
 }
 
 /// Like `model` for work that must not wait for the scan (it may itself change the library).
-async fn model_now<T: Send + 'static>(s: AppState, f: impl FnOnce(&AppState) -> T + Send + 'static) -> Option<T> {
-    tokio::task::spawn_blocking(move || f(&s)).await.map_err(|e| tracing::error!(err = %e, "library task failed")).ok()
+async fn model_now<T: Send + 'static>(
+    s: AppState,
+    f: impl FnOnce(&AppState) -> T + Send + 'static,
+) -> Option<T> {
+    tokio::task::spawn_blocking(move || f(&s))
+        .await
+        .map_err(|e| tracing::error!(err = %e, "library task failed"))
+        .ok()
 }
 
 fn paging(params: &[(String, String)]) -> (Option<i64>, Option<i64>) {
-    (parse_page_option(query(params, "limit")), parse_page_option(query(params, "offset")))
+    (
+        parse_page_option(query(params, "limit")),
+        parse_page_option(query(params, "offset")),
+    )
 }
 
 pub async fn index(State(s): State<AppState>) -> Response {
@@ -128,21 +149,35 @@ pub async fn reading(State(s): State<AppState>) -> Response {
 
 pub async fn get_preferences(State(s): State<AppState>, Path(uid): Path<String>) -> Response {
     match model_now(s, move |s| s.library.get_preferences(&uid)).await {
-        Some(Ok(Some(pref))) => reply(StatusCode::OK, serde_json::to_value(pref).unwrap_or(Value::Null)),
+        Some(Ok(Some(pref))) => reply(
+            StatusCode::OK,
+            serde_json::to_value(pref).unwrap_or(Value::Null),
+        ),
         Some(Ok(None)) => fail(StatusCode::NOT_FOUND, "No preferences found for this uid."),
         _ => server_error("Internal Server Error"),
     }
 }
 
-pub async fn update_preferences(State(s): State<AppState>, Path(uid): Path<String>, body: Bytes) -> Response {
+pub async fn update_preferences(
+    State(s): State<AppState>,
+    Path(uid): Path<String>,
+    body: Bytes,
+) -> Response {
     const MESSAGE: &str = "There was an issue updating preferences. Please, try again later.";
     let result = model_now(s, move |s| -> CoreResult<Option<()>> {
         if s.library.get(&uid).is_none() {
             return Ok(None);
         }
-        let Some(fields) = body_object(&body) else { return Err(CoreError::Invalid("invalid body".into())) };
+        let Some(fields) = body_object(&body) else {
+            return Err(CoreError::Invalid("invalid body".into()));
+        };
         let text = |k: &str| fields.get(k).and_then(Value::as_str).map(str::to_string);
-        s.library.update_preferences(&uid, text("prefPublisher"), fields.get("recursive").and_then(Value::as_bool), text("prefCover"))?;
+        s.library.update_preferences(
+            &uid,
+            text("prefPublisher"),
+            fields.get("recursive").and_then(Value::as_bool),
+            text("prefCover"),
+        )?;
         Ok(Some(()))
     })
     .await;
@@ -166,7 +201,10 @@ pub async fn refresh(State(s): State<AppState>, Query(params): Params) -> Respon
     })
     .await;
     match result {
-        Some(Ok(page)) => reply(StatusCode::OK, json!({ "error": false, "message": "Library re-scan completed.", "page": page })),
+        Some(Ok(page)) => reply(
+            StatusCode::OK,
+            json!({ "error": false, "message": "Library re-scan completed.", "page": page }),
+        ),
         Some(Err(e)) => {
             tracing::error!(err = %e, "failed to re-scan library");
             server_error(MESSAGE)
@@ -201,39 +239,73 @@ async fn mutate(
 }
 
 pub async fn create_folder(State(s): State<AppState>, body: Bytes) -> Response {
-    mutate(s, body, "create folder", "Folder created succesfully.", "There was an issue creating the folder. Please, try again later.", |s, f| {
-        // `path.resolve(root, undefined)` throws, so a missing name is an error.
-        let name = f.get("folderName").and_then(Value::as_str).ok_or_else(|| CoreError::Invalid("folderName is required".into()))?;
-        s.library.create_folder(name, f.get("parentFolderUid").and_then(Value::as_str))
-    })
+    mutate(
+        s,
+        body,
+        "create folder",
+        "Folder created succesfully.",
+        "There was an issue creating the folder. Please, try again later.",
+        |s, f| {
+            // `path.resolve(root, undefined)` throws, so a missing name is an error.
+            let name = f
+                .get("folderName")
+                .and_then(Value::as_str)
+                .ok_or_else(|| CoreError::Invalid("folderName is required".into()))?;
+            s.library
+                .create_folder(name, f.get("parentFolderUid").and_then(Value::as_str))
+        },
+    )
     .await
 }
 
 pub async fn move_file(State(s): State<AppState>, body: Bytes) -> Response {
-    mutate(s, body, "move file", "File moved successfully.", "There was an issue moving the file. Please, try again later.", |s, f| {
-        s.library.move_file(str_field(&f, "fileUid"), str_field(&f, "targetFolderUid"))
-    })
+    mutate(
+        s,
+        body,
+        "move file",
+        "File moved successfully.",
+        "There was an issue moving the file. Please, try again later.",
+        |s, f| {
+            s.library
+                .move_file(str_field(&f, "fileUid"), str_field(&f, "targetFolderUid"))
+        },
+    )
     .await
 }
 
 pub async fn delete_folder(State(s): State<AppState>, body: Bytes) -> Response {
-    mutate(s, body, "delete folder", "Folder deleted successfully.", "There was an issue deleting the folder. Please, try again later.", |s, f| {
-        s.library.delete_folder(str_field(&f, "folderUid"))
-    })
+    mutate(
+        s,
+        body,
+        "delete folder",
+        "Folder deleted successfully.",
+        "There was an issue deleting the folder. Please, try again later.",
+        |s, f| s.library.delete_folder(str_field(&f, "folderUid")),
+    )
     .await
 }
 
 pub async fn delete_file(State(s): State<AppState>, body: Bytes) -> Response {
-    mutate(s, body, "delete file", "File deleted successfully.", "There was an issue deleting the file. Please, try again later.", |s, f| {
-        s.library.delete_file(str_field(&f, "fileUid"))
-    })
+    mutate(
+        s,
+        body,
+        "delete file",
+        "File deleted successfully.",
+        "There was an issue deleting the file. Please, try again later.",
+        |s, f| s.library.delete_file(str_field(&f, "fileUid")),
+    )
     .await
 }
 
 pub async fn unidentify_file(State(s): State<AppState>, body: Bytes) -> Response {
-    mutate(s, body, "un-identify file", "File un-identified successfully.", "There was an issue un-identifying the file. Please, try again later.", |s, f| {
-        s.library.unidentify_file(str_field(&f, "fileUid"))
-    })
+    mutate(
+        s,
+        body,
+        "un-identify file",
+        "File un-identified successfully.",
+        "There was an issue un-identifying the file. Please, try again later.",
+        |s, f| s.library.unidentify_file(str_field(&f, "fileUid")),
+    )
     .await
 }
 
@@ -245,13 +317,17 @@ pub async fn commit_identify(State(s): State<AppState>, body: Bytes) -> Response
             return Ok(None);
         }
         let uid = fields.get("fileUid").and_then(Value::as_str).unwrap_or("");
-        s.library.commit_identify(uid, fields.get("comic").cloned().unwrap_or(Value::Null))?;
+        s.library
+            .commit_identify(uid, fields.get("comic").cloned().unwrap_or(Value::Null))?;
         Ok(Some(()))
     })
     .await;
     match result {
         Some(Ok(Some(()))) => ok("File identified successfully."),
-        Some(Ok(None)) => fail(StatusCode::BAD_REQUEST, "A file uid and comic are required."),
+        Some(Ok(None)) => fail(
+            StatusCode::BAD_REQUEST,
+            "A file uid and comic are required.",
+        ),
         Some(Err(e)) => {
             tracing::error!(err = %e, "failed to identify file");
             server_error(MESSAGE)
@@ -276,7 +352,14 @@ fn identification(entry: &LibraryEntry) -> Value {
 }
 
 async fn identify_with(s: AppState, uid: String, reset: bool, fallback: &'static str) -> Response {
-    let result = model(s, move |s| if reset { s.library.reidentify_file(&uid) } else { s.library.identify(&uid) }).await;
+    let result = model(s, move |s| {
+        if reset {
+            s.library.reidentify_file(&uid)
+        } else {
+            s.library.identify(&uid)
+        }
+    })
+    .await;
     match result {
         Some(Ok(entry)) => reply(StatusCode::OK, identification(&entry)),
         Some(Err(e)) => {
@@ -288,15 +371,28 @@ async fn identify_with(s: AppState, uid: String, reset: bool, fallback: &'static
 }
 
 pub async fn identify(State(s): State<AppState>, Path(uid): Path<String>) -> Response {
-    identify_with(s, uid, false, "There was an issue identifying the comic. Please, try again later.").await
+    identify_with(
+        s,
+        uid,
+        false,
+        "There was an issue identifying the comic. Please, try again later.",
+    )
+    .await
 }
 
 pub async fn reidentify_file(State(s): State<AppState>, Path(uid): Path<String>) -> Response {
-    identify_with(s, uid, true, "There was an issue re-identifying the comic. Please, try again later.").await
+    identify_with(
+        s,
+        uid,
+        true,
+        "There was an issue re-identifying the comic. Please, try again later.",
+    )
+    .await
 }
 
 pub async fn reidentify_all(State(s): State<AppState>) -> Response {
-    const MESSAGE: &str = "There was an issue flagging the library for re-identification. Please, try again later.";
+    const MESSAGE: &str =
+        "There was an issue flagging the library for re-identification. Please, try again later.";
     match model_now(s, |s| s.library.reidentify_all()).await {
         Some(Ok(())) => ok("Library flagged for re-identification."),
         _ => server_error(MESSAGE),
@@ -329,36 +425,75 @@ fn run_identify_library(s: AppState, job_id: String) {
             }
         };
         s.library.wait_ready();
-        let outcome = s.library.identify_library(&|done, total| set(JobState::Running, Some(json!({ "type": "identifying", "done": done, "total": total }))));
+        let outcome = s.library.identify_library(&|done, total| {
+            set(
+                JobState::Running,
+                Some(json!({ "type": "identifying", "done": done, "total": total })),
+            )
+        });
         match outcome {
             Ok(()) => {
-                let total = s.jobs.get(&job_id).and_then(|j| j.progress).filter(|p| p["type"] == "identifying").and_then(|p| p["total"].as_u64()).unwrap_or(0);
-                set(JobState::Done, Some(json!({ "type": "done", "total": total })));
+                let total = s
+                    .jobs
+                    .get(&job_id)
+                    .and_then(|j| j.progress)
+                    .filter(|p| p["type"] == "identifying")
+                    .and_then(|p| p["total"].as_u64())
+                    .unwrap_or(0);
+                set(
+                    JobState::Done,
+                    Some(json!({ "type": "done", "total": total })),
+                );
             }
             Err(e) => {
                 tracing::error!(err = %e, "identify library job failed");
-                set(JobState::Error, Some(json!({ "type": "error", "message": e.to_string() })));
+                set(
+                    JobState::Error,
+                    Some(json!({ "type": "error", "message": e.to_string() })),
+                );
             }
         }
     });
 }
 
 pub async fn start_identify_library(State(s): State<AppState>) -> Response {
-    let request = JobRequest { comic_id: 0, ..JobRequest::default() };
+    let request = JobRequest {
+        comic_id: 0,
+        ..JobRequest::default()
+    };
     let jobs = s.jobs.clone();
-    let created = tokio::task::spawn_blocking(move || jobs.get_or_create(IDENTIFY_LIBRARY_RESOURCE, "Identify library", request, IDENTIFY_LIBRARY_KIND)).await;
+    let created = tokio::task::spawn_blocking(move || {
+        jobs.get_or_create(
+            IDENTIFY_LIBRARY_RESOURCE,
+            "Identify library",
+            request,
+            IDENTIFY_LIBRARY_KIND,
+        )
+    })
+    .await;
     match created {
         Ok(Ok((job, created))) => {
-            // Bun flips the job to `running` (with the 0/total progress) before it answers.
+            // The job flips to `running` (with the 0/total progress) before it answers.
             let job = if created {
                 let total = s.library.file_count();
-                let started = s.jobs.update(&job.id, JobState::Running, Some(json!({ "type": "identifying", "done": 0, "total": total })));
+                let started = s.jobs.update(
+                    &job.id,
+                    JobState::Running,
+                    Some(json!({ "type": "identifying", "done": 0, "total": total })),
+                );
                 run_identify_library(s, job.id.clone());
                 started.ok().flatten().unwrap_or(job)
             } else {
                 job
             };
-            job_reply(if created { StatusCode::ACCEPTED } else { StatusCode::OK }, &job)
+            job_reply(
+                if created {
+                    StatusCode::ACCEPTED
+                } else {
+                    StatusCode::OK
+                },
+                &job,
+            )
         }
         other => {
             tracing::error!(?other, "failed to start identify library job");
@@ -368,7 +503,11 @@ pub async fn start_identify_library(State(s): State<AppState>) -> Response {
 }
 
 pub async fn identify_library_status(State(s): State<AppState>) -> Response {
-    let latest = s.jobs.list(Some(IDENTIFY_LIBRARY_KIND)).into_iter().max_by_key(|j| j.created_at);
+    let latest = s
+        .jobs
+        .list(Some(IDENTIFY_LIBRARY_KIND))
+        .into_iter()
+        .max_by_key(|j| j.created_at);
     match latest {
         None => reply(StatusCode::OK, json!({ "error": false, "state": "idle" })),
         Some(job) => job_reply(StatusCode::OK, &job),

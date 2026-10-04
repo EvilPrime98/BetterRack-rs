@@ -1,5 +1,5 @@
-//! Monochrome SVG icons (`assets/icons/*.svg`, copied from `react/src/icons`). Colour comes from
-//! the element's `text_color`, like `currentColor` in the originals.
+//! Monochrome SVG icons (`assets/icons/*.svg`). Colour comes from
+//! the element's `text_color`, like `currentColor`.
 //!
 //! Not SVG-able: `BetterRackIcon` (drawn natively in the header, it is a rounded square + "BR")
 //! and `FandomIcon` (multicolour; GPUI `svg()` is single-colour, so the card shows a text label instead).
@@ -45,7 +45,7 @@ impl Icon {
             Self::Burger => "icons/burger.svg",
             Self::ChevronDown => "icons/chevron-down.svg",
             Self::ChevronRight => "icons/chevron-right.svg",
-            Self::Close =>"icons/close.svg",
+            Self::Close => "icons/close.svg",
             Self::Download => "icons/download.svg",
             Self::Folder => "icons/folder.svg",
             Self::FolderPlus => "icons/folder-plus.svg",
@@ -81,11 +81,35 @@ mod tests {
     fn every_icon_asset_is_embedded() {
         use Icon::*;
         for i in [
-            ArrowLeft, ArrowRight, BookOpen, Bookmark, Burger, ChevronDown, ChevronRight, Close, Download,
-            Folder, FolderPlus, Gear, Menu, Refresh, Search, Shop, Star, Trash, Wand, Xml, WinMinimize,
-            WinMaximize, WinRestore,
+            ArrowLeft,
+            ArrowRight,
+            BookOpen,
+            Bookmark,
+            Burger,
+            ChevronDown,
+            ChevronRight,
+            Close,
+            Download,
+            Folder,
+            FolderPlus,
+            Gear,
+            Menu,
+            Refresh,
+            Search,
+            Shop,
+            Star,
+            Trash,
+            Wand,
+            Xml,
+            WinMinimize,
+            WinMaximize,
+            WinRestore,
         ] {
-            assert!(Assets.load(i.path()).unwrap().is_some(), "missing {}", i.path());
+            assert!(
+                Assets.load(i.path()).unwrap().is_some(),
+                "missing {}",
+                i.path()
+            );
         }
     }
 }

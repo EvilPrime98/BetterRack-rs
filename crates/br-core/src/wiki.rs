@@ -18,7 +18,12 @@ pub trait WikiLookup: Send + Sync {
     }
 
     /// One comic by page id on `source_wiki`; `None` when the page or the wiki is unknown.
-    fn get_comic_by_id(&self, _page_id: i64, _source_wiki: &str, _thumbnail_size: Option<&str>) -> Result<Option<Value>> {
+    fn get_comic_by_id(
+        &self,
+        _page_id: i64,
+        _source_wiki: &str,
+        _thumbnail_size: Option<&str>,
+    ) -> Result<Option<Value>> {
         Ok(None)
     }
 }

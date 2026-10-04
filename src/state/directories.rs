@@ -1,6 +1,6 @@
-//! `/api/directories` cache (`services/fs.service.ts`), the list behind the download-folder picker.
+//! `/api/directories` cache, the list behind the download-folder picker.
 //!
-//! Folder creation, moves and settings changes make it stale (gotcha #6). Those live in different
+//! Folder creation, moves and settings changes make it stale. Those live in different
 //! entities, so staleness is a process-wide generation counter: [`invalidate`] bumps it and a
 //! cached list only counts while it was fetched under the current generation.
 
@@ -31,7 +31,10 @@ pub struct DirectoriesStore {
 impl DirectoriesStore {
     /// The last list, unless something invalidated it since.
     pub fn cached(&self) -> Option<Vec<String>> {
-        self.cached.as_ref().filter(|(g, _)| *g == generation()).map(|(_, d)| d.clone())
+        self.cached
+            .as_ref()
+            .filter(|(g, _)| *g == generation())
+            .map(|(_, d)| d.clone())
     }
 
     /// Fetch the list. The cache is only filled when nothing invalidated it while the request was in
@@ -42,7 +45,9 @@ impl DirectoriesStore {
         };
         let started = generation();
         cx.spawn(async move |this, cx| {
-            let dirs = runtime::run(async move { client.directories().await }).await.map_err(|e| e.to_string())?;
+            let dirs = runtime::run(async move { client.directories().await })
+                .await
+                .map_err(|e| e.to_string())?;
             this.update(cx, |s, _| {
                 if started == generation() {
                     s.cached = Some((started, dirs.clone()));
@@ -64,19 +69,31 @@ pub fn top_level_dirs(dirs: &[String]) -> Vec<String> {
     let norm: Vec<String> = dirs.iter().map(|d| normalize_path(d)).collect();
     dirs.iter()
         .enumerate()
-        .filter(|(i, _)| !norm.iter().enumerate().any(|(j, other)| j != *i && norm[*i].starts_with(&format!("{other}/"))))
+        .filter(|(i, _)| {
+            !norm
+                .iter()
+                .enumerate()
+                .any(|(j, other)| j != *i && norm[*i].starts_with(&format!("{other}/")))
+        })
         .map(|(_, d)| d.clone())
         .collect()
 }
 
 /// Directories passing the "Sub-folders" toggle and the search box.
 pub fn filter_dirs(all: &[String], query: &str, subfolders: bool) -> Vec<String> {
-    let candidates = if subfolders { all.to_vec() } else { top_level_dirs(all) };
+    let candidates = if subfolders {
+        all.to_vec()
+    } else {
+        top_level_dirs(all)
+    };
     let q = query.trim().to_lowercase();
     if q.is_empty() {
         return candidates;
     }
-    candidates.into_iter().filter(|d| d.to_lowercase().contains(&q)).collect()
+    candidates
+        .into_iter()
+        .filter(|d| d.to_lowercase().contains(&q))
+        .collect()
 }
 
 #[cfg(test)]
@@ -84,15 +101,24 @@ mod tests {
     use super::*;
 
     fn dirs() -> Vec<String> {
-        ["C:\\Comics", "C:\\Comics\\Batman", "C:\\Comics\\Batman\\Year One", "D:\\Downloads", "C:\\ComicsExtra"]
-            .map(String::from)
-            .to_vec()
+        [
+            "C:\\Comics",
+            "C:\\Comics\\Batman",
+            "C:\\Comics\\Batman\\Year One",
+            "D:\\Downloads",
+            "C:\\ComicsExtra",
+        ]
+        .map(String::from)
+        .to_vec()
     }
 
     #[test]
     fn top_level_drops_nested_paths_only() {
         // `C:\ComicsExtra` merely shares a prefix with `C:\Comics`: it is not nested.
-        assert_eq!(top_level_dirs(&dirs()), ["C:\\Comics", "D:\\Downloads", "C:\\ComicsExtra"]);
+        assert_eq!(
+            top_level_dirs(&dirs()),
+            ["C:\\Comics", "D:\\Downloads", "C:\\ComicsExtra"]
+        );
     }
 
     #[test]

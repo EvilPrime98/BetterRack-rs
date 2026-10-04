@@ -1,4 +1,4 @@
-//! Wire types (MIGRATION.md §2). All JSON is camelCase; every optional field is `Option`.
+//! Wire types. All JSON is camelCase; every optional field is `Option`.
 
 mod view;
 #[allow(unused_imports)]
@@ -18,7 +18,9 @@ where
 
 /// The server reports file mtimes as fractional ms (e.g. `1789670099289.6057`); accept int, float or null.
 fn ms_to_i64<'de, D: Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
-    Ok(Option::<f64>::deserialize(d)?.map(|n| n as i64).unwrap_or_default())
+    Ok(Option::<f64>::deserialize(d)?
+        .map(|n| n as i64)
+        .unwrap_or_default())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,8 +146,7 @@ pub struct ReaderPages {
     pub total_pages: usize,
 }
 
-/// Mirror of `better-wiki`'s `dc-fandom` comic (checked against
-/// `node_modules/better-wiki/dist/plugins/dc-fandom.d.ts`). Known fields are typed;
+/// Mirror of `better-wiki`'s `dc-fandom` comic. Known fields are typed;
 /// everything else lands in `extra` so nothing is lost on a round trip (identify commits it back).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -190,9 +191,13 @@ impl ReleaseDate {
     }
     /// Sort key; `None` when the comic has no usable date.
     pub fn sort_key(&self) -> Option<(i32, i32, i32)> {
-        Some((self.year()?, self.month().unwrap_or(0), self.day().unwrap_or(0)))
+        Some((
+            self.year()?,
+            self.month().unwrap_or(0),
+            self.day().unwrap_or(0),
+        ))
     }
-    /// `MM/DD/YYYY`, only when all three parts exist (as the React card shows it).
+    /// `MM/DD/YYYY`, only when all three parts exist.
     pub fn display(&self) -> String {
         match (self.month(), self.day(), self.year()) {
             (Some(m), Some(d), Some(y)) => format!("{m:02}/{d:02}/{y}"),
@@ -203,7 +208,10 @@ impl ReleaseDate {
 
 impl WikiComic {
     pub fn writers(&self) -> &[String] {
-        self.credits.as_ref().map(|c| c.writers.as_slice()).unwrap_or(&[])
+        self.credits
+            .as_ref()
+            .map(|c| c.writers.as_slice())
+            .unwrap_or(&[])
     }
 
     pub fn artists(&self) -> Vec<String> {
@@ -211,12 +219,16 @@ impl WikiComic {
             .as_ref()
             .and_then(|c| c.extra.get("artists"))
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(str::to_owned))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 }
 
-/// Roles shown on the Details page, in `CREDIT_ROLES` order (`hooks/useComicById.ts`).
+/// Roles shown on the Details page, in `CREDIT_ROLES` order.
 pub const CREDIT_ROLES: [(&str, &str); 7] = [
     ("writers", "Writer"),
     ("artists", "Artist"),
@@ -254,7 +266,7 @@ pub struct CoverVariant {
 }
 
 /// Wiki text arrives with MediaWiki markup (`[[Page|label]]`, `'''bold'''`, `<!-- comments -->`).
-/// React prints it raw; the port shows the readable form: links become their label, emphasis
+/// The readable form is shown: links become their label, emphasis
 /// quotes and comments are dropped.
 pub fn clean_wiki_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -286,7 +298,13 @@ pub fn clean_wiki_text(text: &str) -> String {
 
 fn strings(v: Option<&serde_json::Value>) -> Vec<String> {
     v.and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_str()).map(clean_wiki_text).filter(|s| !s.is_empty()).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str())
+                .map(clean_wiki_text)
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -294,7 +312,11 @@ fn strings(v: Option<&serde_json::Value>) -> Vec<String> {
 /// `extra` (so the identify commit round-trips them untouched) and are read through these.
 impl WikiComic {
     fn extra_str(&self, key: &str) -> String {
-        self.extra.get(key).and_then(|v| v.as_str()).map(clean_wiki_text).unwrap_or_default()
+        self.extra
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(clean_wiki_text)
+            .unwrap_or_default()
     }
 
     pub fn cover(&self) -> String {
@@ -333,13 +355,19 @@ impl WikiComic {
     pub fn quotation(&self) -> Option<(String, String)> {
         let q = self.extra.get("quotation")?;
         let quote = clean_wiki_text(q.get("quote")?.as_str()?);
-        let speaker = clean_wiki_text(q.get("speaker").and_then(|s| s.as_str()).unwrap_or_default());
+        let speaker = clean_wiki_text(
+            q.get("speaker")
+                .and_then(|s| s.as_str())
+                .unwrap_or_default(),
+        );
         (!quote.is_empty()).then_some((quote, speaker))
     }
 
     /// Credit rows with at least one name, in display order (`getCreditRows`).
     pub fn credit_rows(&self) -> Vec<(&'static str, Vec<String>)> {
-        let Some(credits) = &self.credits else { return Vec::new() };
+        let Some(credits) = &self.credits else {
+            return Vec::new();
+        };
         CREDIT_ROLES
             .iter()
             .filter_map(|(key, label)| {
@@ -350,7 +378,10 @@ impl WikiComic {
                 };
                 // The wiki repeats a name once per story; list each person once.
                 let mut seen = std::collections::HashSet::new();
-                let names: Vec<String> = names.into_iter().filter(|n| seen.insert(n.clone())).collect();
+                let names: Vec<String> = names
+                    .into_iter()
+                    .filter(|n| seen.insert(n.clone()))
+                    .collect();
                 (!names.is_empty()).then_some((*label, names))
             })
             .collect()
@@ -358,7 +389,9 @@ impl WikiComic {
 
     /// Non-empty appearing groups in display order (`getAppearingGroups`).
     pub fn appearing_groups(&self) -> Vec<(&'static str, Vec<Appearance>)> {
-        let Some(appearing) = self.extra.get("appearing") else { return Vec::new() };
+        let Some(appearing) = self.extra.get("appearing") else {
+            return Vec::new();
+        };
         APPEARING_GROUPS
             .iter()
             .filter_map(|(key, label)| {
@@ -368,7 +401,11 @@ impl WikiComic {
                     .iter()
                     .filter_map(|e| {
                         let name = e.get("name")?.as_str()?.to_string();
-                        let status_note = e.get("statusNote").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let status_note = e
+                            .get("statusNote")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or_default()
+                            .to_string();
                         Some(Appearance { name, status_note })
                     })
                     .collect();
@@ -378,13 +415,23 @@ impl WikiComic {
     }
 
     pub fn cover_variants(&self) -> Vec<CoverVariant> {
-        let Some(list) = self.extra.get("coverVariants").and_then(|v| v.as_array()) else { return Vec::new() };
+        let Some(list) = self.extra.get("coverVariants").and_then(|v| v.as_array()) else {
+            return Vec::new();
+        };
         list.iter()
             .map(|v| CoverVariant {
                 cover_number: v.get("coverNumber").and_then(|n| n.as_i64()).unwrap_or(0),
                 artists: strings(v.get("artists")),
-                image_url: v.get("imageUrl").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
-                image_label: v.get("imageLabel").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
+                image_url: v
+                    .get("imageUrl")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                image_label: v
+                    .get("imageLabel")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
             })
             .collect()
     }
@@ -443,7 +490,11 @@ impl IdentifyLibraryStatus {
     pub fn from_value(v: serde_json::Value) -> Self {
         match serde_json::from_value::<IdentifyJob>(v.clone()) {
             Ok(job) => Self::Job(job),
-            Err(_) => match v.get("job").cloned().map(serde_json::from_value::<IdentifyJob>) {
+            Err(_) => match v
+                .get("job")
+                .cloned()
+                .map(serde_json::from_value::<IdentifyJob>)
+            {
                 Some(Ok(job)) => Self::Job(job),
                 _ => Self::Idle,
             },
@@ -494,15 +545,19 @@ pub enum RetryReason {
     Http,
 }
 
-/// SSE / job progress, tagged by `type` (variant spellings are camelCase, verified against
-/// `src/models/download/types.ts`; note the server spells the sizes `receivedMB` / `totalMB`).
+/// SSE / job progress, tagged by `type` (variant spellings are camelCase; note the server spells the sizes `receivedMB` / `totalMB`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum StoreProgressEvent {
     #[serde(rename_all = "camelCase")]
     Preparing { title: String },
     #[serde(rename_all = "camelCase")]
-    Retrying { title: String, status: Option<u16>, reason: Option<RetryReason>, delay_sec: f32 },
+    Retrying {
+        title: String,
+        status: Option<u16>,
+        reason: Option<RetryReason>,
+        delay_sec: f32,
+    },
     #[serde(rename_all = "camelCase")]
     Progress {
         title: String,
@@ -513,7 +568,11 @@ pub enum StoreProgressEvent {
         total_mb: String,
     },
     #[serde(rename_all = "camelCase")]
-    Extracting { title: String, done: u32, total: u32 },
+    Extracting {
+        title: String,
+        done: u32,
+        total: u32,
+    },
     #[serde(rename_all = "camelCase")]
     Done { filename: String },
     #[serde(rename_all = "camelCase")]
@@ -532,7 +591,9 @@ pub struct JobStatus {
     pub progress: Option<StoreProgressEvent>,
 }
 
-fn lenient_progress<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<StoreProgressEvent>, D::Error> {
+fn lenient_progress<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<StoreProgressEvent>, D::Error> {
     let v = Option::<serde_json::Value>::deserialize(d)?;
     Ok(v.and_then(|v| serde_json::from_value(v).ok()))
 }
@@ -603,14 +664,23 @@ mod tests {
             r#"{"type":"progress","title":"t","percent":12.5,"receivedMB":"1.0","totalMB":"8.0"}"#,
         )
         .unwrap();
-        assert!(matches!(&e, StoreProgressEvent::Progress { received_mb, total_mb, .. } if received_mb == "1.0" && total_mb == "8.0"));
+        assert!(
+            matches!(&e, StoreProgressEvent::Progress { received_mb, total_mb, .. } if received_mb == "1.0" && total_mb == "8.0")
+        );
     }
 
     #[test]
     fn retrying_without_a_reason_still_parses() {
         let e: StoreProgressEvent =
             serde_json::from_str(r#"{"type":"retrying","title":"t","delaySec":3}"#).unwrap();
-        assert!(matches!(e, StoreProgressEvent::Retrying { status: None, reason: None, .. }));
+        assert!(matches!(
+            e,
+            StoreProgressEvent::Retrying {
+                status: None,
+                reason: None,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -626,15 +696,20 @@ mod tests {
 
     #[test]
     fn settings_update_omits_output_dirs_and_nones() {
-        let v = serde_json::to_value(SettingsUpdate { wiki_search: Some(true), ..Default::default() })
-            .unwrap();
+        let v = serde_json::to_value(SettingsUpdate {
+            wiki_search: Some(true),
+            ..Default::default()
+        })
+        .unwrap();
         assert_eq!(v, serde_json::json!({"wikiSearch": true}));
     }
 
     #[test]
     fn wiki_markup_reads_as_plain_text() {
         assert_eq!(
-            clean_wiki_text("[[Bruce Wayne (Earth-Two)|Bruce Wayne]] met '''Alfred''' <!-- x --> and [[Gotham]]."),
+            clean_wiki_text(
+                "[[Bruce Wayne (Earth-Two)|Bruce Wayne]] met '''Alfred''' <!-- x --> and [[Gotham]]."
+            ),
             "Bruce Wayne met Alfred  and Gotham."
         );
         assert_eq!(clean_wiki_text("broken [[link"), "broken [[link");
@@ -653,7 +728,10 @@ mod tests {
         assert_eq!(c.page_id().as_deref(), Some("42"));
         assert_eq!(
             c.credit_rows(),
-            vec![("Writer", vec!["A".to_string()]), ("Artist", vec!["B".to_string(), "C".to_string()])]
+            vec![
+                ("Writer", vec!["A".to_string()]),
+                ("Artist", vec!["B".to_string(), "C".to_string()])
+            ]
         );
         let groups = c.appearing_groups();
         assert_eq!(groups.len(), 1);

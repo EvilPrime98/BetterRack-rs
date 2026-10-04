@@ -1,4 +1,4 @@
-//! Root entity: routing, server lifecycle, startup sequence (MIGRATION.md §5.4), shell chrome and
+//! Root entity: routing, server lifecycle, startup sequence, shell chrome and
 //! the global overlays (toasts, confirm dialog, app loader).
 
 use gpui::{
@@ -16,9 +16,9 @@ use crate::ui::app_loader::app_loader;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::confirm::{self, ConfirmHost, ConfirmOptions};
 use crate::ui::modals::{self, ModalHost};
+use crate::ui::pages::details::DetailsPage;
 use crate::ui::pages::downloads::DownloadsPage;
 use crate::ui::pages::library::LibraryPage;
-use crate::ui::pages::details::DetailsPage;
 use crate::ui::pages::lists::{ListPage, Source};
 use crate::ui::pages::reader::ReaderPage;
 use crate::ui::pages::settings::SettingsPage;
@@ -106,7 +106,7 @@ impl AppRoot {
             cx.observe(&stores.prefs, |_, _, cx| cx.notify()),
         ];
 
-        // Debounced progress writes must reach the server before the process exits (gotcha #3).
+        // Debounced progress writes must reach the server before the process exits.
         let comics = stores.comics.clone();
         subs.push(cx.on_app_quit(move |_, cx| {
             let flush = comics.update(cx, |s, cx| s.flush_pending(cx));
@@ -158,12 +158,18 @@ impl AppRoot {
                 } else if remote.remote {
                     attach(remote.url.clone(), server_config::api_key()).await
                 } else if let Some(launch) = Launch::detect() {
-                    let server = ServerProcess::spawn(&launch).await.map_err(|e| e.to_string())?;
-                    let client = ApiClient::new(&server.base_url, None).map_err(|e| e.to_string())?;
+                    let server = ServerProcess::spawn(&launch)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let client =
+                        ApiClient::new(&server.base_url, None).map_err(|e| e.to_string())?;
                     Ok((server, client))
                 } else {
                     let client = server_process::start_in_process()?;
-                    Ok((ServerProcess::external(client.base_url().to_string()), client))
+                    Ok((
+                        ServerProcess::external(client.base_url().to_string()),
+                        client,
+                    ))
                 }
             })
             .await;
@@ -208,7 +214,7 @@ impl AppRoot {
                     ),
                 )
                 .labels("Download", "Later");
-                // "Later" + "Don't ask again" is the React dialog's "Skip this version".
+                // "Later" + "Don't ask again" means "Skip this version".
                 options.dont_ask_again = true;
                 confirm::ask(cx, options, move |answer, skip, cx| match answer {
                     Some(true) => {
@@ -276,7 +282,8 @@ impl AppRoot {
             let has_library = cx.update(|cx| !stores.library.read(cx).groups.is_empty());
             if rescan && has_library {
                 // Long-running: the loader stays up and shows "Identifying library X/Y".
-                let identify = cx.update(|cx| stores.library.update(cx, |s, cx| s.identify_library(cx)));
+                let identify =
+                    cx.update(|cx| stores.library.update(cx, |s, cx| s.identify_library(cx)));
                 identify.await;
             }
 
@@ -295,7 +302,9 @@ impl AppRoot {
         if self.close_confirmed {
             return true;
         }
-        let Some(client) = self.client.clone() else { return true };
+        let Some(client) = self.client.clone() else {
+            return true;
+        };
         if self.close_check_pending {
             return false;
         }
@@ -309,7 +318,11 @@ impl AppRoot {
             })
             .ok();
             if close {
-                cx.update(|cx| handle.update(cx, |_, window, _| window.remove_window()).ok());
+                cx.update(|cx| {
+                    handle
+                        .update(cx, |_, window, _| window.remove_window())
+                        .ok()
+                });
             }
         })
         .detach();
@@ -337,57 +350,87 @@ impl AppRoot {
         cx.notify();
     }
 
-    /// Instantiate the view for the current route (a fresh page per visit, like React remounting).
+    /// Instantiate the view for the current route (a fresh page per visit).
     fn build_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let route = self.history.current().clone();
         self.sidebar.update(cx, |s, cx| {
             s.current = route.clone();
             cx.notify();
         });
-        // Leaving the reader: progress must reach the server before views that read it (gotcha #3).
+        // Leaving the reader: progress must reach the server before views that read it.
         if matches!(self.page, Page::Reader(_)) {
-            self.stores.comics.update(cx, |s, cx| s.flush_pending(cx).detach());
+            self.stores
+                .comics
+                .update(cx, |s, cx| s.flush_pending(cx).detach());
         }
         self._page_subs.clear();
         self.page = match route {
             Route::Reader { uid } => {
                 let page = cx.new(|cx| ReaderPage::new(uid, self.stores.clone(), window, cx));
-                self._page_subs.push(cx.subscribe_in(&page, window, |this, _, ev: &Navigate, window, cx| {
-                    this.navigate(ev.0.clone(), window, cx)
-                }));
-                self._page_subs
-                    .push(cx.subscribe_in(&page, window, |this, _, _: &GoBack, window, cx| this.go_back(window, cx)));
+                self._page_subs.push(cx.subscribe_in(
+                    &page,
+                    window,
+                    |this, _, ev: &Navigate, window, cx| this.navigate(ev.0.clone(), window, cx),
+                ));
+                self._page_subs.push(cx.subscribe_in(
+                    &page,
+                    window,
+                    |this, _, _: &GoBack, window, cx| this.go_back(window, cx),
+                ));
                 Page::Reader(page)
             }
             Route::Library { uid, search: None } => {
                 let page = cx.new(|cx| LibraryPage::new(uid, self.stores.clone(), cx));
-                self._page_subs.push(cx.subscribe_in(&page, window, |this, _, ev: &Navigate, window, cx| {
-                    this.navigate(ev.0.clone(), window, cx)
-                }));
-                self._page_subs
-                    .push(cx.subscribe_in(&page, window, |this, _, _: &GoBack, window, cx| this.go_back(window, cx)));
+                self._page_subs.push(cx.subscribe_in(
+                    &page,
+                    window,
+                    |this, _, ev: &Navigate, window, cx| this.navigate(ev.0.clone(), window, cx),
+                ));
+                self._page_subs.push(cx.subscribe_in(
+                    &page,
+                    window,
+                    |this, _, _: &GoBack, window, cx| this.go_back(window, cx),
+                ));
                 Page::Library(page)
             }
-            Route::Library { search: Some(query), .. } => self.list_page(Source::Search { query }, window, cx),
+            Route::Library {
+                search: Some(query),
+                ..
+            } => self.list_page(Source::Search { query }, window, cx),
             Route::Recent => self.list_page(Source::Recent, window, cx),
             Route::Reading => self.list_page(Source::Reading, window, cx),
             Route::Filtered { writer } => self.list_page(Source::Filtered { writer }, window, cx),
-            Route::Settings => Page::Settings(cx.new(|cx| SettingsPage::new(self.stores.clone(), cx))),
+            Route::Settings => {
+                Page::Settings(cx.new(|cx| SettingsPage::new(self.stores.clone(), cx)))
+            }
             Route::Store => {
                 let page = cx.new(|cx| StorePage::new(self.stores.clone(), cx));
-                self._page_subs.push(cx.subscribe_in(&page, window, |this, _, ev: &Navigate, window, cx| {
-                    this.navigate(ev.0.clone(), window, cx)
-                }));
+                self._page_subs.push(cx.subscribe_in(
+                    &page,
+                    window,
+                    |this, _, ev: &Navigate, window, cx| this.navigate(ev.0.clone(), window, cx),
+                ));
                 Page::Store(page)
             }
-            Route::StoreDownloads => Page::Downloads(cx.new(|cx| DownloadsPage::new(self.stores.clone(), cx))),
-            Route::Details { page_id, source_wiki } => {
-                let page = cx.new(|cx| DetailsPage::new(page_id, source_wiki, self.stores.clone(), cx));
-                self._page_subs.push(cx.subscribe_in(&page, window, |this, _, ev: &Navigate, window, cx| {
-                    this.navigate(ev.0.clone(), window, cx)
-                }));
-                self._page_subs
-                    .push(cx.subscribe_in(&page, window, |this, _, _: &GoBack, window, cx| this.go_back(window, cx)));
+            Route::StoreDownloads => {
+                Page::Downloads(cx.new(|cx| DownloadsPage::new(self.stores.clone(), cx)))
+            }
+            Route::Details {
+                page_id,
+                source_wiki,
+            } => {
+                let page =
+                    cx.new(|cx| DetailsPage::new(page_id, source_wiki, self.stores.clone(), cx));
+                self._page_subs.push(cx.subscribe_in(
+                    &page,
+                    window,
+                    |this, _, ev: &Navigate, window, cx| this.navigate(ev.0.clone(), window, cx),
+                ));
+                self._page_subs.push(cx.subscribe_in(
+                    &page,
+                    window,
+                    |this, _, _: &GoBack, window, cx| this.go_back(window, cx),
+                ));
                 Page::Details(page)
             }
         };
@@ -395,16 +438,23 @@ impl AppRoot {
 
     fn list_page(&mut self, source: Source, window: &mut Window, cx: &mut Context<Self>) -> Page {
         let page = cx.new(|cx| ListPage::new(source, self.stores.clone(), cx));
-        self._page_subs.push(cx.subscribe_in(&page, window, |this, _, ev: &Navigate, window, cx| {
-            this.navigate(ev.0.clone(), window, cx)
-        }));
-        self._page_subs
-            .push(cx.subscribe_in(&page, window, |this, _, _: &GoBack, window, cx| this.go_back(window, cx)));
+        self._page_subs.push(cx.subscribe_in(
+            &page,
+            window,
+            |this, _, ev: &Navigate, window, cx| this.navigate(ev.0.clone(), window, cx),
+        ));
+        self._page_subs.push(
+            cx.subscribe_in(&page, window, |this, _, _: &GoBack, window, cx| {
+                this.go_back(window, cx)
+            }),
+        );
         Page::List(page)
     }
 
     pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
-        self.stores.prefs.update(cx, |p, cx| p.update(cx, |p| p.sidebar_collapsed = !p.sidebar_collapsed));
+        self.stores.prefs.update(cx, |p, cx| {
+            p.update(cx, |p| p.sidebar_collapsed = !p.sidebar_collapsed)
+        });
     }
 
     fn placeholder(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -412,7 +462,10 @@ impl AppRoot {
             ServerStatus::Starting => "Starting server…".to_string(),
             ServerStatus::Ready => "Not ported yet".to_string(),
             ServerStatus::Failed(msg) => {
-                format!("Server failed to start:\n{msg}\n\nFull logs: {}", logging::log_dir().display())
+                format!(
+                    "Server failed to start:\n{msg}\n\nFull logs: {}",
+                    logging::log_dir().display()
+                )
             }
         };
         let failed = matches!(self.server_status, ServerStatus::Failed(_));
@@ -435,20 +488,28 @@ impl AppRoot {
                 div()
                     .max_w(px(640.0))
                     .text_size(px(13.0))
-                    .text_color(if failed { theme::error() } else { theme::text_muted() })
+                    .text_color(if failed {
+                        theme::error()
+                    } else {
+                        theme::text_muted()
+                    })
                     .child(status),
             )
-            // A dead remote server must not lock the user out: offer a way back (the React app
-            // showed a mandatory server dialog).
+            // A dead remote server must not lock the user out: offer a way back.
             .when(failed, |s| {
                 s.child(
                     div()
                         .flex()
                         .gap(px(8.0))
                         .mt(px(12.0))
-                        .child(button("open-logs", "Open logs", ButtonVariant::Secondary, |_, _, _| {
-                            let _ = open::that(logging::log_dir());
-                        }))
+                        .child(button(
+                            "open-logs",
+                            "Open logs",
+                            ButtonVariant::Secondary,
+                            |_, _, _| {
+                                let _ = open::that(logging::log_dir());
+                            },
+                        ))
                         .when(remote, |s| {
                             s.child(button(
                                 "change-server",
@@ -470,18 +531,27 @@ impl AppRoot {
 }
 
 /// Attach to an already-running server (remote mode or `BETTERRACK_SERVER_URL`): nothing is spawned.
-async fn attach(url: String, api_key: Option<String>) -> Result<(ServerProcess, ApiClient), String> {
+async fn attach(
+    url: String,
+    api_key: Option<String>,
+) -> Result<(ServerProcess, ApiClient), String> {
     let server = ServerProcess::external(url);
     let client = ApiClient::new(&server.base_url, api_key).map_err(|e| e.to_string())?;
-    client.healthz().await.map_err(|e| format!("could not reach {}: {e}", server.base_url))?;
+    client
+        .healthz()
+        .await
+        .map_err(|e| format!("could not reach {}: {e}", server.base_url))?;
     Ok((server, client))
 }
 
 /// Start a fresh copy of the app and quit this one. Changing the server re-runs the whole startup
-/// sequence, which the React app did by reloading the page.
+/// sequence.
 pub fn relaunch(cx: &mut App) {
-    let spawned = std::env::current_exe()
-        .and_then(|exe| std::process::Command::new(exe).args(std::env::args_os().skip(1)).spawn());
+    let spawned = std::env::current_exe().and_then(|exe| {
+        std::process::Command::new(exe)
+            .args(std::env::args_os().skip(1))
+            .spawn()
+    });
     match spawned {
         Ok(_) => cx.quit(),
         Err(e) => {
@@ -527,7 +597,9 @@ impl Render for AppRoot {
         let loader_message = match self.stores.library.read(cx).identify_progress {
             Some((done, total)) if total > 0 => format!("Identifying library {done}/{total}"),
             Some(_) => "Identifying library…".to_string(),
-            None if matches!(self.server_status, ServerStatus::Starting) => "Starting server…".to_string(),
+            None if matches!(self.server_status, ServerStatus::Starting) => {
+                "Starting server…".to_string()
+            }
             None => "Loading your library…".to_string(),
         };
 
@@ -569,13 +641,17 @@ impl Render for AppRoot {
                     .flex()
                     .flex_1()
                     .min_h_0()
-                    .when(layout && !sidebar_collapsed, |s| s.child(self.sidebar.clone()))
+                    .when(layout && !sidebar_collapsed, |s| {
+                        s.child(self.sidebar.clone())
+                    })
                     .child(content),
             )
             .child(self.toasts.clone())
             .child(self.modals.clone())
             .child(self.confirm.clone())
-            .when(self.loading && !failed, |s| s.child(app_loader(loader_message)))
+            .when(self.loading && !failed, |s| {
+                s.child(app_loader(loader_message))
+            })
     }
 }
 
@@ -587,12 +663,21 @@ fn dev_route() -> Option<Route> {
     }
     let spec = std::env::var("BETTERRACK_OPEN").ok()?;
     Some(match spec.split_once(':') {
-        Some(("search", q)) => Route::Library { uid: None, search: Some(q.to_string()) },
-        Some(("writer", w)) => Route::Filtered { writer: w.to_string() },
-        Some(("details", id)) => {
-            Route::Details { page_id: id.to_string(), source_wiki: Some("https://dc.fandom.com".to_string()) }
-        }
-        Some(("folder", uid)) => Route::Library { uid: Some(uid.to_string()), search: None },
+        Some(("search", q)) => Route::Library {
+            uid: None,
+            search: Some(q.to_string()),
+        },
+        Some(("writer", w)) => Route::Filtered {
+            writer: w.to_string(),
+        },
+        Some(("details", id)) => Route::Details {
+            page_id: id.to_string(),
+            source_wiki: Some("https://dc.fandom.com".to_string()),
+        },
+        Some(("folder", uid)) => Route::Library {
+            uid: Some(uid.to_string()),
+            search: None,
+        },
         _ => match spec.as_str() {
             "settings" => Route::Settings,
             "store" => Route::Store,

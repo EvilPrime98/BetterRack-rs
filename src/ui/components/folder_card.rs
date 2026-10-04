@@ -1,5 +1,4 @@
-//! `FolderCard` (basic variant). The "stack" variant is commented out in the React source and
-//! is not ported.
+//! `FolderCard` (basic variant).
 
 use gpui::{
     AnyElement, Context, EventEmitter, InteractiveElement, IntoElement, ParentElement,
@@ -25,7 +24,10 @@ pub fn folder_card<V: EventEmitter<Navigate> + 'static>(
     let open = {
         let uid = uid.clone();
         cx.listener(move |_, _, _, cx| {
-            cx.emit(Navigate(Route::Library { uid: Some(uid.clone()), search: None }))
+            cx.emit(Navigate(Route::Library {
+                uid: Some(uid.clone()),
+                search: None,
+            }))
         })
     };
     let delete = {
@@ -36,7 +38,9 @@ pub fn folder_card<V: EventEmitter<Navigate> + 'static>(
                 cx,
                 ConfirmOptions::new(
                     "Delete folder?",
-                    format!("\"{name}\" and everything inside it will be permanently deleted from disk."),
+                    format!(
+                        "\"{name}\" and everything inside it will be permanently deleted from disk."
+                    ),
                 )
                 .labels("Delete", "Cancel"),
                 move |answer, _, cx| {
@@ -59,7 +63,11 @@ pub fn folder_card<V: EventEmitter<Navigate> + 'static>(
         .bg(rgba(0x121212bf))
         .text_color(theme::text())
         .cursor_pointer()
-        .hover(|s| s.bg(rgba(0xe85d5d2e)).border_color(rgba(0xe85d5d73)).text_color(rgb(0xe85d5d)))
+        .hover(|s| {
+            s.bg(rgba(0xe85d5d2e))
+                .border_color(rgba(0xe85d5d73))
+                .text_color(rgb(0xe85d5d))
+        })
         .on_click(move |_, _, cx| {
             cx.stop_propagation();
             delete(cx)

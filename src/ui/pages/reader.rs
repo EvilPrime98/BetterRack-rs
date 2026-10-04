@@ -1,18 +1,18 @@
-//! Reader (`pages/reader.page.tsx` + `hooks/useReader*.ts`): continuous vertical scroll of page
-//! images, resume position, zoom, bookmarks, progress saving.
+//! Reader: continuous vertical scroll of page images, resume position, zoom, bookmarks, progress
+//! saving.
 //!
-//! **Page numbering.** The server is 1-based with `totalPages = N`. The React viewer rendered only
-//! `N-1` images (`ind = 1..N-1`) and labelled them `2..N`, which dropped the last image and shifted
-//! every label by one. This port uses a clean 1..N model: item `i` is server page `i + 1`.
+//! **Page numbering.** The server is 1-based with `totalPages = N`. Items use a
+//! clean 1..N model: item `i` is server page `i + 1`.
 //!
 //! The viewer is a GPUI variable-height `list`. Each page's height is `width * aspect`, where the
 //! aspect comes from the image header (`PageImages`) and defaults to [`DEFAULT_ASPECT`] until known.
 
 use gpui::{
-    AnyElement, App, Context, DispatchPhase, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyDownEvent, ListAlignment, ListOffset, ListState, ObjectFit, ParentElement, Render,
-    ScrollDelta, ScrollHandle, ScrollWheelEvent, StatefulInteractiveElement, Styled, StyledImage as _, Task, Window,
-    WindowControlArea, canvas, div, img, list, prelude::*, px, relative, rgb, rgba,
+    AnyElement, App, Context, DispatchPhase, EventEmitter, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyDownEvent, ListAlignment, ListOffset, ListState, ObjectFit,
+    ParentElement, Render, ScrollDelta, ScrollHandle, ScrollWheelEvent, StatefulInteractiveElement,
+    Styled, StyledImage as _, Task, Window, WindowControlArea, canvas, div, img, list, prelude::*,
+    px, relative, rgb, rgba,
 };
 
 use crate::api::ApiClient;
@@ -204,9 +204,17 @@ impl ReaderPage {
                 if cx.update(|cx| comics.read(cx).ready) {
                     break;
                 }
-                cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(50))
+                    .await;
             }
-            let saved = cx.update(|cx| comics.read(cx).get(&uid).map(|c| c.current_page).unwrap_or(0));
+            let saved = cx.update(|cx| {
+                comics
+                    .read(cx)
+                    .get(&uid)
+                    .map(|c| c.current_page)
+                    .unwrap_or(0)
+            });
 
             let (c, id) = (client.clone(), uid.clone());
             let pages = runtime::run(async move { c.reader_pages(&id).await }).await;
@@ -217,18 +225,29 @@ impl ReaderPage {
             };
             let saved = saved.clamp(1, total);
             if let Some(range) = preload_range(total, saved) {
-                let warm = cx.update(|cx| images.update(cx, |s, cx| s.load_window(range, saved, cx)));
+                let warm =
+                    cx.update(|cx| images.update(cx, |s, cx| s.load_window(range, saved, cx)));
                 warm.await;
             }
             let bookmarks = fetch_bookmarks(client, uid).await;
-            this.update(cx, |t, cx| t.apply_pages(total, saved, bookmarks, cx)).ok();
+            this.update(cx, |t, cx| t.apply_pages(total, saved, bookmarks, cx))
+                .ok();
         }));
     }
 
     /// Install a fresh page list and scroll to `page`.
-    fn apply_pages(&mut self, total: u32, page: u32, bookmarks: Vec<Bookmark>, cx: &mut Context<Self>) {
+    fn apply_pages(
+        &mut self,
+        total: u32,
+        page: u32,
+        bookmarks: Vec<Bookmark>,
+        cx: &mut Context<Self>,
+    ) {
         let list = ListState::new(total as usize, ListAlignment::Top, px(1500.0));
-        list.scroll_to(ListOffset { item_ix: page as usize - 1, offset_in_item: px(0.0) });
+        list.scroll_to(ListOffset {
+            item_ix: page as usize - 1,
+            offset_in_item: px(0.0),
+        });
         self.list = Some(list);
         self.total = total;
         self.current = page;
@@ -246,7 +265,9 @@ impl ReaderPage {
         if self.refreshing {
             return;
         }
-        let Some(client) = self.stores.comics.read(cx).client.clone() else { return };
+        let Some(client) = self.stores.comics.read(cx).client.clone() else {
+            return;
+        };
         self.refreshing = true;
         let (uid, page) = (self.uid.clone(), self.current);
         let images = self.images.clone();
@@ -258,7 +279,10 @@ impl ReaderPage {
                     let total = p.pages.len() as u32;
                     let bookmarks = fetch_bookmarks(client, uid).await;
                     cx.update(|cx| images.update(cx, |s, _| s.reset()));
-                    this.update(cx, |t, cx| t.apply_pages(total, page.min(total), bookmarks, cx)).ok();
+                    this.update(cx, |t, cx| {
+                        t.apply_pages(total, page.min(total), bookmarks, cx)
+                    })
+                    .ok();
                 }
                 Ok(_) => fail(&this, cx, "No pages found in comic".into()),
                 Err(e) => fail(&this, cx, e.to_string()),
@@ -280,7 +304,10 @@ impl ReaderPage {
             return;
         }
         let now = std::time::Instant::now();
-        let dt = self.last_frame.map_or(1.0 / 60.0, |t| (now - t).as_secs_f32()).min(0.05);
+        let dt = self
+            .last_frame
+            .map_or(1.0 / 60.0, |t| (now - t).as_secs_f32())
+            .min(0.05);
         self.last_frame = Some(now);
         let step = if self.pending_scroll.abs() < 0.5 {
             self.pending_scroll
@@ -298,7 +325,10 @@ impl ReaderPage {
         self.pending_scroll = 0.0;
         if let Some(list) = &self.list {
             let page = page.clamp(1, self.total.max(1));
-            list.scroll_to(ListOffset { item_ix: page as usize - 1, offset_in_item: px(0.0) });
+            list.scroll_to(ListOffset {
+                item_ix: page as usize - 1,
+                offset_in_item: px(0.0),
+            });
             self.bookmarks_open = false;
             cx.notify();
         }
@@ -310,7 +340,9 @@ impl ReaderPage {
             return;
         }
         self.zoom = zoom;
-        self.stores.prefs.update(cx, |p, cx| p.update(cx, |p| p.zoom = zoom));
+        self.stores
+            .prefs
+            .update(cx, |p, cx| p.update(cx, |p| p.zoom = zoom));
         cx.notify();
     }
 
@@ -397,7 +429,9 @@ fn fail(this: &gpui::WeakEntity<ReaderPage>, cx: &mut gpui::AsyncApp, message: S
 }
 
 async fn fetch_bookmarks(client: ApiClient, uid: String) -> Vec<Bookmark> {
-    runtime::run(async move { client.bookmarks(&uid).await }).await.unwrap_or_default()
+    runtime::run(async move { client.bookmarks(&uid).await })
+        .await
+        .unwrap_or_default()
 }
 
 impl Focusable for ReaderPage {
@@ -450,7 +484,12 @@ impl ReaderPage {
                 )
             })
             // Drag region between the controls and the window controls.
-            .child(div().flex_1().h_full().window_control_area(WindowControlArea::Drag))
+            .child(
+                div()
+                    .flex_1()
+                    .h_full()
+                    .window_control_area(WindowControlArea::Drag),
+            )
             .child(
                 div()
                     .text_size(px(13.0))
@@ -469,7 +508,11 @@ impl ReaderPage {
     }
 
     fn header(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let frac = if self.total == 0 { 0.0 } else { self.current as f32 / self.total as f32 };
+        let frac = if self.total == 0 {
+            0.0
+        } else {
+            self.current as f32 / self.total as f32
+        };
         div()
             .absolute()
             .top_0()
@@ -530,19 +573,19 @@ impl ReaderPage {
                     .flex_col()
                     .p(px(4.0))
                     .children(self.bookmarks.iter().map(|b| {
-                let page = b.page;
-                div()
-                    .id(("bookmark", page as usize))
-                    .flex_none()
-                    .px(px(10.0))
-                    .py(px(7.0))
-                    .rounded(px(6.0))
-                    .text_size(px(13.0))
-                    .text_color(theme::text())
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::hover()))
-                    .on_click(cx.listener(move |this, _, _, cx| this.go_to_page(page, cx)))
-                    .child(format!("{} · p.{}", b.label, page))
+                        let page = b.page;
+                        div()
+                            .id(("bookmark", page as usize))
+                            .flex_none()
+                            .px(px(10.0))
+                            .py(px(7.0))
+                            .rounded(px(6.0))
+                            .text_size(px(13.0))
+                            .text_color(theme::text())
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme::hover()))
+                            .on_click(cx.listener(move |this, _, _, cx| this.go_to_page(page, cx)))
+                            .child(format!("{} · p.{}", b.label, page))
                     })),
             )
             .children(thumb)
@@ -551,18 +594,44 @@ impl ReaderPage {
     fn state_panel(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let body = match &self.load {
             Load::Ready => return None,
-            Load::Loading => div().child("Loading pages…").text_color(theme::text_muted()).into_any_element(),
+            Load::Loading => div()
+                .child("Loading pages…")
+                .text_color(theme::text_muted())
+                .into_any_element(),
             Load::Error(msg) => div()
                 .flex()
                 .flex_col()
                 .items_center()
                 .gap(px(12.0))
-                .child(div().text_color(theme::text()).child("Something went wrong while loading this comic."))
-                .child(div().text_size(px(12.0)).text_color(theme::text_muted()).child(msg.clone()))
-                .child(button("reader-retry", "Retry", ButtonVariant::Classic, cx.listener(|this, _, _, cx| this.load(cx))))
+                .child(
+                    div()
+                        .text_color(theme::text())
+                        .child("Something went wrong while loading this comic."),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .text_color(theme::text_muted())
+                        .child(msg.clone()),
+                )
+                .child(button(
+                    "reader-retry",
+                    "Retry",
+                    ButtonVariant::Classic,
+                    cx.listener(|this, _, _, cx| this.load(cx)),
+                ))
                 .into_any_element(),
         };
-        Some(div().absolute().size_full().flex().items_center().justify_center().child(body).into_any_element())
+        Some(
+            div()
+                .absolute()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(body)
+                .into_any_element(),
+        )
     }
 
     fn next_button(&self, next: LibraryEntry, cx: &mut Context<Self>) -> impl IntoElement {
@@ -585,13 +654,22 @@ impl ReaderPage {
             .border_color(rgba(0x34c3d1b3))
             .cursor_pointer()
             .hover(|s| s.bg(rgba(0x262626f2)))
-            .on_click(cx.listener(move |_, _, _, cx| cx.emit(Navigate(Route::Reader { uid: target.clone() }))))
+            .on_click(cx.listener(move |_, _, _, cx| {
+                cx.emit(Navigate(Route::Reader {
+                    uid: target.clone(),
+                }))
+            }))
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .min_w_0()
-                    .child(div().text_size(px(11.0)).text_color(theme::accent()).child("Up next"))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme::accent())
+                            .child("Up next"),
+                    )
                     .child(
                         div()
                             .text_size(px(13.0))
@@ -616,23 +694,47 @@ impl ReaderPage {
 }
 
 /// One page: a fixed-size frame (so layout never jumps), with the image, a spinner or a retry.
-fn page_item(ix: usize, page_w: f32, images: &gpui::Entity<PageImages>, cx: &mut App) -> AnyElement {
+fn page_item(
+    ix: usize,
+    page_w: f32,
+    images: &gpui::Entity<PageImages>,
+    cx: &mut App,
+) -> AnyElement {
     let page = ix as u32 + 1;
     let store = images.read(cx);
     let h = page_w * store.aspect(page).unwrap_or(DEFAULT_ASPECT);
-    let frame = div().relative().flex_none().w(px(page_w)).h(px(h)).bg(theme::bg_panel());
+    let frame = div()
+        .relative()
+        .flex_none()
+        .w(px(page_w))
+        .h(px(h))
+        .bg(theme::bg_panel());
     let frame = match store.get(page) {
-        Some(PageImg::Ready(image)) => {
-            frame.child(img(image.clone()).w(px(page_w)).h(px(h)).object_fit(ObjectFit::Fill))
-        }
+        Some(PageImg::Ready(image)) => frame.child(
+            img(image.clone())
+                .w(px(page_w))
+                .h(px(h))
+                .object_fit(ObjectFit::Fill),
+        ),
         Some(PageImg::Failed) => {
             let images = images.clone();
-            frame.flex().flex_col().items_center().justify_center().gap(px(10.0)).child(
-                div().text_color(theme::text_muted()).child(format!("Page {page} failed to load")),
-            )
-            .child(button(("page-retry", ix), "Retry", ButtonVariant::Secondary, move |_, _, cx| {
-                images.update(cx, |s, cx| s.retry(page, cx))
-            }))
+            frame
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap(px(10.0))
+                .child(
+                    div()
+                        .text_color(theme::text_muted())
+                        .child(format!("Page {page} failed to load")),
+                )
+                .child(button(
+                    ("page-retry", ix),
+                    "Retry",
+                    ButtonVariant::Secondary,
+                    move |_, _, cx| images.update(cx, |s, cx| s.retry(page, cx)),
+                ))
         }
         _ => frame
             .flex()
@@ -641,7 +743,12 @@ fn page_item(ix: usize, page_w: f32, images: &gpui::Entity<PageImages>, cx: &mut
             .text_color(theme::text_muted())
             .child(format!("{page}")),
     };
-    div().w_full().flex().justify_center().child(frame).into_any_element()
+    div()
+        .w_full()
+        .flex()
+        .justify_center()
+        .child(frame)
+        .into_any_element()
 }
 
 impl Render for ReaderPage {
@@ -665,9 +772,13 @@ impl Render for ReaderPage {
             let total = self.total as usize;
             let current_ix = {
                 let store = self.images.read(cx);
-                most_visible(top.item_ix, f32::from(top.offset_in_item), self.viewer_h, total, |ix| {
-                    page_w * store.aspect(ix as u32 + 1).unwrap_or(DEFAULT_ASPECT)
-                })
+                most_visible(
+                    top.item_ix,
+                    f32::from(top.offset_in_item),
+                    self.viewer_h,
+                    total,
+                    |ix| page_w * store.aspect(ix as u32 + 1).unwrap_or(DEFAULT_ASPECT),
+                )
             };
             let page = current_ix as u32 + 1;
             if page != self.current {
@@ -682,7 +793,10 @@ impl Render for ReaderPage {
             // Prefetch what is about to scroll into view; the list only builds visible items.
             let first = top.item_ix as u32 + 1;
             let visible = (self.viewer_h / (page_w * DEFAULT_ASPECT)).ceil() as u32 + 1;
-            let (lo, hi) = (first.saturating_sub(1).max(1), (first + visible + 2).min(self.total));
+            let (lo, hi) = (
+                first.saturating_sub(1).max(1),
+                (first + visible + 2).min(self.total),
+            );
             self.images.update(cx, |s, cx| s.want(lo..=hi, first, cx));
 
             let images = self.images.clone();
@@ -704,47 +818,58 @@ impl Render for ReaderPage {
                         canvas(
                             |_, _, _| (),
                             move |_, _, window, _| {
-                                window.on_mouse_event(move |ev: &ScrollWheelEvent, phase, _, cx| {
-                                    if phase != DispatchPhase::Capture {
-                                        return;
-                                    }
-                                    // Let the bookmarks menu scroll itself.
-                                    if me.read(cx).bookmarks_open {
-                                        return;
-                                    }
-                                    if ev.modifiers.secondary() {
-                                        let dy = f32::from(ev.delta.pixel_delta(px(20.0)).y);
-                                        if dy != 0.0 {
-                                            let step = if dy > 0.0 { ZOOM_STEP } else { -ZOOM_STEP };
-                                            me.update(cx, |t, cx| t.zoom_by(step, cx));
+                                window.on_mouse_event(
+                                    move |ev: &ScrollWheelEvent, phase, _, cx| {
+                                        if phase != DispatchPhase::Capture {
+                                            return;
                                         }
-                                        cx.stop_propagation();
-                                    } else if let ScrollDelta::Lines(lines) = ev.delta {
-                                        // Notched wheels jump; ease them. Touchpads (pixel deltas)
-                                        // are already smooth and go straight to the list.
-                                        me.update(cx, |t, cx| t.scroll_smooth(-lines.y * WHEEL_LINE_PX, cx));
-                                        cx.stop_propagation();
-                                    }
-                                });
+                                        // Let the bookmarks menu scroll itself.
+                                        if me.read(cx).bookmarks_open {
+                                            return;
+                                        }
+                                        if ev.modifiers.secondary() {
+                                            let dy = f32::from(ev.delta.pixel_delta(px(20.0)).y);
+                                            if dy != 0.0 {
+                                                let step =
+                                                    if dy > 0.0 { ZOOM_STEP } else { -ZOOM_STEP };
+                                                me.update(cx, |t, cx| t.zoom_by(step, cx));
+                                            }
+                                            cx.stop_propagation();
+                                        } else if let ScrollDelta::Lines(lines) = ev.delta {
+                                            // Notched wheels jump; ease them. Touchpads (pixel deltas)
+                                            // are already smooth and go straight to the list.
+                                            me.update(cx, |t, cx| {
+                                                t.scroll_smooth(-lines.y * WHEEL_LINE_PX, cx)
+                                            });
+                                            cx.stop_propagation();
+                                        }
+                                    },
+                                );
                             },
                         )
                         .absolute()
                         .size_full(),
                     )
                     .child(
-                        list(list_state, move |ix, _, cx| page_item(ix, page_w, &images, cx))
-                            .size_full(),
+                        list(list_state, move |ix, _, cx| {
+                            page_item(ix, page_w, &images, cx)
+                        })
+                        .size_full(),
                     ),
             );
         }
 
-        let next = (self.total > 0 && self.current == self.total).then(|| self.next_entry(cx)).flatten();
+        let next = (self.total > 0 && self.current == self.total)
+            .then(|| self.next_entry(cx))
+            .flatten();
 
         div()
             .id("reader")
             .key_context("Reader")
             .track_focus(&self.focus)
-            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| this.on_key(ev, window, cx)))
+            .on_key_down(
+                cx.listener(|this, ev: &KeyDownEvent, window, cx| this.on_key(ev, window, cx)),
+            )
             .relative()
             .flex_1()
             .min_w_0()
@@ -752,7 +877,10 @@ impl Render for ReaderPage {
             .bg(theme::bg_canvas())
             .children(viewer)
             .children(self.state_panel(cx))
-            .when(self.header_visible || !matches!(self.load, Load::Ready), |s| s.child(self.header(window, cx)))
+            .when(
+                self.header_visible || !matches!(self.load, Load::Ready),
+                |s| s.child(self.header(window, cx)),
+            )
             .children(next.map(|n| self.next_button(n, cx)))
     }
 }
@@ -813,6 +941,9 @@ mod tests {
         // visible while the previous page has 0.
         assert_eq!(most_visible(1, 1000.0 - 0.0, 800.0, 3, h), 2);
         // Last page bottom on screen but previous page still covers more: last wins.
-        assert_eq!(most_visible(1, 600.0, 800.0, 3, |i| if i == 2 { 300.0 } else { 1000.0 }), 2);
+        assert_eq!(
+            most_visible(1, 600.0, 800.0, 3, |i| if i == 2 { 300.0 } else { 1000.0 }),
+            2
+        );
     }
 }

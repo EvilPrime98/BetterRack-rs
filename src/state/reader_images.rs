@@ -1,4 +1,4 @@
-//! Reader page images (MIGRATION.md §6 Reader, gotcha #9). One entity per open comic.
+//! Reader page images One entity per open comic.
 //!
 //! Pages are fetched through [`ApiClient`] (bounded concurrency), their size is read from the
 //! header only (so layout can reserve the right height before GPUI decodes anything), and ready
@@ -55,7 +55,12 @@ fn dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
 
 impl PageImages {
     pub fn new(uid: String, client: Option<ApiClient>) -> Self {
-        Self { uid, client, center: 1, ..Self::default() }
+        Self {
+            uid,
+            client,
+            center: 1,
+            ..Self::default()
+        }
     }
 
     pub fn get(&self, page: u32) -> Option<&PageImg> {
@@ -90,7 +95,12 @@ impl PageImages {
     }
 
     /// Load `pages` and resolve when all have settled (the ±2 preload before the reader opens).
-    pub fn load_window(&mut self, pages: RangeInclusive<u32>, center: u32, cx: &mut Context<Self>) -> Task<()> {
+    pub fn load_window(
+        &mut self,
+        pages: RangeInclusive<u32>,
+        center: u32,
+        cx: &mut Context<Self>,
+    ) -> Task<()> {
         self.center = center;
         let missing: Vec<u32> = pages.filter(|p| !self.entries.contains_key(p)).collect();
         let tasks: Vec<Task<()>> = missing.into_iter().map(|p| self.fetch(p, cx)).collect();
@@ -106,7 +116,9 @@ impl PageImages {
     }
 
     fn fetch(&mut self, page: u32, cx: &mut Context<Self>) -> Task<()> {
-        let Some(client) = self.client.clone() else { return Task::ready(()) };
+        let Some(client) = self.client.clone() else {
+            return Task::ready(());
+        };
         self.entries.insert(page, PageImg::Loading);
         let uid = self.uid.clone();
         cx.spawn(async move |this, cx| {
@@ -125,7 +137,10 @@ impl PageImages {
                         if s.aspects.insert(page, aspect) != Some(aspect) {
                             s.newly_sized.push(page);
                         }
-                        s.entries.insert(page, PageImg::Ready(Arc::new(Image::from_bytes(format, bytes))));
+                        s.entries.insert(
+                            page,
+                            PageImg::Ready(Arc::new(Image::from_bytes(format, bytes))),
+                        );
                     }
                     _ => {
                         s.entries.insert(page, PageImg::Failed);

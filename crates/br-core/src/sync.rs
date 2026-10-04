@@ -20,7 +20,10 @@ pub struct Permit<'a>(&'a Semaphore);
 
 impl Semaphore {
     pub fn new(permits: usize) -> Self {
-        Self { free: Mutex::new(permits.max(1)), cv: Condvar::new() }
+        Self {
+            free: Mutex::new(permits.max(1)),
+            cv: Condvar::new(),
+        }
     }
 
     pub fn acquire(&self) -> Permit<'_> {
@@ -64,7 +67,9 @@ pub struct SingleFlight<K, V> {
 
 impl<K, V> Default for SingleFlight<K, V> {
     fn default() -> Self {
-        Self { calls: Mutex::new(HashMap::new()) }
+        Self {
+            calls: Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -77,7 +82,10 @@ impl<K: Hash + Eq + Clone, V: Clone> SingleFlight<K, V> {
                 if let Some(existing) = calls.get(key) {
                     Err(existing.clone())
                 } else {
-                    let call = Arc::new(Call { result: Mutex::new(None), cv: Condvar::new() });
+                    let call = Arc::new(Call {
+                        result: Mutex::new(None),
+                        cv: Condvar::new(),
+                    });
                     calls.insert(key.clone(), call.clone());
                     Ok(call)
                 }

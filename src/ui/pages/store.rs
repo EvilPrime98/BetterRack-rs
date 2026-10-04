@@ -1,4 +1,4 @@
-//! Store page (`pages/store.page.tsx` + `components/store-card`). Title, search box and a
+//! Store page. Title, search box and a
 //! virtualized grid of posts that loads the next page when its last rows come into view.
 //!
 //! The data (query, results, page, scroll position, per-card download state) lives in
@@ -7,8 +7,8 @@
 
 use gpui::{
     AppContext as _, Context, EventEmitter, IntoElement, ObjectFit, ParentElement, Render,
-    SharedString, Styled, StyledImage, Subscription, Window, div, img, prelude::*, px,
-    rgb, uniform_list,
+    SharedString, Styled, StyledImage, Subscription, Window, div, img, prelude::*, px, rgb,
+    uniform_list,
 };
 
 use crate::model::StorePost;
@@ -79,7 +79,11 @@ impl StorePage {
                 cx.notify();
             }),
         ];
-        let this = Self { stores, input, _subs: subs };
+        let this = Self {
+            stores,
+            input,
+            _subs: subs,
+        };
         this.load_if_configured(cx);
         this
     }
@@ -104,7 +108,14 @@ impl Render for StorePage {
         let sidebar_collapsed = self.stores.prefs.read(cx).prefs.sidebar_collapsed;
         let (results, scroll, loading, loading_more, more_failed, error) = {
             let s = self.stores.store.read(cx);
-            (s.results.clone(), s.scroll.clone(), s.loading, s.loading_more, s.more_failed, s.error.clone())
+            (
+                s.results.clone(),
+                s.scroll.clone(),
+                s.loading,
+                s.loading_more,
+                s.more_failed,
+                s.error.clone(),
+            )
         };
 
         let search_row = div()
@@ -129,7 +140,9 @@ impl Render for StorePage {
                 "store-search",
                 "Search",
                 ButtonVariant::Classic,
-                cx.listener(|this, _, _, cx| this.stores.store.update(cx, |s, cx| s.run_search(cx))),
+                cx.listener(|this, _, _, cx| {
+                    this.stores.store.update(cx, |s, cx| s.run_search(cx))
+                }),
             ));
 
         let body = if !configured {
@@ -153,8 +166,16 @@ impl Render for StorePage {
                 ))
                 .into_any_element()
         } else if results.is_empty() {
-            let text = if loading { "Loading…" } else { "No comics found." };
-            div().text_size(px(13.0)).text_color(rgb(0x808080)).child(text).into_any_element()
+            let text = if loading {
+                "Loading…"
+            } else {
+                "No comics found."
+            };
+            div()
+                .text_size(px(13.0))
+                .text_color(rgb(0x808080))
+                .child(text)
+                .into_any_element()
         } else {
             let (cols, col_w) = geometry(available_width(window, !sidebar_collapsed));
             let row_h = card_height(col_w) + GAP_Y;
@@ -172,9 +193,17 @@ impl Render for StorePage {
                         .map(|row| {
                             let first = row * cols;
                             let last = (first + cols).min(results.len());
-                            let cells: Vec<_> =
-                                results[first..last].iter().map(|post| store_card(post, col_w, &stores, cx)).collect();
-                            div().flex().items_start().gap(px(GAP_X)).h(px(row_h)).pb(px(GAP_Y)).children(cells)
+                            let cells: Vec<_> = results[first..last]
+                                .iter()
+                                .map(|post| store_card(post, col_w, &stores, cx))
+                                .collect();
+                            div()
+                                .flex()
+                                .items_start()
+                                .gap(px(GAP_X))
+                                .h(px(row_h))
+                                .pb(px(GAP_Y))
+                                .children(cells)
                         })
                         .collect()
                 }),
@@ -200,7 +229,9 @@ impl Render for StorePage {
                                 "store-retry-more",
                                 "Retry",
                                 ButtonVariant::Secondary,
-                                cx.listener(|this, _, _, cx| this.stores.store.update(cx, |s, cx| s.retry_more(cx))),
+                                cx.listener(|this, _, _, cx| {
+                                    this.stores.store.update(cx, |s, cx| s.retry_more(cx))
+                                }),
                             )),
                     )
                 })
@@ -224,17 +255,34 @@ impl Render for StorePage {
                     .child("Store"),
             )
             .child(search_row)
-            .when(!error.is_empty(), |s| s.child(div().text_size(px(12.0)).text_color(rgb(0xe05a5a)).child(error)))
+            .when(!error.is_empty(), |s| {
+                s.child(
+                    div()
+                        .text_size(px(12.0))
+                        .text_color(rgb(0xe05a5a))
+                        .child(error),
+                )
+            })
             .child(div().flex_1().min_h_0().child(body))
     }
 }
 
 fn footer_note(text: &'static str) -> impl IntoElement {
-    div().py(px(8.0)).text_center().text_size(px(12.0)).text_color(rgb(0x808080)).child(text)
+    div()
+        .py(px(8.0))
+        .text_center()
+        .text_size(px(12.0))
+        .text_color(rgb(0x808080))
+        .child(text)
 }
 
 /// One `StoreCard`: cover, two-line title, date and the Download / Retry button.
-fn store_card(post: &StorePost, col_w: f32, stores: &Stores, cx: &mut Context<StorePage>) -> gpui::Div {
+fn store_card(
+    post: &StorePost,
+    col_w: f32,
+    stores: &Stores,
+    cx: &mut Context<StorePage>,
+) -> gpui::Div {
     let key = post_key(post);
     let inner_w = col_w - CARD_PAD * 2.0;
     let thumb = match post.thumbnail_url.as_deref().filter(|u| !u.is_empty()) {
@@ -246,9 +294,16 @@ fn store_card(post: &StorePost, col_w: f32, stores: &Stores, cx: &mut Context<St
     };
     let state = stores.store.read(cx).card(&key);
 
-    let frame = div().w(px(inner_w)).h(px(inner_w * COVER_RATIO)).overflow_hidden().rounded(px(6.0)).bg(rgb(0x232222));
+    let frame = div()
+        .w(px(inner_w))
+        .h(px(inner_w * COVER_RATIO))
+        .overflow_hidden()
+        .rounded(px(6.0))
+        .bg(rgb(0x232222));
     let cover = match thumb {
-        Some(Thumb::Ready(image)) => frame.child(img(image).size_full().object_fit(ObjectFit::Cover)),
+        Some(Thumb::Ready(image)) => {
+            frame.child(img(image).size_full().object_fit(ObjectFit::Cover))
+        }
         Some(Thumb::Missing) => frame
             .flex()
             .items_center()
@@ -307,7 +362,12 @@ fn store_card(post: &StorePost, col_w: f32, stores: &Stores, cx: &mut Context<St
                 .text_size(px(10.0))
                 .font_family(theme::FONT_MONO)
                 .text_color(rgb(0x808080))
-                .child(post.upload_date.as_deref().map(display_date).unwrap_or_default()),
+                .child(
+                    post.upload_date
+                        .as_deref()
+                        .map(display_date)
+                        .unwrap_or_default(),
+                ),
         )
         .child(div().mt(px(10.0)).flex().justify_center().child(action))
 }

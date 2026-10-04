@@ -16,6 +16,9 @@ impl AssetSource for Assets {
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-        Ok(Self::iter().filter(|p| p.starts_with(path)).map(|p| p.to_string().into()).collect())
+        Ok(Self::iter()
+            .filter(|p| p.starts_with(path))
+            .map(|p| p.to_string().into())
+            .collect())
     }
 }

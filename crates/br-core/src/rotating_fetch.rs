@@ -1,6 +1,6 @@
 //! `RotatingFetchModel`: every attempt goes out with a fresh, internally consistent browser
 //! fingerprint (User-Agent + Client Hints), and a retryable status or a thrown error triggers
-//! another attempt with exponential backoff. Constants are the Bun ones, verbatim.
+//! another attempt with exponential backoff.
 
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::time::Duration;
@@ -26,14 +26,18 @@ pub struct BrowserProfile {
 pub const DEFAULT_PROFILES: [BrowserProfile; 6] = [
     BrowserProfile {
         user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        sec_ch_ua: Some("\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\""),
+        sec_ch_ua: Some(
+            "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"",
+        ),
         platform: "\"Windows\"",
         mobile: false,
         accept_languages: &["en-US,en;q=0.9", "en-GB,en;q=0.8"],
     },
     BrowserProfile {
         user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-        sec_ch_ua: Some("\"Chromium\";v=\"123\", \"Google Chrome\";v=\"123\", \"Not.A/Brand\";v=\"24\""),
+        sec_ch_ua: Some(
+            "\"Chromium\";v=\"123\", \"Google Chrome\";v=\"123\", \"Not.A/Brand\";v=\"24\"",
+        ),
         platform: "\"macOS\"",
         mobile: false,
         accept_languages: &["en-US,en;q=0.9"],
@@ -61,7 +65,9 @@ pub const DEFAULT_PROFILES: [BrowserProfile; 6] = [
     },
     BrowserProfile {
         user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
-        sec_ch_ua: Some("\"Chromium\";v=\"124\", \"Microsoft Edge\";v=\"124\", \"Not-A.Brand\";v=\"99\""),
+        sec_ch_ua: Some(
+            "\"Chromium\";v=\"124\", \"Microsoft Edge\";v=\"124\", \"Not-A.Brand\";v=\"99\"",
+        ),
         platform: "\"Windows\"",
         mobile: false,
         accept_languages: &["en-US,en;q=0.9"],
@@ -86,7 +92,7 @@ impl std::fmt::Display for FetchError {
 
 impl std::error::Error for FetchError {}
 
-/// What a cancelled `fetch` reports (the `AbortError` message in Bun).
+/// What a cancelled `fetch` reports.
 pub const ABORT_MESSAGE: &str = "This operation was aborted";
 
 #[derive(Clone)]
@@ -118,7 +124,13 @@ pub async fn abortable_sleep(ms: u64, cancel: Option<&CancellationToken>) -> boo
 
 impl RotatingFetch {
     pub fn new(client: reqwest::Client) -> Self {
-        Self { client, retries: DEFAULT_RETRIES, backoff_ms: DEFAULT_BACKOFF_MS, jitter_ms: DEFAULT_JITTER_MS, retry_statuses: DEFAULT_RETRY_STATUSES.to_vec() }
+        Self {
+            client,
+            retries: DEFAULT_RETRIES,
+            backoff_ms: DEFAULT_BACKOFF_MS,
+            jitter_ms: DEFAULT_JITTER_MS,
+            retry_statuses: DEFAULT_RETRY_STATUSES.to_vec(),
+        }
     }
 
     /// Override the retry timing (tests use zeros).
@@ -137,7 +149,10 @@ impl RotatingFetch {
             }
         };
         put("user-agent", profile.user_agent);
-        put("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
+        put(
+            "accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        );
         put("accept-language", pick(profile.accept_languages));
         put("upgrade-insecure-requests", "1");
         put("sec-fetch-dest", "document");
@@ -156,7 +171,12 @@ impl RotatingFetch {
     /// GET `url`, retrying with a fresh identity on a retryable status or a transport error.
     /// `extra` headers override the identity's. After the last attempt the last response is
     /// returned even if its status is retryable.
-    pub async fn fetch(&self, url: &str, extra: &[(&str, &str)], cancel: Option<&CancellationToken>) -> Result<reqwest::Response, FetchError> {
+    pub async fn fetch(
+        &self,
+        url: &str,
+        extra: &[(&str, &str)],
+        cancel: Option<&CancellationToken>,
+    ) -> Result<reqwest::Response, FetchError> {
         let mut last_response = None;
         let mut last_error = None;
         for attempt in 0..=self.retries {
@@ -164,14 +184,18 @@ impl RotatingFetch {
                 return Err(FetchError::Aborted);
             }
             if attempt > 0 {
-                let wait = (2u64.saturating_pow(attempt) * self.backoff_ms).min(BACKOFF_CAP_MS) + fastrand::u64(0..=self.jitter_ms);
+                let wait = (2u64.saturating_pow(attempt) * self.backoff_ms).min(BACKOFF_CAP_MS)
+                    + fastrand::u64(0..=self.jitter_ms);
                 if !abortable_sleep(wait, cancel).await {
                     return Err(FetchError::Aborted);
                 }
             }
             let mut headers = self.build_headers(pick(&DEFAULT_PROFILES));
             for (k, v) in extra {
-                if let (Ok(k), Ok(v)) = (HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(v)) {
+                if let (Ok(k), Ok(v)) = (
+                    HeaderName::from_bytes(k.as_bytes()),
+                    HeaderValue::from_str(v),
+                ) {
                     headers.insert(k, v);
                 }
             }
@@ -201,7 +225,9 @@ impl RotatingFetch {
         match (last_response, last_error) {
             (Some(res), _) => Ok(res),
             (None, Some(e)) => Err(FetchError::Network(e)),
-            (None, None) => Err(FetchError::Network(format!("RotatingFetch: all attempts failed for {url}"))),
+            (None, None) => Err(FetchError::Network(format!(
+                "RotatingFetch: all attempts failed for {url}"
+            ))),
         }
     }
 }

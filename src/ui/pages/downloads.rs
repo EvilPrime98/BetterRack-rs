@@ -1,4 +1,4 @@
-//! Downloads page (`pages/store-downloads.page.tsx` + `components/downloads-page/job-row.tsx`).
+//! Downloads page.
 //! Polls the server's job list while it is open (see `state/downloads.rs`) and lists each job
 //! with its progress and Retry / Stop actions.
 
@@ -23,9 +23,13 @@ pub struct DownloadsPage {
 
 impl DownloadsPage {
     pub fn new(stores: Stores, cx: &mut Context<Self>) -> Self {
-        cx.observe(&stores.downloads, |_, _, cx| cx.notify()).detach();
+        cx.observe(&stores.downloads, |_, _, cx| cx.notify())
+            .detach();
         let poll = stores.downloads.update(cx, |d, cx| d.start_polling(cx));
-        Self { stores, _poll: poll }
+        Self {
+            stores,
+            _poll: poll,
+        }
     }
 
     /// Stop asks first unless the user ticked "Don't ask again" on an earlier one.
@@ -39,7 +43,10 @@ impl DownloadsPage {
         let prefs = self.stores.prefs.clone();
         let mut options = ConfirmOptions::new(
             "Stop this download?",
-            format!("\"{}\" will be stopped and removed from the list.", job.label),
+            format!(
+                "\"{}\" will be stopped and removed from the list.",
+                job.label
+            ),
         )
         .labels("Stop download", "Cancel");
         options.dont_ask_again = true;
@@ -59,7 +66,13 @@ impl Render for DownloadsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (jobs, error, loaded, retrying, stopping) = {
             let d = self.stores.downloads.read(cx);
-            (d.jobs.clone(), d.error.clone(), d.loaded, d.retrying.clone(), d.stopping.clone())
+            (
+                d.jobs.clone(),
+                d.error.clone(),
+                d.loaded,
+                d.retrying.clone(),
+                d.stopping.clone(),
+            )
         };
 
         let body = if jobs.is_empty() {
@@ -79,7 +92,11 @@ impl Render for DownloadsPage {
                     job,
                     retrying.contains(&job.job_id),
                     stopping.contains(&job.job_id),
-                    cx.listener(move |this, _, _, cx| this.stores.downloads.update(cx, |d, cx| d.retry(retry_id.clone(), cx))),
+                    cx.listener(move |this, _, _, cx| {
+                        this.stores
+                            .downloads
+                            .update(cx, |d, cx| d.retry(retry_id.clone(), cx))
+                    }),
                     cx.listener(move |this, _, _, cx| this.stop(&stop_job, cx)),
                 )
             });
@@ -101,7 +118,15 @@ impl Render for DownloadsPage {
             .min_w_0()
             .h_full()
             .child(header_bar(summary("Store", "Downloads"), div()))
-            .child(div().flex_1().min_h_0().px(px(PAGE_PAD_X)).pt(px(16.0)).pb(px(20.0)).child(body))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .px(px(PAGE_PAD_X))
+                    .pt(px(16.0))
+                    .pb(px(20.0))
+                    .child(body),
+            )
     }
 }
 
@@ -148,7 +173,9 @@ fn danger_button(
     if disabled {
         b.opacity(0.5)
     } else {
-        b.cursor_pointer().hover(|s| s.bg(rgba(0xdc5a5a1f))).on_click(on_click)
+        b.cursor_pointer()
+            .hover(|s| s.bg(rgba(0xdc5a5a1f)))
+            .on_click(on_click)
     }
 }
 
@@ -206,7 +233,12 @@ fn job_row(
                         .border_1()
                         .border_color(theme::border_subtle())
                         .bg(theme::bg_app())
-                        .child(div().h_full().w(relative(p as f32 / 100.0)).bg(theme::accent())),
+                        .child(
+                            div()
+                                .h_full()
+                                .w(relative(p as f32 / 100.0))
+                                .bg(theme::accent()),
+                        ),
                 )
                 .child(
                     div()
@@ -227,9 +259,19 @@ fn job_row(
             )
         })
         .when(failed, |s| {
-            s.child(div().flex().child(danger_button(format!("retry-{}", job.job_id).into(), "Retry", retrying, on_retry)))
+            s.child(div().flex().child(danger_button(
+                format!("retry-{}", job.job_id).into(),
+                "Retry",
+                retrying,
+                on_retry,
+            )))
         })
         .when(can_stop(job), |s| {
-            s.child(div().flex().child(danger_button(format!("stop-{}", job.job_id).into(), "Stop", stopping, on_stop)))
+            s.child(div().flex().child(danger_button(
+                format!("stop-{}", job.job_id).into(),
+                "Stop",
+                stopping,
+                on_stop,
+            )))
         })
 }

@@ -30,7 +30,7 @@ jobs:
   linux:
     name: Build & test (Linux)
     runs-on: ubuntu-latest
-    # Linux desktop is an open question (MIGRATION.md §13); the package list below is unverified.
+    # The package list below is unverified.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

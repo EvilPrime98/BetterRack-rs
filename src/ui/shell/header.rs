@@ -62,8 +62,10 @@ pub fn header(window: &Window, cx: &mut Context<AppRoot>) -> impl IntoElement {
                 .gap(px(10.0))
                 .ml(px(8.0))
                 .cursor_pointer()
-                // Clicking the logo goes home (the React header also clears the sidebar search).
-                .on_click(cx.listener(|this, _, window, cx| this.navigate(Route::home(), window, cx)))
+                // Clicking the logo goes home.
+                .on_click(
+                    cx.listener(|this, _, window, cx| this.navigate(Route::home(), window, cx)),
+                )
                 .child(logo(32.0))
                 .child(
                     div()
@@ -74,6 +76,11 @@ pub fn header(window: &Window, cx: &mut Context<AppRoot>) -> impl IntoElement {
                 ),
         )
         // Drag region: everything between the title and the controls moves the window.
-        .child(div().flex_1().h_full().window_control_area(WindowControlArea::Drag))
+        .child(
+            div()
+                .flex_1()
+                .h_full()
+                .window_control_area(WindowControlArea::Drag),
+        )
         .children(window_controls(window))
 }

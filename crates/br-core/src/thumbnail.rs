@@ -1,9 +1,8 @@
-//! Cover thumbnails (port of `models/thumbnail`): first page of the archive, resized to
+//! Cover thumbnails: first page of the archive, resized to
 //! `THUMBNAIL_WIDTH` (never enlarged), lossy WebP at `THUMBNAIL_QUALITY`, cached on disk as
-//! `<cache>/<uid>/<uid>.webp` (the same layout the Bun server used, so an existing cache is
-//! reused). A failed file is not retried until its size/mtime changes.
+//! `<cache>/<uid>/<uid>.webp` (an existing cache is reused). A failed file is not retried until its size/mtime changes.
 //!
-//! Unlike the Bun pipeline there is no raw-extract directory and no `sharp` worker: the first
+//! There is no raw-extract directory: the first
 //! page is read from the archive into memory and encoded in-process.
 
 use crate::archive::{Archives, file_stamp};
@@ -30,20 +29,40 @@ fn is_safe_uid(uid: &str) -> bool {
 
 /// Decode, resize to `width` (keeping the aspect ratio, never enlarging) and encode lossy WebP.
 pub fn encode_thumbnail(source: &[u8], width: u32, quality: f32) -> Result<Vec<u8>> {
-    let img = image::load_from_memory(source).map_err(|e| CoreError::Invalid(format!("cannot decode image: {e}")))?;
+    let img = image::load_from_memory(source)
+        .map_err(|e| CoreError::Invalid(format!("cannot decode image: {e}")))?;
     let (w, h) = (img.width(), img.height());
     if w == 0 || h == 0 {
         return Err(CoreError::Invalid("empty image".into()));
     }
-    let (tw, th) = if w > width { (width, ((f64::from(h) * f64::from(width) / f64::from(w)).round() as u32).max(1)) } else { (w, h) };
+    let (tw, th) = if w > width {
+        (
+            width,
+            ((f64::from(h) * f64::from(width) / f64::from(w)).round() as u32).max(1),
+        )
+    } else {
+        (w, h)
+    };
     let encoded = if img.color().has_alpha() {
         let rgba = img.to_rgba8();
-        let out = if (tw, th) == (w, h) { rgba } else { image::imageops::resize(&rgba, tw, th, FilterType::Lanczos3) };
-        webp::Encoder::from_rgba(out.as_raw(), tw, th).encode(quality).to_vec()
+        let out = if (tw, th) == (w, h) {
+            rgba
+        } else {
+            image::imageops::resize(&rgba, tw, th, FilterType::Lanczos3)
+        };
+        webp::Encoder::from_rgba(out.as_raw(), tw, th)
+            .encode(quality)
+            .to_vec()
     } else {
         let rgb = img.to_rgb8();
-        let out = if (tw, th) == (w, h) { rgb } else { image::imageops::resize(&rgb, tw, th, FilterType::Lanczos3) };
-        webp::Encoder::from_rgb(out.as_raw(), tw, th).encode(quality).to_vec()
+        let out = if (tw, th) == (w, h) {
+            rgb
+        } else {
+            image::imageops::resize(&rgb, tw, th, FilterType::Lanczos3)
+        };
+        webp::Encoder::from_rgb(out.as_raw(), tw, th)
+            .encode(quality)
+            .to_vec()
     };
     Ok(encoded)
 }
@@ -74,13 +93,17 @@ impl Thumbnails {
     }
 
     fn signature(path: &Path) -> Option<String> {
-        file_stamp(path).ok().map(|s| format!("{}:{}", s.size, s.mtime_ms))
+        file_stamp(path)
+            .ok()
+            .map(|s| format!("{}:{}", s.size, s.mtime_ms))
     }
 
     fn generate(&self, uid: &str, file: &Path) -> Result<Option<PathBuf>> {
         let _permit = self.limiter.acquire();
         let pages = self.archives.list_pages(file)?;
-        let Some(first) = pages.first() else { return Ok(None) };
+        let Some(first) = pages.first() else {
+            return Ok(None);
+        };
         let raw = self.archives.read_entry(file, first)?;
         let webp = encode_thumbnail(&raw, THUMBNAIL_WIDTH, THUMBNAIL_QUALITY)?;
 
@@ -118,7 +141,11 @@ impl Thumbnails {
         let found = if preferred.is_file() {
             Some(preferred)
         } else {
-            std::fs::read_dir(&dir).ok()?.filter_map(|e| e.ok()).map(|e| e.path()).find(|p| p.is_file() && p.extension().is_none_or(|x| x != "part"))
+            std::fs::read_dir(&dir)
+                .ok()?
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .find(|p| p.is_file() && p.extension().is_none_or(|x| x != "part"))
         }?;
         lock(&self.resolved).insert(uid.to_string(), found.clone());
         Some(found)
@@ -140,7 +167,8 @@ impl Thumbnails {
             return Some(cached);
         }
         let file = file?;
-        self.flight.run(&uid.to_string(), || self.attempt(uid, file))
+        self.flight
+            .run(&uid.to_string(), || self.attempt(uid, file))
     }
 
     /// Forget everything about `uid` and regenerate. Blocking.
@@ -162,7 +190,9 @@ mod tests {
     use std::io::{Cursor, Write};
 
     fn png(w: u32, h: u32) -> Vec<u8> {
-        let img = image::RgbImage::from_fn(w, h, |x, y| image::Rgb([(x % 256) as u8, (y % 256) as u8, 128]));
+        let img = image::RgbImage::from_fn(w, h, |x, y| {
+            image::Rgb([(x % 256) as u8, (y % 256) as u8, 128])
+        });
         let mut out = Cursor::new(Vec::new());
         img.write_to(&mut out, image::ImageFormat::Png).unwrap();
         out.into_inner()
@@ -175,7 +205,8 @@ mod tests {
 
     fn make_cbz(path: &Path, entries: &[(&str, Vec<u8>)]) {
         let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
-        let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
         for (name, data) in entries {
             zip.start_file(*name, opts).unwrap();
             zip.write_all(data).unwrap();
@@ -185,8 +216,14 @@ mod tests {
 
     #[test]
     fn resizes_to_width_keeping_aspect_and_never_enlarges() {
-        assert_eq!(webp_size(&encode_thumbnail(&png(400, 600), 180, 82.0).unwrap()), (180, 270));
-        assert_eq!(webp_size(&encode_thumbnail(&png(100, 150), 180, 82.0).unwrap()), (100, 150));
+        assert_eq!(
+            webp_size(&encode_thumbnail(&png(400, 600), 180, 82.0).unwrap()),
+            (180, 270)
+        );
+        assert_eq!(
+            webp_size(&encode_thumbnail(&png(100, 150), 180, 82.0).unwrap()),
+            (100, 150)
+        );
         assert!(encode_thumbnail(b"not an image", 180, 82.0).is_err());
     }
 
@@ -199,13 +236,23 @@ mod tests {
 
         let uid = "0123abcd-0000-0000-0000-000000000000";
         let path = thumbs.get_thumbnail(uid, Some(&cbz)).expect("generated");
-        assert_eq!(path, dir.path().join("cache").join(uid).join(format!("{uid}.webp")));
-        assert_eq!(webp_size(&std::fs::read(&path).unwrap()), (180, 180), "first page in natural order is used");
+        assert_eq!(
+            path,
+            dir.path()
+                .join("cache")
+                .join(uid)
+                .join(format!("{uid}.webp"))
+        );
+        assert_eq!(
+            webp_size(&std::fs::read(&path).unwrap()),
+            (180, 180),
+            "first page in natural order is used"
+        );
 
         // Served from the cache without the archive.
         std::fs::remove_file(&cbz).unwrap();
         assert_eq!(thumbs.get_thumbnail(uid, None), Some(path.clone()));
-        // A fresh instance finds the file on disk (the Bun cache layout).
+        // A fresh instance finds the file on disk.
         let again = Thumbnails::new(dir.path().join("cache"), Arc::new(Archives::new(None)));
         assert_eq!(again.get_thumbnail(uid, None), Some(path.clone()));
 

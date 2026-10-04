@@ -1,4 +1,4 @@
-//! App state (MIGRATION.md §4). Each zustand store becomes an entity or a plain struct.
+//! App state: each store is an entity or a plain struct.
 
 pub mod comic_cache;
 pub mod directories;
@@ -47,18 +47,26 @@ impl Stores {
     }
 
     pub fn set_client(&self, client: ApiClient, cx: &mut App) {
-        self.library.update(cx, |s, _| s.client = Some(client.clone()));
-        self.comics.update(cx, |s, _| s.client = Some(client.clone()));
-        self.thumbs.update(cx, |s, _| s.client = Some(client.clone()));
-        self.identify.update(cx, |s, _| s.client = Some(client.clone()));
-        self.settings.update(cx, |s, _| s.client = Some(client.clone()));
-        self.store.update(cx, |s, _| s.client = Some(client.clone()));
-        self.downloads.update(cx, |s, _| s.client = Some(client.clone()));
-        self.directories.update(cx, |s, _| s.client = Some(client.clone()));
+        self.library
+            .update(cx, |s, _| s.client = Some(client.clone()));
+        self.comics
+            .update(cx, |s, _| s.client = Some(client.clone()));
+        self.thumbs
+            .update(cx, |s, _| s.client = Some(client.clone()));
+        self.identify
+            .update(cx, |s, _| s.client = Some(client.clone()));
+        self.settings
+            .update(cx, |s, _| s.client = Some(client.clone()));
+        self.store
+            .update(cx, |s, _| s.client = Some(client.clone()));
+        self.downloads
+            .update(cx, |s, _| s.client = Some(client.clone()));
+        self.directories
+            .update(cx, |s, _| s.client = Some(client.clone()));
     }
 }
 
-/// `settings.store.ts`: the server returns the full object after each mutation, so replace it.
+/// The server returns the full object after each mutation, so replace it.
 #[derive(Default)]
 pub struct SettingsStore {
     pub client: Option<ApiClient>,
@@ -68,17 +76,25 @@ pub struct SettingsStore {
 
 impl SettingsStore {
     /// Run a call that answers with the full settings, replace ours, and report the error text.
-    fn mutate<F, Fut>(&mut self, cx: &mut gpui::Context<Self>, call: F) -> gpui::Task<Result<(), String>>
+    fn mutate<F, Fut>(
+        &mut self,
+        cx: &mut gpui::Context<Self>,
+        call: F,
+    ) -> gpui::Task<Result<(), String>>
     where
         F: FnOnce(ApiClient) -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = crate::api::ApiResult<crate::model::AppSettings>> + Send + 'static,
+        Fut: std::future::Future<Output = crate::api::ApiResult<crate::model::AppSettings>>
+            + Send
+            + 'static,
     {
         let Some(client) = self.client.clone() else {
             return gpui::Task::ready(Err("The server is not running.".into()));
         };
         cx.spawn(async move |this, cx| {
-            let settings = crate::runtime::run(call(client)).await.map_err(|e| e.to_string())?;
-            // Library folders and the download folder feed the directory list (gotcha #6).
+            let settings = crate::runtime::run(call(client))
+                .await
+                .map_err(|e| e.to_string())?;
+            // Library folders and the download folder feed the directory list.
             directories::invalidate();
             this.update(cx, |s, cx| {
                 s.settings = settings;
@@ -90,15 +106,33 @@ impl SettingsStore {
     }
 
     /// `PUT /api/settings` (never carries `outputDirs`).
-    pub fn update(&mut self, update: crate::model::SettingsUpdate, cx: &mut gpui::Context<Self>) -> gpui::Task<Result<(), String>> {
+    pub fn update(
+        &mut self,
+        update: crate::model::SettingsUpdate,
+        cx: &mut gpui::Context<Self>,
+    ) -> gpui::Task<Result<(), String>> {
         self.mutate(cx, move |c| async move { c.update_settings(&update).await })
     }
 
-    pub fn add_library_folder(&mut self, path: String, cx: &mut gpui::Context<Self>) -> gpui::Task<Result<(), String>> {
-        self.mutate(cx, move |c| async move { c.add_library_folder(&path).await })
+    pub fn add_library_folder(
+        &mut self,
+        path: String,
+        cx: &mut gpui::Context<Self>,
+    ) -> gpui::Task<Result<(), String>> {
+        self.mutate(
+            cx,
+            move |c| async move { c.add_library_folder(&path).await },
+        )
     }
 
-    pub fn remove_library_folder(&mut self, path: String, cx: &mut gpui::Context<Self>) -> gpui::Task<Result<(), String>> {
-        self.mutate(cx, move |c| async move { c.remove_library_folder(&path).await })
+    pub fn remove_library_folder(
+        &mut self,
+        path: String,
+        cx: &mut gpui::Context<Self>,
+    ) -> gpui::Task<Result<(), String>> {
+        self.mutate(
+            cx,
+            move |c| async move { c.remove_library_folder(&path).await },
+        )
     }
 }

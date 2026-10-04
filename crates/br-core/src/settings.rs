@@ -57,8 +57,6 @@ impl Preferences {
              CREATE TABLE IF NOT EXISTS library_item_prefs (
                 uid TEXT PRIMARY KEY, pref_publisher TEXT, recursive INTEGER, pref_cover TEXT);",
         )?;
-        // The Bun model also seeds from a legacy `.env` / `library-pref.json` on first run. Existing
-        // users already migrated through Bun; a fresh Rust-only install has nothing to seed.
         Ok(Self { db })
     }
 
@@ -66,7 +64,9 @@ impl Preferences {
         let c = self.db.conn();
         let mut stmt = c.prepare("SELECT key, value FROM app_settings")?;
         let mut values = std::collections::HashMap::new();
-        for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)))? {
+        for row in stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+        })? {
             let (k, v) = row?;
             values.insert(k, v.unwrap_or_default());
         }
@@ -79,17 +79,24 @@ impl Preferences {
             },
             api_url: values.get("apiUrl").cloned().unwrap_or(d.api_url),
             download_dir: values.get("downloadDir").cloned().unwrap_or(d.download_dir),
-            wiki_search: values.get("wikiSearch").map_or(d.wiki_search, |v| v == "true"),
-            rescan_on_startup: values.get("rescanOnStartup").map_or(d.rescan_on_startup, |v| v == "true"),
+            wiki_search: values
+                .get("wikiSearch")
+                .map_or(d.wiki_search, |v| v == "true"),
+            rescan_on_startup: values
+                .get("rescanOnStartup")
+                .map_or(d.rescan_on_startup, |v| v == "true"),
         })
     }
 
-    /// Merge known keys from a JSON object. Unknown keys and nulls are ignored, like Bun.
+    /// Merge known keys from a JSON object. Unknown keys and nulls are ignored.
     pub fn update_app_settings(&self, partial: &Map<String, Value>) -> Result<AppSettings> {
         {
             let c = self.db.conn();
             for (key, value) in partial {
-                if !matches!(key.as_str(), "outputDirs" | "apiUrl" | "downloadDir" | "wikiSearch" | "rescanOnStartup") {
+                if !matches!(
+                    key.as_str(),
+                    "outputDirs" | "apiUrl" | "downloadDir" | "wikiSearch" | "rescanOnStartup"
+                ) {
                     continue;
                 }
                 let stored = match value {
@@ -120,8 +127,11 @@ impl Preferences {
 
     pub fn get_all_library_prefs(&self) -> Result<Vec<LibraryPref>> {
         let c = self.db.conn();
-        let mut stmt = c.prepare("SELECT uid, pref_publisher, recursive, pref_cover FROM library_item_prefs")?;
-        let rows = stmt.query_map([], row_to_pref)?.collect::<std::result::Result<Vec<_>, _>>()?;
+        let mut stmt =
+            c.prepare("SELECT uid, pref_publisher, recursive, pref_cover FROM library_item_prefs")?;
+        let rows = stmt
+            .query_map([], row_to_pref)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }
 
@@ -182,21 +192,28 @@ mod tests {
         assert_eq!(s.api_url, "https://x.test/");
         assert!(s.wiki_search && !s.rescan_on_startup);
         assert_eq!(s.download_dir, "");
-        let s = p.update_app_settings(&obj(json!({"outputDirs": ["C:\\a", "C:\\b"]}))).unwrap();
+        let s = p
+            .update_app_settings(&obj(json!({"outputDirs": ["C:\\a", "C:\\b"]})))
+            .unwrap();
         assert_eq!(s.output_dirs, vec!["C:\\a", "C:\\b"]);
     }
 
     #[test]
     fn settings_serialize_as_camel_case() {
         let v = serde_json::to_value(AppSettings::default()).unwrap();
-        assert_eq!(v, json!({"outputDirs": [], "apiUrl": "", "downloadDir": "", "wikiSearch": false, "rescanOnStartup": false}));
+        assert_eq!(
+            v,
+            json!({"outputDirs": [], "apiUrl": "", "downloadDir": "", "wikiSearch": false, "rescanOnStartup": false})
+        );
     }
 
     #[test]
     fn library_pref_merge() {
         let p = Preferences::open_in_memory().unwrap();
         assert_eq!(p.get_library_pref("u").unwrap(), None);
-        let a = p.upsert_library_pref("u", Some("DC".into()), None, None).unwrap();
+        let a = p
+            .upsert_library_pref("u", Some("DC".into()), None, None)
+            .unwrap();
         assert_eq!((a.pref_publisher.as_str(), a.recursive), ("DC", false));
         let b = p.upsert_library_pref("u", None, Some(true), None).unwrap();
         assert_eq!((b.pref_publisher.as_str(), b.recursive), ("DC", true));

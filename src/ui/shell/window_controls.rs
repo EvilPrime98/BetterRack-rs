@@ -2,8 +2,8 @@
 //! lights (`traffic_light_position` in the window options), so nothing is drawn there.
 
 use gpui::{
-    Action as _, InteractiveElement, IntoElement, ParentElement, Rgba, Styled,
-    Window, WindowControlArea, div, px,
+    Action as _, InteractiveElement, IntoElement, ParentElement, Rgba, Styled, Window,
+    WindowControlArea, div, px,
 };
 
 use crate::app::RequestClose;
@@ -47,12 +47,20 @@ pub fn window_controls(window: &Window) -> Option<impl IntoElement> {
         div()
             .flex()
             .flex_none()
-            .child(button("win-min", Icon::WinMinimize, WindowControlArea::Min, theme::hover(), |w, _| {
-                w.minimize_window()
-            }))
+            .child(button(
+                "win-min",
+                Icon::WinMinimize,
+                WindowControlArea::Min,
+                theme::hover(),
+                |w, _| w.minimize_window(),
+            ))
             .child(button(
                 "win-max",
-                if maximized { Icon::WinRestore } else { Icon::WinMaximize },
+                if maximized {
+                    Icon::WinRestore
+                } else {
+                    Icon::WinMaximize
+                },
                 WindowControlArea::Max,
                 theme::hover(),
                 |w, _| w.zoom_window(),

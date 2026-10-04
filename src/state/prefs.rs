@@ -1,5 +1,4 @@
-//! `userPref.store.ts` + `comicsTypes.store.ts` + the persisted bits of `sidebar.store.ts` and
-//! `library-structure`. Client-only; React kept these in localStorage, here they live in
+//! User preferences, comic types, sidebar and library-structure state. Client-only, persisted in
 //! `<config dir>/BetterRack/prefs.json`.
 
 use std::path::PathBuf;
@@ -70,7 +69,11 @@ pub struct PrefsStore {
 
 impl PrefsStore {
     pub fn load() -> Self {
-        Self { prefs: Prefs::load(), read_filter: ReadFilter::All, open_menu: None }
+        Self {
+            prefs: Prefs::load(),
+            read_filter: ReadFilter::All,
+            open_menu: None,
+        }
     }
 
     /// Mutate a persisted preference and write it out.

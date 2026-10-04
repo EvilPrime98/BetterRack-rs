@@ -104,7 +104,10 @@ pub struct JobStore {
 }
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 impl JobStore {
@@ -120,9 +123,19 @@ impl JobStore {
         {
             let c = db.conn();
             let has_table = |name: &str| -> rusqlite::Result<bool> {
-                c.query_row("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1", [name], |_| Ok(()))
-                    .map(|_| true)
-                    .or_else(|e| if matches!(e, rusqlite::Error::QueryReturnedNoRows) { Ok(false) } else { Err(e) })
+                c.query_row(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    [name],
+                    |_| Ok(()),
+                )
+                .map(|_| true)
+                .or_else(|e| {
+                    if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+                        Ok(false)
+                    } else {
+                        Err(e)
+                    }
+                })
             };
             if has_table("download_jobs")? && !has_table("jobs")? {
                 c.execute("ALTER TABLE download_jobs RENAME TO jobs", [])?;
@@ -145,7 +158,10 @@ impl JobStore {
             )?;
             add_column_if_missing(&c, "jobs", "kind TEXT NOT NULL DEFAULT 'download'");
         }
-        let store = Self { db, inner: Mutex::new(Inner::default()) };
+        let store = Self {
+            db,
+            inner: Mutex::new(Inner::default()),
+        };
         store.load_and_reconcile()?;
         store.prune_history()?;
         Ok(store)
@@ -168,7 +184,10 @@ impl JobStore {
                     resource_key: r.get(2)?,
                     label: r.get(3)?,
                     state: JobState::parse(&r.get::<_, String>(4)?),
-                    progress: r.get::<_, Option<String>>(5)?.filter(|s| !s.is_empty()).and_then(|s| serde_json::from_str(&s).ok()),
+                    progress: r
+                        .get::<_, Option<String>>(5)?
+                        .filter(|s| !s.is_empty())
+                        .and_then(|s| serde_json::from_str(&s).ok()),
                     request: JobRequest {
                         comic_id: r.get(6)?,
                         output_dir: r.get(7)?,
@@ -184,7 +203,8 @@ impl JobStore {
         for mut job in rows {
             if !job.state.is_terminal() {
                 job.state = JobState::Error;
-                job.progress = Some(json!({"type": "error", "message": "Interrupted by server restart"}));
+                job.progress =
+                    Some(json!({"type": "error", "message": "Interrupted by server restart"}));
                 job.updated_at = now_ms();
                 self.persist(&job)?;
             }
@@ -211,9 +231,17 @@ impl JobStore {
     fn prune_history(&self) -> Result<()> {
         let cutoff = now_ms() - HISTORY_RETENTION_MS;
         let mut inner = self.inner();
-        let mut terminal: Vec<&Job> = inner.jobs.values().filter(|j| j.state.is_terminal()).collect();
+        let mut terminal: Vec<&Job> = inner
+            .jobs
+            .values()
+            .filter(|j| j.state.is_terminal())
+            .collect();
         terminal.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-        let mut stale: Vec<String> = terminal.iter().filter(|j| j.updated_at < cutoff).map(|j| j.id.clone()).collect();
+        let mut stale: Vec<String> = terminal
+            .iter()
+            .filter(|j| j.updated_at < cutoff)
+            .map(|j| j.id.clone())
+            .collect();
         stale.extend(terminal.iter().skip(MAX_HISTORY_ROWS).map(|j| j.id.clone()));
         stale.sort();
         stale.dedup();
@@ -229,10 +257,20 @@ impl JobStore {
     }
 
     /// Returns the existing job for `resource_key` (and `false`) or creates a queued one.
-    pub fn get_or_create(&self, resource_key: &str, label: &str, request: JobRequest, kind: &str) -> Result<(Job, bool)> {
+    pub fn get_or_create(
+        &self,
+        resource_key: &str,
+        label: &str,
+        request: JobRequest,
+        kind: &str,
+    ) -> Result<(Job, bool)> {
         {
             let inner = self.inner();
-            if let Some(job) = inner.by_resource.get(resource_key).and_then(|id| inner.jobs.get(id)) {
+            if let Some(job) = inner
+                .by_resource
+                .get(resource_key)
+                .and_then(|id| inner.jobs.get(id))
+            {
                 return Ok((job.clone(), false));
             }
         }
@@ -252,7 +290,9 @@ impl JobStore {
         {
             let mut inner = self.inner();
             inner.jobs.insert(job.id.clone(), job.clone());
-            inner.by_resource.insert(resource_key.to_string(), job.id.clone());
+            inner
+                .by_resource
+                .insert(resource_key.to_string(), job.id.clone());
         }
         self.prune_history()?;
         Ok((job, true))
@@ -264,17 +304,33 @@ impl JobStore {
 
     pub fn get_by_resource(&self, resource_key: &str) -> Option<Job> {
         let inner = self.inner();
-        inner.by_resource.get(resource_key).and_then(|id| inner.jobs.get(id)).cloned()
+        inner
+            .by_resource
+            .get(resource_key)
+            .and_then(|id| inner.jobs.get(id))
+            .cloned()
     }
 
     pub fn list(&self, kind: Option<&str>) -> Vec<Job> {
-        self.inner().jobs.values().filter(|j| kind.is_none_or(|k| j.kind == k)).cloned().collect()
+        self.inner()
+            .jobs
+            .values()
+            .filter(|j| kind.is_none_or(|k| j.kind == k))
+            .cloned()
+            .collect()
     }
 
-    pub fn update(&self, id: &str, state: JobState, progress: Option<Value>) -> Result<Option<Job>> {
+    pub fn update(
+        &self,
+        id: &str,
+        state: JobState,
+        progress: Option<Value>,
+    ) -> Result<Option<Job>> {
         let job = {
             let mut inner = self.inner();
-            let Some(job) = inner.jobs.get_mut(id) else { return Ok(None) };
+            let Some(job) = inner.jobs.get_mut(id) else {
+                return Ok(None);
+            };
             job.state = state;
             if progress.is_some() {
                 job.progress = progress;
@@ -298,12 +354,20 @@ impl JobStore {
     pub fn retry(&self, id: &str) -> Result<Option<Job>> {
         let job = {
             let mut inner = self.inner();
-            let Some(job) = inner.jobs.get_mut(id).filter(|j| j.state == JobState::Error) else { return Ok(None) };
+            let Some(job) = inner
+                .jobs
+                .get_mut(id)
+                .filter(|j| j.state == JobState::Error)
+            else {
+                return Ok(None);
+            };
             job.state = JobState::Queued;
             job.progress = None;
             job.updated_at = now_ms();
             let job = job.clone();
-            inner.by_resource.insert(job.resource_key.clone(), job.id.clone());
+            inner
+                .by_resource
+                .insert(job.resource_key.clone(), job.id.clone());
             inner.notify(&job);
             job
         };
@@ -319,15 +383,25 @@ impl JobStore {
         if job.state.is_terminal() {
             return Some((job, broadcast::channel(1).1));
         }
-        let rx = inner.senders.entry(id.to_string()).or_insert_with(|| broadcast::channel(64).0).subscribe();
+        let rx = inner
+            .senders
+            .entry(id.to_string())
+            .or_insert_with(|| broadcast::channel(64).0)
+            .subscribe();
         Some((job, rx))
     }
 
     pub fn remove(&self, id: &str) -> Result<bool> {
         let removed = {
             let mut inner = self.inner();
-            let Some(job) = inner.jobs.remove(id) else { return Ok(false) };
-            if inner.by_resource.get(&job.resource_key).is_some_and(|j| j == id) {
+            let Some(job) = inner.jobs.remove(id) else {
+                return Ok(false);
+            };
+            if inner
+                .by_resource
+                .get(&job.resource_key)
+                .is_some_and(|j| j == id)
+            {
                 inner.by_resource.remove(&job.resource_key);
             }
             let mut cancelled = job.clone();
@@ -338,7 +412,9 @@ impl JobStore {
             inner.senders.remove(id);
             job
         };
-        self.db.conn().execute("DELETE FROM jobs WHERE id = ?1", [&removed.id])?;
+        self.db
+            .conn()
+            .execute("DELETE FROM jobs WHERE id = ?1", [&removed.id])?;
         Ok(true)
     }
 }
@@ -348,7 +424,10 @@ mod tests {
     use super::*;
 
     fn req() -> JobRequest {
-        JobRequest { comic_id: 7, ..Default::default() }
+        JobRequest {
+            comic_id: 7,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -359,9 +438,11 @@ mod tests {
         let (b, created) = s.get_or_create("r1", "Batman", req(), "download").unwrap();
         assert!(!created && b.id == a.id);
 
-        s.update(&a.id, JobState::Running, Some(json!({"type": "progress"}))).unwrap();
+        s.update(&a.id, JobState::Running, Some(json!({"type": "progress"})))
+            .unwrap();
         assert_eq!(s.get_by_resource("r1").unwrap().state, JobState::Running);
-        s.update(&a.id, JobState::Error, Some(json!({"type": "error"}))).unwrap();
+        s.update(&a.id, JobState::Error, Some(json!({"type": "error"})))
+            .unwrap();
         assert!(s.get_by_resource("r1").is_none());
         assert_eq!(s.retry(&a.id).unwrap().unwrap().state, JobState::Queued);
         assert!(s.get_by_resource("r1").is_some());
@@ -382,7 +463,10 @@ mod tests {
         let s = JobStore::open(&path).unwrap();
         let j = s.get(&id).unwrap();
         assert_eq!(j.state, JobState::Error);
-        assert_eq!(j.progress.unwrap()["message"], "Interrupted by server restart");
+        assert_eq!(
+            j.progress.unwrap()["message"],
+            "Interrupted by server restart"
+        );
         assert!(s.get_by_resource("r").is_none());
     }
 

@@ -73,13 +73,31 @@ pub fn sorted_download_jobs(mut jobs: Vec<Job>) -> Vec<Job> {
         JobState::Error => 2,
         JobState::Done => 3,
     };
-    jobs.sort_by(|a, b| rank(a.state).cmp(&rank(b.state)).then(b.created_at.cmp(&a.created_at)).then_with(|| a.id.cmp(&b.id)));
+    jobs.sort_by(|a, b| {
+        rank(a.state)
+            .cmp(&rank(b.state))
+            .then(b.created_at.cmp(&a.created_at))
+            .then_with(|| a.id.cmp(&b.id))
+    });
     jobs
 }
 
 impl DownloadService {
-    pub fn new(jobs: Arc<JobStore>, store: Arc<StoreApi>, downloader: Arc<Downloader>, library: Arc<Library>, cwd: String) -> Self {
-        Self { jobs, store, downloader, library, cwd, active: Mutex::new(HashMap::new()) }
+    pub fn new(
+        jobs: Arc<JobStore>,
+        store: Arc<StoreApi>,
+        downloader: Arc<Downloader>,
+        library: Arc<Library>,
+        cwd: String,
+    ) -> Self {
+        Self {
+            jobs,
+            store,
+            downloader,
+            library,
+            cwd,
+            active: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn jobs(&self) -> &Arc<JobStore> {
@@ -92,7 +110,10 @@ impl DownloadService {
 
     /// `fsModel.getFullPath(outputDir || '/')`.
     pub fn full_path(&self, output_dir: Option<&str>) -> String {
-        resolve_windows(output_dir.filter(|d| !d.is_empty()).unwrap_or("/"), &self.cwd)
+        resolve_windows(
+            output_dir.filter(|d| !d.is_empty()).unwrap_or("/"),
+            &self.cwd,
+        )
     }
 
     fn active(&self) -> std::sync::MutexGuard<'_, HashMap<String, CancellationToken>> {
@@ -100,13 +121,30 @@ impl DownloadService {
     }
 
     /// The direct link behind a listed `uuid`, `None` when the store cannot provide one.
-    pub async fn resolve_link(&self, post_id: i64, strat: Option<&str>, uuid: Option<&str>) -> Result<Option<String>> {
-        Ok(self.store.get_download_link_from_post(post_id, strat, uuid).await?.filter(|l| !l.is_empty()))
+    pub async fn resolve_link(
+        &self,
+        post_id: i64,
+        strat: Option<&str>,
+        uuid: Option<&str>,
+    ) -> Result<Option<String>> {
+        Ok(self
+            .store
+            .get_download_link_from_post(post_id, strat, uuid)
+            .await?
+            .filter(|l| !l.is_empty()))
     }
 
     /// Create the job for `resource_key` and start it, or return the one already in flight.
-    pub fn start(self: &Arc<Self>, resource_key: &str, title: &str, request: JobRequest, link: String) -> Result<(Job, bool)> {
-        let (job, created) = self.jobs.get_or_create(resource_key, title, request.clone(), KIND_DOWNLOAD)?;
+    pub fn start(
+        self: &Arc<Self>,
+        resource_key: &str,
+        title: &str,
+        request: JobRequest,
+        link: String,
+    ) -> Result<(Job, bool)> {
+        let (job, created) =
+            self.jobs
+                .get_or_create(resource_key, title, request.clone(), KIND_DOWNLOAD)?;
         if created {
             let dir = self.full_path(request.output_dir.as_deref());
             self.run_download(job.id.clone(), title.to_string(), link, PathBuf::from(dir));
@@ -116,21 +154,40 @@ impl DownloadService {
     }
 
     pub async fn retry(self: &Arc<Self>, job_id: &str) -> Result<RetryOutcome> {
-        let Some(job) = self.jobs.get(job_id) else { return Ok(RetryOutcome::NotFound) };
+        let Some(job) = self.jobs.get(job_id) else {
+            return Ok(RetryOutcome::NotFound);
+        };
         if job.state != JobState::Error {
             return Ok(RetryOutcome::NotFailed);
         }
-        let link = self.resolve_link(job.request.comic_id, job.request.strat.as_deref(), job.request.uuid.as_deref()).await?;
-        let Some(link) = link else { return Ok(RetryOutcome::NoLink) };
-        let Some(retried) = self.jobs.retry(job_id)? else { return Ok(RetryOutcome::Gone) };
+        let link = self
+            .resolve_link(
+                job.request.comic_id,
+                job.request.strat.as_deref(),
+                job.request.uuid.as_deref(),
+            )
+            .await?;
+        let Some(link) = link else {
+            return Ok(RetryOutcome::NoLink);
+        };
+        let Some(retried) = self.jobs.retry(job_id)? else {
+            return Ok(RetryOutcome::Gone);
+        };
         let dir = self.full_path(retried.request.output_dir.as_deref());
-        self.run_download(retried.id.clone(), retried.label.clone(), link, PathBuf::from(dir));
+        self.run_download(
+            retried.id.clone(),
+            retried.label.clone(),
+            link,
+            PathBuf::from(dir),
+        );
         let current = self.jobs.get(&retried.id).unwrap_or(retried);
         Ok(RetryOutcome::Started(Box::new(current)))
     }
 
     pub fn cancel(&self, job_id: &str) -> Result<CancelOutcome> {
-        let Some(job) = self.jobs.get(job_id) else { return Ok(CancelOutcome::NotFound) };
+        let Some(job) = self.jobs.get(job_id) else {
+            return Ok(CancelOutcome::NotFound);
+        };
         if !matches!(job.state, JobState::Queued | JobState::Running) {
             return Ok(CancelOutcome::NotActive);
         }
@@ -150,12 +207,22 @@ impl DownloadService {
 
     async fn rescan_library(library: Arc<Library>) {
         let ticket = library.ticket();
-        if let Err(e) = tokio::task::spawn_blocking(move || library.rescan_with(ticket)).await.map_err(|e| CoreError::Invalid(e.to_string())).and_then(|r| r) {
+        if let Err(e) = tokio::task::spawn_blocking(move || library.rescan_with(ticket))
+            .await
+            .map_err(|e| CoreError::Invalid(e.to_string()))
+            .and_then(|r| r)
+        {
             tracing::error!(err = %e, "library rescan after download failed");
         }
     }
 
-    fn run_download(self: &Arc<Self>, job_id: String, title: String, link: String, output_dir: PathBuf) {
+    fn run_download(
+        self: &Arc<Self>,
+        job_id: String,
+        title: String,
+        link: String,
+        output_dir: PathBuf,
+    ) {
         if let Err(e) = self.jobs.update(&job_id, JobState::Running, None) {
             tracing::error!(err = %e, "could not mark the download as running");
         }
@@ -186,14 +253,25 @@ impl DownloadService {
             })
         };
 
-        let request = DownloadRequest { title, download_link: link, output_dir, no_retry: false, cancel };
+        let request = DownloadRequest {
+            title,
+            download_link: link,
+            output_dir,
+            no_retry: false,
+            cancel,
+        };
         let task_id = job_id.clone();
         let downloader = self.downloader.clone();
-        let handle = tokio::spawn(async move { downloader.download_comic(request, on_progress).await });
+        let handle =
+            tokio::spawn(async move { downloader.download_comic(request, on_progress).await });
         tokio::spawn(async move {
             if let Err(e) = handle.await {
                 tracing::error!(err = %e, "download job failed");
-                let _ = svc.jobs.update(&task_id, JobState::Error, Some(json!({"type": "error", "message": "Failed to download"})));
+                let _ = svc.jobs.update(
+                    &task_id,
+                    JobState::Error,
+                    Some(json!({"type": "error", "message": "Failed to download"})),
+                );
             }
             svc.active().remove(&task_id);
         });
@@ -229,13 +307,21 @@ mod tests {
             job("done-new", JobState::Done, 8),
         ]);
         let ids: Vec<&str> = sorted.iter().map(|j| j.id.as_str()).collect();
-        assert_eq!(ids, ["run-new", "run-old", "queued", "err", "done-new", "done-old"]);
+        assert_eq!(
+            ids,
+            [
+                "run-new", "run-old", "queued", "err", "done-new", "done-old"
+            ]
+        );
     }
 
     #[test]
     fn payload_omits_missing_progress() {
         let mut j = job("a", JobState::Queued, 1);
-        assert_eq!(status_payload(&j), json!({"jobId": "a", "state": "queued", "label": "a"}));
+        assert_eq!(
+            status_payload(&j),
+            json!({"jobId": "a", "state": "queued", "label": "a"})
+        );
         j.progress = Some(json!({"type": "preparing", "title": "a"}));
         assert_eq!(status_payload(&j)["progress"]["type"], "preparing");
     }

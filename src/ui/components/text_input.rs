@@ -1,4 +1,4 @@
-//! Single-line text field. GPUI core has no text input (MIGRATION.md §9), so this handles typing,
+//! Single-line text field. GPUI core has no text input, so this handles typing,
 //! caret movement, selection (shift+arrows, select all, drag-free), copy/cut/paste, backspace/delete
 //! and Enter/Escape.
 //! Known gaps: no IME composition, no mouse-drag selection, caret is char-based (not grapheme-based).
@@ -63,7 +63,11 @@ impl TextInput {
     }
 
     fn byte_index(&self, chars: usize) -> usize {
-        self.value.char_indices().nth(chars).map(|(i, _)| i).unwrap_or(self.value.len())
+        self.value
+            .char_indices()
+            .nth(chars)
+            .map(|(i, _)| i)
+            .unwrap_or(self.value.len())
     }
 
     /// Selected range in chars, ordered.
@@ -79,7 +83,9 @@ impl TextInput {
 
     /// Delete the selection, leaving the caret where it was. Returns whether anything was removed.
     fn delete_selection(&mut self) -> bool {
-        let Some((from, to)) = self.selection() else { return false };
+        let Some((from, to)) = self.selection() else {
+            return false;
+        };
         let (b_from, b_to) = (self.byte_index(from), self.byte_index(to));
         self.value.replace_range(b_from..b_to, "");
         self.caret = from;
@@ -199,27 +205,40 @@ impl Focusable for TextInput {
 impl Render for TextInput {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focused = self.focus.is_focused(window);
-        let caret = div().w(px(1.0)).h(px(15.0)).bg(if focused { theme::accent() } else { gpui::rgba(0x00000000) });
+        let caret = div().w(px(1.0)).h(px(15.0)).bg(if focused {
+            theme::accent()
+        } else {
+            gpui::rgba(0x00000000)
+        });
 
         let content = if self.value.is_empty() {
-            div()
-                .flex()
-                .items_center()
-                .child(caret)
-                .child(div().text_color(gpui::rgb(0x8a8a8a)).child(self.placeholder.clone()))
+            div().flex().items_center().child(caret).child(
+                div()
+                    .text_color(gpui::rgb(0x8a8a8a))
+                    .child(self.placeholder.clone()),
+            )
         } else if let Some((from, to)) = self.selection() {
             let (b_from, b_to) = (self.byte_index(from), self.byte_index(to));
-            let selected = div().bg(theme::accent_soft()).child(self.value[b_from..b_to].to_string());
+            let selected = div()
+                .bg(theme::accent_soft())
+                .child(self.value[b_from..b_to].to_string());
             // The caret sits at whichever end of the selection it was moved to.
-            let (before, after) = (self.value[..b_from].to_string(), self.value[b_to..].to_string());
+            let (before, after) = (
+                self.value[..b_from].to_string(),
+                self.value[b_to..].to_string(),
+            );
             let at_start = self.caret == from;
             div()
                 .flex()
                 .items_center()
                 .child(div().child(before))
-                .when(at_start, |s| s.child(div().w(px(1.0)).h(px(15.0)).bg(theme::accent())))
+                .when(at_start, |s| {
+                    s.child(div().w(px(1.0)).h(px(15.0)).bg(theme::accent()))
+                })
                 .child(selected)
-                .when(!at_start, |s| s.child(div().w(px(1.0)).h(px(15.0)).bg(theme::accent())))
+                .when(!at_start, |s| {
+                    s.child(div().w(px(1.0)).h(px(15.0)).bg(theme::accent()))
+                })
                 .child(div().child(after))
         } else {
             let (before, after) = self.value.split_at(self.byte_index(self.caret));

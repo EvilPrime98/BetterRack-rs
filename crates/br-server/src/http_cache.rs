@@ -1,4 +1,4 @@
-//! Port of `utils/http-cache.ts`: strong ETags and `If-None-Match` matching.
+//! Strong ETags and `If-None-Match` matching.
 
 use serde_json::Value;
 use sha1::{Digest, Sha1};
@@ -7,7 +7,10 @@ use sha1::{Digest, Sha1};
 /// JS formatting (`mtimeMs` is a fractional double).
 pub fn strong_etag(parts: &[String]) -> String {
     let json = format!("[{}]", parts.join(","));
-    let hex: String = Sha1::digest(json.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+    let hex: String = Sha1::digest(json.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     format!("\"{hex}\"")
 }
 
@@ -24,12 +27,17 @@ pub fn json_num(n: f64) -> String {
 
 /// True when `If-None-Match` matches `etag`: comma-separated list, `W/` prefix, or `*`.
 pub fn if_none_match_satisfied(header: Option<&str>, etag: &str) -> bool {
-    let Some(header) = header.map(str::trim).filter(|h| !h.is_empty()) else { return false };
+    let Some(header) = header.map(str::trim).filter(|h| !h.is_empty()) else {
+        return false;
+    };
     if header == "*" {
         return true;
     }
     let weak = format!("W/{etag}");
-    header.split(',').map(str::trim).any(|c| c == etag || c == weak)
+    header
+        .split(',')
+        .map(str::trim)
+        .any(|c| c == etag || c == weak)
 }
 
 #[cfg(test)]

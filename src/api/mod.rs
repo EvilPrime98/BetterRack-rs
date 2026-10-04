@@ -1,4 +1,4 @@
-//! HTTP client for the BetterRack server (MIGRATION.md §3). One fn per endpoint.
+//! HTTP client for the BetterRack server. One fn per endpoint.
 //!
 //! Runtime-agnostic API (plain `async fn`s) but `reqwest` needs Tokio: call these through
 //! [`crate::runtime::run`], never directly on the GPUI executor.
@@ -44,7 +44,11 @@ const IN_PROCESS_BASE: &str = "http://br.local";
 /// `http://` is prepended when the scheme is missing; trailing `/` is stripped.
 pub fn normalize_base_url(raw: &str) -> String {
     let s = raw.trim();
-    let s = if s.contains("://") { s.to_string() } else { format!("http://{s}") };
+    let s = if s.contains("://") {
+        s.to_string()
+    } else {
+        format!("http://{s}")
+    };
     s.trim_end_matches('/').to_string()
 }
 
@@ -53,7 +57,12 @@ impl ApiClient {
         let norm = normalize_base_url(base_url);
         let base = Url::parse(&norm).map_err(|e| ApiError::Url(format!("{norm}: {e}")))?;
         let api_key = api_key.filter(|k| !k.is_empty());
-        Ok(Self { http: reqwest::Client::new(), base, api_key, local: None })
+        Ok(Self {
+            http: reqwest::Client::new(),
+            base,
+            api_key,
+            local: None,
+        })
     }
 
     /// Local mode without a sidecar: the same HTTP contract, served by calling the router.
@@ -68,13 +77,21 @@ impl ApiClient {
 
     /// Send over the network, or into the in-process router.
     async fn send(&self, rb: RequestBuilder) -> ApiResult<Response> {
-        let Some(router) = &self.local else { return Ok(rb.send().await?) };
+        let Some(router) = &self.local else {
+            return Ok(rb.send().await?);
+        };
         let req = rb.build()?;
-        let mut builder = http::Request::builder().method(req.method().clone()).uri(req.url().as_str());
+        let mut builder = http::Request::builder()
+            .method(req.method().clone())
+            .uri(req.url().as_str());
         for (name, value) in req.headers() {
             builder = builder.header(name, value);
         }
-        let body = req.body().and_then(|b| b.as_bytes()).map(<[u8]>::to_vec).unwrap_or_default();
+        let body = req
+            .body()
+            .and_then(|b| b.as_bytes())
+            .map(<[u8]>::to_vec)
+            .unwrap_or_default();
         let request = builder
             .body(axum::body::Body::from(body))
             .map_err(|e| ApiError::Decode(e.to_string()))?;
@@ -95,7 +112,10 @@ impl ApiClient {
     /// Build a URL from path segments (each one percent-encoded, so uids are safe).
     fn url(&self, segments: &[&str]) -> Url {
         let mut url = self.base.clone();
-        url.path_segments_mut().expect("http(s) base url").pop_if_empty().extend(segments);
+        url.path_segments_mut()
+            .expect("http(s) base url")
+            .pop_if_empty()
+            .extend(segments);
         url
     }
 
@@ -142,9 +162,16 @@ impl ApiClient {
             .and_then(|v| v.get("message").and_then(|m| m.as_str().map(str::to_owned)))
             .filter(|m| !m.is_empty())
             .unwrap_or_else(|| {
-                if text.is_empty() { status.to_string() } else { text }
+                if text.is_empty() {
+                    status.to_string()
+                } else {
+                    text
+                }
             });
-        Err(ApiError::Server { status: status.as_u16(), message })
+        Err(ApiError::Server {
+            status: status.as_u16(),
+            message,
+        })
     }
 
     async fn json<T: DeserializeOwned>(&self, rb: RequestBuilder) -> ApiResult<T> {
@@ -163,8 +190,14 @@ impl ApiClient {
         };
         if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) {
             if v.get("error").and_then(|e| e.as_bool()) == Some(true) {
-                let message = v.get("message").and_then(|m| m.as_str()).unwrap_or("request failed");
-                return Err(ApiError::Server { status, message: message.to_string() });
+                let message = v
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("request failed");
+                return Err(ApiError::Server {
+                    status,
+                    message: message.to_string(),
+                });
             }
         }
         Ok(())
@@ -179,13 +212,16 @@ impl ApiClient {
     }
 
     pub async fn library_page(&self, by_series: bool, offset: usize) -> ApiResult<LibraryPage> {
-        let seg: &[&str] =
-            if by_series { &["api", "library", "by-series"] } else { &["api", "library"] };
+        let seg: &[&str] = if by_series {
+            &["api", "library", "by-series"]
+        } else {
+            &["api", "library"]
+        };
         self.json(self.get(seg).query(&[("offset", offset)])).await
     }
 
     /// Loops until `hasMore=false` advancing `offset += limit`, merging groups by `uid` and
-    /// de-duping entries by `uid` (gotcha #4: a single page is a truncated library).
+    /// de-duping entries by `uid`: a single page is a truncated library.
     pub async fn library_all(&self, by_series: bool) -> ApiResult<Vec<LibraryGroup>> {
         let mut groups: Vec<LibraryGroup> = Vec::new();
         let mut offset = 0;
@@ -202,8 +238,11 @@ impl ApiClient {
 
     /// `window_hours`: invalid/missing is treated as 24 by the server.
     pub async fn library_recent(&self, window_hours: u32) -> ApiResult<RecentResponse> {
-        self.json(self.get(&["api", "library", "recent"]).query(&[("windowHours", window_hours)]))
-            .await
+        self.json(
+            self.get(&["api", "library", "recent"])
+                .query(&[("windowHours", window_hours)]),
+        )
+        .await
     }
 
     pub async fn library_reading(&self) -> ApiResult<ReadingResponse> {
@@ -221,7 +260,8 @@ impl ApiClient {
         parent_folder_uid: Option<&str>,
     ) -> ApiResult<()> {
         let body = json!({ "folderName": folder_name, "parentFolderUid": parent_folder_uid });
-        self.done(self.post_json(&["api", "library", "folder"], body)).await
+        self.done(self.post_json(&["api", "library", "folder"], body))
+            .await
     }
 
     pub async fn delete_folder(&self, folder_uid: &str) -> ApiResult<()> {
@@ -239,46 +279,59 @@ impl ApiClient {
         self.done(rb).await
     }
 
-    pub async fn move_file(&self, file_uid: &str, target_folder_uid: Option<&str>) -> ApiResult<()> {
+    pub async fn move_file(
+        &self,
+        file_uid: &str,
+        target_folder_uid: Option<&str>,
+    ) -> ApiResult<()> {
         let body = json!({ "fileUid": file_uid, "targetFolderUid": target_folder_uid });
-        self.done(self.post_json(&["api", "library", "file", "move"], body)).await
+        self.done(self.post_json(&["api", "library", "file", "move"], body))
+            .await
     }
 
     pub async fn unidentify_file(&self, file_uid: &str) -> ApiResult<()> {
         let body = json!({ "fileUid": file_uid });
-        self.done(self.post_json(&["api", "library", "file", "unidentify"], body)).await
+        self.done(self.post_json(&["api", "library", "file", "unidentify"], body))
+            .await
     }
 
     /// Commit a manual pick.
     pub async fn identify_file(&self, file_uid: &str, comic: &WikiComic) -> ApiResult<()> {
         let body = json!({ "fileUid": file_uid, "comic": comic });
-        self.done(self.post_json(&["api", "library", "file", "identify"], body)).await
+        self.done(self.post_json(&["api", "library", "file", "identify"], body))
+            .await
     }
 
     /// Lazy identify (called when a card scrolls into view).
     pub async fn identify_lazy(&self, uid: &str) -> ApiResult<IdentifyResponse> {
-        self.json(self.get(&["api", "library", uid, "identify"])).await
+        self.json(self.get(&["api", "library", uid, "identify"]))
+            .await
     }
 
     /// Re-identify one file (the card's refresh button); answers with the new state.
     pub async fn identify_reset(&self, uid: &str) -> ApiResult<IdentifyResponse> {
-        self.json(self.request(Method::POST, &["api", "library", uid, "identify", "reset"])).await
+        self.json(self.request(Method::POST, &["api", "library", uid, "identify", "reset"]))
+            .await
     }
 
     pub async fn identify_reset_all(&self) -> ApiResult<()> {
-        self.done(self.request(Method::POST, &["api", "library", "identify", "reset-all"])).await
+        self.done(self.request(Method::POST, &["api", "library", "identify", "reset-all"]))
+            .await
     }
 
     /// Start the background identify job.
     pub async fn identify_all_start(&self) -> ApiResult<IdentifyLibraryStatus> {
-        let v: serde_json::Value =
-            self.json(self.request(Method::POST, &["api", "library", "identify", "all"])).await?;
+        let v: serde_json::Value = self
+            .json(self.request(Method::POST, &["api", "library", "identify", "all"]))
+            .await?;
         Ok(IdentifyLibraryStatus::from_value(v))
     }
 
     /// Poll status (client polls every [`IDENTIFY_POLL_INTERVAL_MS`]).
     pub async fn identify_all_status(&self) -> ApiResult<IdentifyLibraryStatus> {
-        let v: serde_json::Value = self.json(self.get(&["api", "library", "identify", "all"])).await?;
+        let v: serde_json::Value = self
+            .json(self.get(&["api", "library", "identify", "all"]))
+            .await?;
         Ok(IdentifyLibraryStatus::from_value(v))
     }
 
@@ -297,7 +350,12 @@ impl ApiClient {
             #[serde(default)]
             bookmarks: Vec<Bookmark>,
         }
-        let r: R = self.json(self.get(&["read", uid, "bookmarks"]).header("cache-control", "no-store")).await?;
+        let r: R = self
+            .json(
+                self.get(&["read", uid, "bookmarks"])
+                    .header("cache-control", "no-store"),
+            )
+            .await?;
         Ok(r.bookmarks)
     }
 
@@ -309,7 +367,9 @@ impl ApiClient {
 
     /// Raw page bytes, for callers that cache on disk / decode off-thread.
     pub async fn page_bytes(&self, uid: &str, page: u32) -> ApiResult<Vec<u8>> {
-        let resp = self.check(self.get(&["read", uid, "pages", &page.to_string()])).await?;
+        let resp = self
+            .check(self.get(&["read", uid, "pages", &page.to_string()]))
+            .await?;
         Ok(resp.bytes().await?.to_vec())
     }
 
@@ -319,7 +379,11 @@ impl ApiClient {
 
     /// The client sends the full merged object.
     pub async fn patch_comic_data(&self, uid: &str, data: &ComicCache) -> ApiResult<()> {
-        self.done(self.request(Method::PATCH, &["api", "comic-data", uid]).json(data)).await
+        self.done(
+            self.request(Method::PATCH, &["api", "comic-data", uid])
+                .json(data),
+        )
+        .await
     }
 
     pub async fn settings(&self) -> ApiResult<AppSettings> {
@@ -327,12 +391,16 @@ impl ApiClient {
     }
 
     pub async fn update_settings(&self, update: &SettingsUpdate) -> ApiResult<AppSettings> {
-        self.json(self.request(Method::PUT, &["api", "settings"]).json(update)).await
+        self.json(self.request(Method::PUT, &["api", "settings"]).json(update))
+            .await
     }
 
     pub async fn add_library_folder(&self, path: &str) -> ApiResult<AppSettings> {
-        self.json(self.post_json(&["api", "settings", "library-folder"], json!({ "path": path })))
-            .await
+        self.json(self.post_json(
+            &["api", "settings", "library-folder"],
+            json!({ "path": path }),
+        ))
+        .await
     }
 
     pub async fn remove_library_folder(&self, path: &str) -> ApiResult<AppSettings> {
@@ -342,14 +410,17 @@ impl ApiClient {
         self.json(rb).await
     }
 
-    /// Move-file target picker. Cache + invalidate on folder/move/settings changes (gotcha #6).
+    /// Move-file target picker. Cache + invalidate on folder/move/settings changes.
     pub async fn directories(&self) -> ApiResult<Vec<String>> {
         #[derive(serde::Deserialize)]
         struct R {
             #[serde(default)]
             directories: Vec<String>,
         }
-        Ok(self.json::<R>(self.get(&["api", "directories"])).await?.directories)
+        Ok(self
+            .json::<R>(self.get(&["api", "directories"]))
+            .await?
+            .directories)
     }
 
     /// Bytes of an image hosted elsewhere (store covers). Deliberately a bare request: the API key
@@ -362,7 +433,10 @@ impl ApiClient {
         }
         let resp = request.send().await?;
         if !resp.status().is_success() {
-            return Err(ApiError::Server { status: resp.status().as_u16(), message: resp.status().to_string() });
+            return Err(ApiError::Server {
+                status: resp.status().as_u16(),
+                message: resp.status().to_string(),
+            });
         }
         Ok(resp.bytes().await?.to_vec())
     }
@@ -378,20 +452,28 @@ impl ApiClient {
     }
 
     pub async fn retry_thumbnail(&self, uid: &str) -> ApiResult<()> {
-        self.done(self.request(Method::POST, &["api", "thumbnail", uid, "retry"])).await
+        self.done(self.request(Method::POST, &["api", "thumbnail", uid, "retry"]))
+            .await
     }
 
     pub async fn wiki_search(&self, title: &str, thumbnail_size: u32) -> ApiResult<Vec<WikiComic>> {
-        let rb = self
-            .get(&["api", "wiki", "comics"])
-            .query(&[("title", title.to_string()), ("thumbnailSize", thumbnail_size.to_string())]);
+        let rb = self.get(&["api", "wiki", "comics"]).query(&[
+            ("title", title.to_string()),
+            ("thumbnailSize", thumbnail_size.to_string()),
+        ]);
         self.json(rb).await
     }
 
-    pub async fn wiki_comic(&self, id: &str, source_wiki: &str, thumbnail_size: u32) -> ApiResult<WikiComic> {
-        let rb = self
-            .get(&["api", "wiki", "comic", id])
-            .query(&[("sourceWiki", source_wiki.to_string()), ("thumbnailSize", thumbnail_size.to_string())]);
+    pub async fn wiki_comic(
+        &self,
+        id: &str,
+        source_wiki: &str,
+        thumbnail_size: u32,
+    ) -> ApiResult<WikiComic> {
+        let rb = self.get(&["api", "wiki", "comic", id]).query(&[
+            ("sourceWiki", source_wiki.to_string()),
+            ("thumbnailSize", thumbnail_size.to_string()),
+        ]);
         self.json(rb).await
     }
 
@@ -410,14 +492,22 @@ impl ApiClient {
             List(Vec<StorePost>),
             Wrapped { items: Vec<StorePost> },
         }
-        let mut q: Vec<(&str, String)> = vec![("page", page.to_string()), ("perPage", per_page.to_string())];
+        let mut q: Vec<(&str, String)> = vec![
+            ("page", page.to_string()),
+            ("perPage", per_page.to_string()),
+        ];
         match search {
             Some(s) if !s.trim().is_empty() => q.push(("search", s.to_string())),
             _ => q.push(("latest", "true".into())),
         }
-        Ok(match self.json::<Resp>(self.get(&["api", "comics"]).query(&q)).await? {
-            Resp::List(v) | Resp::Wrapped { items: v } => v,
-        })
+        Ok(
+            match self
+                .json::<Resp>(self.get(&["api", "comics"]).query(&q))
+                .await?
+            {
+                Resp::List(v) | Resp::Wrapped { items: v } => v,
+            },
+        )
     }
 
     pub async fn comic_links(&self, id: i64) -> ApiResult<Vec<StoreLink>> {
@@ -426,13 +516,16 @@ impl ApiClient {
             #[serde(default)]
             links: Vec<StoreLink>,
         }
-        let rb = self.get(&["api", "comics", &id.to_string(), "links"]).query(&[("strat", "all")]);
+        let rb = self
+            .get(&["api", "comics", &id.to_string(), "links"])
+            .query(&[("strat", "all")]);
         Ok(self.json::<R>(rb).await?.links)
     }
 
     /// Queue a download job (the server de-dupes by comic id). The jobs list is polled for progress.
     pub async fn start_download(&self, req: &StartDownload) -> ApiResult<()> {
-        self.done(self.request(Method::POST, &["api", "downloads"]).json(req)).await
+        self.done(self.request(Method::POST, &["api", "downloads"]).json(req))
+            .await
     }
 
     pub async fn download_jobs(&self) -> ApiResult<Vec<JobStatus>> {
@@ -441,16 +534,21 @@ impl ApiClient {
             #[serde(default)]
             jobs: Vec<JobStatus>,
         }
-        Ok(self.json::<R>(self.get(&["api", "downloads", "jobs"])).await?.jobs)
+        Ok(self
+            .json::<R>(self.get(&["api", "downloads", "jobs"]))
+            .await?
+            .jobs)
     }
 
     pub async fn retry_download(&self, job_id: &str) -> ApiResult<()> {
-        self.done(self.request(Method::POST, &["api", "downloads", job_id, "retry"])).await
+        self.done(self.request(Method::POST, &["api", "downloads", job_id, "retry"]))
+            .await
     }
 
     /// Cancel.
     pub async fn cancel_download(&self, job_id: &str) -> ApiResult<()> {
-        self.done(self.request(Method::DELETE, &["api", "downloads", job_id])).await
+        self.done(self.request(Method::DELETE, &["api", "downloads", job_id]))
+            .await
     }
 
     /// Close guard: number of `queued` + `running` jobs.
@@ -509,7 +607,9 @@ mod tests {
             seven_zip_path: None,
             data_dir: dir.clone(),
         };
-        let client = ApiClient::in_process(br_server::app(br_server::state::AppState::open(config).unwrap()));
+        let client = ApiClient::in_process(br_server::app(
+            br_server::state::AppState::open(config).unwrap(),
+        ));
 
         assert_eq!(client.healthz().await.unwrap().app, "betterrack");
         assert!(client.settings().await.is_ok());
@@ -525,7 +625,10 @@ mod tests {
 
     #[test]
     fn normalizes_urls() {
-        assert_eq!(normalize_base_url("localhost:3000/"), "http://localhost:3000");
+        assert_eq!(
+            normalize_base_url("localhost:3000/"),
+            "http://localhost:3000"
+        );
         assert_eq!(normalize_base_url(" https://x.dev// "), "https://x.dev");
     }
 
@@ -537,13 +640,19 @@ mod tests {
             "http://localhost:3000/read/a%2Fb%20c/pages/3?key=s3cret"
         );
         let local = ApiClient::new("http://localhost:3000", None).unwrap();
-        assert_eq!(local.thumbnail_url("abc"), "http://localhost:3000/api/thumbnail/abc");
+        assert_eq!(
+            local.thumbnail_url("abc"),
+            "http://localhost:3000/api/thumbnail/abc"
+        );
     }
 
     #[test]
     fn merges_pages_by_uid() {
         let mut all = vec![group("g1", &["a", "b"])];
-        merge_groups(&mut all, vec![group("g1", &["b", "c"]), group("g2", &["x"])]);
+        merge_groups(
+            &mut all,
+            vec![group("g1", &["b", "c"]), group("g2", &["x"])],
+        );
         assert_eq!(all.len(), 2);
         let uids: Vec<_> = all[0].entries.iter().map(|e| e.uid.as_str()).collect();
         assert_eq!(uids, ["a", "b", "c"]);

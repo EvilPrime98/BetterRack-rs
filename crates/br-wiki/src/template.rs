@@ -11,10 +11,13 @@ use std::sync::LazyLock;
 pub type Content = HashMap<String, String>;
 
 static HEADER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{\{[^|{}\n]+\n").unwrap());
-static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]").unwrap());
+static LINK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]").unwrap());
 static NOTE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{\{([^{}|]+)\}\}").unwrap());
-static APPEARING_HEADER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^'''\s*(.+?):?\s*'''$").unwrap());
-static REF_BLOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<ref[^>]*>.*?</ref>").unwrap());
+static APPEARING_HEADER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^'''\s*(.+?):?\s*'''$").unwrap());
+static REF_BLOCK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s)<ref[^>]*>.*?</ref>").unwrap());
 static REF_SELF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<ref[^>]*/>").unwrap());
 static COMMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<!--.*?-->").unwrap());
 static QUOTES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'''?").unwrap());
@@ -24,7 +27,9 @@ static LEADING_BULLETS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\*+\s*"
 /// `|key = value` pairs. Brace depth is tracked to find the real closing `}}`.
 pub fn parse_media_wiki_template(page: &str) -> Content {
     let mut result = Content::new();
-    let Some(header) = HEADER.find(page) else { return result };
+    let Some(header) = HEADER.find(page) else {
+        return result;
+    };
     let bytes = page.as_bytes();
     let (mut depth, mut end, mut i) = (0i32, None, header.start());
     while i + 1 < bytes.len() {
@@ -94,7 +99,10 @@ fn collect_credits(content: &Content, role: &str) -> Vec<String> {
 }
 
 pub fn build_credits(content: &Content) -> Value {
-    let executive = content.get("Executive Editor").map(|v| js_trim(v)).filter(|v| !v.is_empty());
+    let executive = content
+        .get("Executive Editor")
+        .map(|v| js_trim(v))
+        .filter(|v| !v.is_empty());
     json!({
         "writers": collect_credits(content, "Writer"),
         "artists": collect_credits(content, "Penciler"),
@@ -108,7 +116,9 @@ pub fn build_credits(content: &Content) -> Value {
 
 /// Lines starting with `*`, bullet stripped.
 pub fn parse_bullets(raw: Option<&str>) -> Vec<String> {
-    let Some(raw) = raw.filter(|r| !r.is_empty()) else { return vec![] };
+    let Some(raw) = raw.filter(|r| !r.is_empty()) else {
+        return vec![];
+    };
     raw.split('\n')
         .map(js_trim)
         .filter(|l| l.starts_with('*'))
@@ -129,7 +139,10 @@ const APPEARING_SECTIONS: [(&str, &str); 7] = [
 
 /// The `Appearing1` field: `'''Featured Characters:'''` headers followed by `* [[Link|Name]] {{note}}`.
 pub fn parse_appearing(raw: Option<&str>) -> Value {
-    let mut sections: Vec<(&str, Vec<Value>)> = APPEARING_SECTIONS.iter().map(|(_, key)| (*key, Vec::new())).collect();
+    let mut sections: Vec<(&str, Vec<Value>)> = APPEARING_SECTIONS
+        .iter()
+        .map(|(_, key)| (*key, Vec::new()))
+        .collect();
     if let Some(raw) = raw.filter(|r| !r.is_empty()) {
         let mut current: Option<usize> = None;
         for line in raw.split('\n') {
@@ -139,11 +152,18 @@ pub fn parse_appearing(raw: Option<&str>) -> Value {
                 current = APPEARING_SECTIONS.iter().position(|(k, _)| *k == name);
                 continue;
             }
-            let Some(section) = current.filter(|_| line.starts_with('*')) else { continue };
-            let Some(link) = LINK.captures(line) else { continue };
+            let Some(section) = current.filter(|_| line.starts_with('*')) else {
+                continue;
+            };
+            let Some(link) = LINK.captures(line) else {
+                continue;
+            };
             let page_title = js_trim(&link[1]);
             let name = js_trim(link.get(2).map_or(&link[1], |m| m.as_str()));
-            let notes: Vec<&str> = NOTE.captures_iter(line).map(|c| js_trim(c.get(1).unwrap().as_str())).collect();
+            let notes: Vec<&str> = NOTE
+                .captures_iter(line)
+                .map(|c| js_trim(c.get(1).unwrap().as_str()))
+                .collect();
             let mut entry = Map::new();
             entry.insert("name".into(), name.into());
             entry.insert("pageTitle".into(), page_title.into());
@@ -153,7 +173,12 @@ pub fn parse_appearing(raw: Option<&str>) -> Value {
             sections[section].1.push(Value::Object(entry));
         }
     }
-    Value::Object(sections.into_iter().map(|(k, v)| (k.to_string(), Value::Array(v))).collect())
+    Value::Object(
+        sections
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), Value::Array(v)))
+            .collect(),
+    )
 }
 
 /// `stripWiki`: drop refs and comments, keep link labels, drop bold/italic marks.
@@ -161,7 +186,9 @@ pub fn strip_wiki(s: &str) -> String {
     let s = REF_BLOCK.replace_all(s, "");
     let s = REF_SELF.replace_all(&s, "");
     let s = COMMENT.replace_all(&s, "");
-    let s = LINK.replace_all(&s, |c: &regex::Captures| js_trim(c.get(2).map_or(&c[1], |m| m.as_str())).to_string());
+    let s = LINK.replace_all(&s, |c: &regex::Captures| {
+        js_trim(c.get(2).map_or(&c[1], |m| m.as_str())).to_string()
+    });
     let s = QUOTES.replace_all(&s, "");
     js_trim(&s).to_string()
 }
@@ -182,7 +209,9 @@ pub fn js_parse_int(s: &str) -> f64 {
         Some(rest) => (-1.0, rest),
         None => (1.0, s.strip_prefix('+').unwrap_or(s)),
     };
-    let end = digits.find(|c: char| !c.is_ascii_digit()).unwrap_or(digits.len());
+    let end = digits
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(digits.len());
     if end == 0 {
         return f64::NAN;
     }
@@ -195,7 +224,9 @@ pub fn js_number(s: &str) -> f64 {
     if t.is_empty() {
         return 0.0;
     }
-    if t.chars().any(|c| c.is_ascii_alphabetic() && c != 'e' && c != 'E') {
+    if t.chars()
+        .any(|c| c.is_ascii_alphabetic() && c != 'e' && c != 'E')
+    {
         return f64::NAN;
     }
     t.parse::<f64>().unwrap_or(f64::NAN)
@@ -204,7 +235,11 @@ pub fn js_number(s: &str) -> f64 {
 /// JS `padStart(2, '0')`.
 pub fn pad2(s: &str) -> String {
     let units = s.encode_utf16().count();
-    if units >= 2 { s.to_string() } else { format!("{}{s}", "0".repeat(2 - units)) }
+    if units >= 2 {
+        s.to_string()
+    } else {
+        format!("{}{s}", "0".repeat(2 - units))
+    }
 }
 
 /// How JS prints a whole-number `Number` (`120`, not `120.0`); `NaN`/`Infinity` as JS does.
@@ -212,7 +247,11 @@ pub fn js_number_string(n: f64) -> String {
     if n.is_nan() {
         "NaN".into()
     } else if n.is_infinite() {
-        if n > 0.0 { "Infinity".into() } else { "-Infinity".into() }
+        if n > 0.0 {
+            "Infinity".into()
+        } else {
+            "-Infinity".into()
+        }
     } else if n.fract() == 0.0 && n.abs() < 1e15 {
         format!("{}", n as i64)
     } else {
@@ -262,17 +301,32 @@ mod tests {
     fn appearing_sections_links_and_notes() {
         let raw = "'''Featured Characters:'''\n* [[Batman]] {{1st}}\n* [[Robin|Dick Grayson]]\n'''Locations:'''\n* [[Gotham City]]\n'''Unknown:'''\n* [[Ignored]]\n* no link";
         let a = parse_appearing(Some(raw));
-        assert_eq!(a["featuredCharacters"], json!([{"name": "Batman", "pageTitle": "Batman", "statusNote": "1st"}, {"name": "Dick Grayson", "pageTitle": "Robin"}]));
-        assert_eq!(a["locations"], json!([{"name": "Gotham City", "pageTitle": "Gotham City"}]));
+        assert_eq!(
+            a["featuredCharacters"],
+            json!([{"name": "Batman", "pageTitle": "Batman", "statusNote": "1st"}, {"name": "Dick Grayson", "pageTitle": "Robin"}])
+        );
+        assert_eq!(
+            a["locations"],
+            json!([{"name": "Gotham City", "pageTitle": "Gotham City"}])
+        );
         assert_eq!(a["items"], json!([]));
         assert_eq!(parse_appearing(None)["concepts"], json!([]));
     }
 
     #[test]
     fn bullets_and_speaker_and_strip() {
-        assert_eq!(parse_bullets(Some("* a\n** b \nplain\n*\n*  c")), vec!["a", "b", "c"]);
-        assert_eq!(extract_speaker(Some("[[Bruce Wayne|Batman]] said")).as_deref(), Some("Batman"));
-        assert_eq!(extract_speaker(Some("'''Joker'''<ref>x</ref>")).as_deref(), Some("Joker"));
+        assert_eq!(
+            parse_bullets(Some("* a\n** b \nplain\n*\n*  c")),
+            vec!["a", "b", "c"]
+        );
+        assert_eq!(
+            extract_speaker(Some("[[Bruce Wayne|Batman]] said")).as_deref(),
+            Some("Batman")
+        );
+        assert_eq!(
+            extract_speaker(Some("'''Joker'''<ref>x</ref>")).as_deref(),
+            Some("Joker")
+        );
         assert_eq!(extract_speaker(Some("<!-- c -->")), None);
         assert_eq!(strip_wiki("a [[B|c]] <ref name=\"x\"/>d"), "a c d");
     }

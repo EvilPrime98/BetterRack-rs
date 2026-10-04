@@ -4,8 +4,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled,
-    Window, deferred, div, prelude::*, px, rgb, rgba,
+    App, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
+    Styled, Window, deferred, div, prelude::*, px, rgb, rgba,
 };
 
 use crate::ui::icons::{Icon, icon};
@@ -42,7 +42,11 @@ pub fn dropdown<V: Copy + PartialEq + 'static>(
                 .py(px(7.0))
                 .rounded(px(6.0))
                 .border_1()
-                .border_color(if open { theme::accent() } else { rgba(0xffffff1f) })
+                .border_color(if open {
+                    theme::accent()
+                } else {
+                    rgba(0xffffff1f)
+                })
                 .bg(rgba(0xffffff0a))
                 .text_size(px(13.0))
                 .text_color(rgb(0xd8d8d8))
@@ -63,7 +67,9 @@ pub fn dropdown<V: Copy + PartialEq + 'static>(
                         .w(px(8000.0))
                         .h(px(8000.0))
                         .occlude()
-                        .on_mouse_down(gpui::MouseButton::Left, move |_, _: &mut Window, cx| close(false, cx)),
+                        .on_mouse_down(gpui::MouseButton::Left, move |_, _: &mut Window, cx| {
+                            close(false, cx)
+                        }),
                 )
                 .with_priority(1),
             )
@@ -94,7 +100,11 @@ pub fn dropdown<V: Copy + PartialEq + 'static>(
                                 .rounded(px(4.0))
                                 .cursor_pointer()
                                 .text_size(px(13.0))
-                                .text_color(if value == current { theme::accent() } else { rgb(0xd8d8d8) })
+                                .text_color(if value == current {
+                                    theme::accent()
+                                } else {
+                                    rgb(0xd8d8d8)
+                                })
                                 .hover(|s| s.bg(rgba(0xffffff0f)))
                                 .on_click(move |_, _, cx| {
                                     on_open_change(false, cx);

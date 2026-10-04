@@ -1,4 +1,4 @@
-//! `library.store.ts`: groups, structure, search, the 5-minute stale cache with in-flight
+//! Library state: groups, structure, search, the 5-minute stale cache with in-flight
 //! de-dup, every mutation invalidating it, and the identify-all poller.
 
 use std::collections::HashMap;
@@ -43,7 +43,7 @@ pub struct LibraryStore {
 
 impl LibraryStore {
     fn invalidate(&mut self) {
-        // Folders were created/moved/removed: the download-folder list is stale too (gotcha #6).
+        // Folders were created/moved/removed: the download-folder list is stale too.
         crate::state::directories::invalidate();
         self.cache.clear();
         // An older in-flight response must not repopulate the cache we just emptied.
@@ -105,14 +105,18 @@ impl LibraryStore {
                 if s.in_flight.get(&structure) == Some(&s.generation) {
                     return Plan::Done;
                 }
-                let Some(client) = s.client.clone() else { return Plan::Done };
+                let Some(client) = s.client.clone() else {
+                    return Plan::Done;
+                };
                 s.in_flight.insert(structure, s.generation);
                 s.loading = true;
                 cx.notify();
                 Plan::Fetch(client, structure, s.generation)
             })
             .map_err(|e| e.to_string())?;
-        let Plan::Fetch(client, structure, generation) = plan else { return Ok(()) };
+        let Plan::Fetch(client, structure, generation) = plan else {
+            return Ok(());
+        };
 
         let by_series = structure == LibraryStructure::Series;
         let result = runtime::run(async move { client.library_all(by_series).await }).await;
@@ -137,9 +141,14 @@ impl LibraryStore {
     }
 
     /// Run a server mutation, then invalidate + refetch and toast. `fallback` is used when the
-    /// server sent no message of its own (the React code toasted `data.message || fallback`).
-    fn mutate<F, Fut>(&mut self, failure: &'static str, success: &'static str, cx: &mut Context<Self>, call: F)
-    where
+    /// server sent no message of its own.
+    fn mutate<F, Fut>(
+        &mut self,
+        failure: &'static str,
+        success: &'static str,
+        cx: &mut Context<Self>,
+        call: F,
+    ) where
         F: FnOnce(ApiClient) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = crate::api::ApiResult<()>> + Send + 'static,
     {
@@ -157,9 +166,11 @@ impl LibraryStore {
         F: FnOnce(ApiClient) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = crate::api::ApiResult<()>> + Send + 'static,
     {
-        let Some(client) = self.client.clone() else { return };
-        cx.spawn(async move |this, cx| {
-            match runtime::run(call(client)).await {
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        cx.spawn(
+            async move |this, cx| match runtime::run(call(client)).await {
                 Ok(()) => {
                     this.update(cx, |s, cx| {
                         s.invalidate();
@@ -173,11 +184,15 @@ impl LibraryStore {
                     });
                 }
                 Err(e) => {
-                    let msg = if e.to_string().is_empty() { failure.to_string() } else { e.to_string() };
+                    let msg = if e.to_string().is_empty() {
+                        failure.to_string()
+                    } else {
+                        e.to_string()
+                    };
                     cx.update(|cx| toast::error(cx, msg));
                 }
-            }
-        })
+            },
+        )
         .detach();
     }
 
@@ -210,15 +225,21 @@ impl LibraryStore {
     }
 
     pub fn create_folder(&mut self, name: String, parent: Option<String>, cx: &mut Context<Self>) {
-        self.mutate("Failed to create folder.", "Folder created", cx, move |c| async move {
-            c.create_folder(&name, parent.as_deref()).await
-        });
+        self.mutate(
+            "Failed to create folder.",
+            "Folder created",
+            cx,
+            move |c| async move { c.create_folder(&name, parent.as_deref()).await },
+        );
     }
 
     pub fn move_file(&mut self, uid: String, target: Option<String>, cx: &mut Context<Self>) {
-        self.mutate("Failed to move file.", "File moved", cx, move |c| async move {
-            c.move_file(&uid, target.as_deref()).await
-        });
+        self.mutate(
+            "Failed to move file.",
+            "File moved",
+            cx,
+            move |c| async move { c.move_file(&uid, target.as_deref()).await },
+        );
     }
 
     pub fn unidentify_file(&mut self, uid: String, cx: &mut Context<Self>) {
@@ -231,7 +252,9 @@ impl LibraryStore {
             // `lastUnidentified`: the originating card drops its metadata without a reload.
             move |_, cx| {
                 if let Some(stores) = cx.try_global::<crate::state::Stores>().cloned() {
-                    stores.identify.update(cx, |s, cx| s.set_identified(&broadcast, None, None, cx));
+                    stores
+                        .identify
+                        .update(cx, |s, cx| s.set_identified(&broadcast, None, None, cx));
                 }
             },
         );
@@ -329,7 +352,9 @@ impl LibraryStore {
         if self.identify_polling {
             return Task::ready(());
         }
-        let Some(client) = self.client.clone() else { return Task::ready(()) };
+        let Some(client) = self.client.clone() else {
+            return Task::ready(());
+        };
         self.identify_polling = true;
         cx.spawn(async move |this, cx| {
             let outcome = Self::poll_identify(&this, cx, client).await;
@@ -368,13 +393,14 @@ impl LibraryStore {
             if job.state == JobState::Error {
                 return Err("Library identification failed.".into());
             }
-            if job.state == JobState::Done || matches!(job.progress, Some(IdentifyProgress::Done { .. })) {
-                this
-                    .update(cx, |s, cx| {
-                        s.invalidate();
-                        clear_identify_states(cx);
-                    })
-                    .map_err(|e| e.to_string())?;
+            if job.state == JobState::Done
+                || matches!(job.progress, Some(IdentifyProgress::Done { .. }))
+            {
+                this.update(cx, |s, cx| {
+                    s.invalidate();
+                    clear_identify_states(cx);
+                })
+                .map_err(|e| e.to_string())?;
                 Self::load(this, cx).await?;
                 return Ok(true);
             }
@@ -387,7 +413,9 @@ impl LibraryStore {
                 cx.notify();
             })
             .map_err(|e| e.to_string())?;
-            cx.background_executor().timer(Duration::from_millis(IDENTIFY_POLL_INTERVAL_MS)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(IDENTIFY_POLL_INTERVAL_MS))
+                .await;
             let poll = client.clone();
             status = runtime::run(async move { poll.identify_all_status().await })
                 .await
@@ -406,14 +434,22 @@ impl LibraryStore {
     }
 
     pub fn find_entry(&self, uid: &str) -> Option<&LibraryEntry> {
-        self.groups.iter().flat_map(|g| g.entries.iter()).find(|e| e.uid == uid)
+        self.groups
+            .iter()
+            .flat_map(|g| g.entries.iter())
+            .find(|e| e.uid == uid)
     }
 
     pub fn title_for(&self, uid: Option<&str>) -> String {
         let Some(uid) = uid else { return "Root".into() };
         self.find_entry(uid)
             .map(|e| e.name.clone())
-            .or_else(|| self.groups.iter().find(|g| g.uid == uid).map(|g| g.name.clone()))
+            .or_else(|| {
+                self.groups
+                    .iter()
+                    .find(|g| g.uid == uid)
+                    .map(|g| g.name.clone())
+            })
             .unwrap_or_else(|| "Root".into())
     }
 }
@@ -451,22 +487,37 @@ pub fn library_items(
                 return if only_dir {
                     groups.iter().map(series_dir).collect()
                 } else {
-                    groups.iter().flat_map(|g| g.entries.iter().cloned()).collect()
+                    groups
+                        .iter()
+                        .flat_map(|g| g.entries.iter().cloned())
+                        .collect()
                 };
             }
             Some(uid) => {
                 if let Some(series) = groups.iter().find(|g| g.uid == uid) {
-                    return if only_dir { Vec::new() } else { series.entries.clone() };
+                    return if only_dir {
+                        Vec::new()
+                    } else {
+                        series.entries.clone()
+                    };
                 }
-                // Not a series uid: fall through to the folder lookup below, as React does.
+                // Not a series uid: fall through to the folder lookup below.
             }
         }
     }
 
     let group = uid.and_then(|u| groups.iter().find(|g| g.uid == u));
     let mut data: Vec<LibraryEntry> = match (uid, group) {
-        (None, _) => groups.iter().flat_map(|g| g.entries.iter().cloned()).collect(),
-        (Some(_), Some(g)) => g.entries.iter().filter(|e| e.parent_id.is_empty()).cloned().collect(),
+        (None, _) => groups
+            .iter()
+            .flat_map(|g| g.entries.iter().cloned())
+            .collect(),
+        (Some(_), Some(g)) => g
+            .entries
+            .iter()
+            .filter(|e| e.parent_id.is_empty())
+            .cloned()
+            .collect(),
         (Some(uid), None) => groups
             .iter()
             .flat_map(|g| g.entries.iter())
@@ -503,15 +554,18 @@ pub fn page_items(
     items
 }
 
-/// `applyFilters`. The React comparator returned `-1` whenever either date was missing, which is
-/// not a valid ordering. Decision: entries without a release date go last (keeping their relative
+/// Entries without a release date go last (keeping their relative
 /// order), the rest ascend by year, month, day. `Creation Date` is newest first.
 pub fn apply_sort(items: &mut [LibraryEntry], filter: FilterOption) {
     match filter {
         FilterOption::Alphabetically => {}
         FilterOption::CreationDate => items.sort_by(|a, b| b.created_at.cmp(&a.created_at)),
         FilterOption::ReleaseDate => items.sort_by_key(|e| {
-            let key = e.comic.as_ref().and_then(|c| c.release_date.as_ref()).and_then(|d| d.sort_key());
+            let key = e
+                .comic
+                .as_ref()
+                .and_then(|c| c.release_date.as_ref())
+                .and_then(|d| d.sort_key());
             (key.is_none(), key)
         }),
     }
@@ -582,8 +636,12 @@ mod tests {
     fn release_date_sort_puts_undated_last() {
         let mut items = vec![
             entry(json!({"uid":"none","name":"n"})),
-            entry(json!({"uid":"late","name":"l","comic":{"releaseDate":{"releaseYear":"2001","releaseMonth":"2","releaseDay":"1"}}})),
-            entry(json!({"uid":"early","name":"e","comic":{"releaseDate":{"releaseYear":"1999","releaseMonth":"12","releaseDay":"31"}}})),
+            entry(
+                json!({"uid":"late","name":"l","comic":{"releaseDate":{"releaseYear":"2001","releaseMonth":"2","releaseDay":"1"}}}),
+            ),
+            entry(
+                json!({"uid":"early","name":"e","comic":{"releaseDate":{"releaseYear":"1999","releaseMonth":"12","releaseDay":"31"}}}),
+            ),
         ];
         apply_sort(&mut items, FilterOption::ReleaseDate);
         assert_eq!(uids(&items), ["early", "late", "none"]);

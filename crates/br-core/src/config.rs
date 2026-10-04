@@ -1,22 +1,21 @@
 //! Process configuration shared by every entry point (server binary, future in-process backend).
 //!
-//! Env contract (same names the Bun server and `platform/server_process.rs` already use):
+//! Env contract (shared with `platform/server_process.rs`):
 //! - `PORT`: default 3000, `0` lets the OS pick.
 //! - `BR_API_KEY`: when set, `/api/*` and `/read/*` require it (header `x-br-api-key` or `?key=`).
 //! - `LOG_LEVEL`: tracing filter, default `info`.
 //! - `SEVEN_ZIP_PATH`: path to the bundled 7-Zip executable.
-//! - `BR_DATA_DIR`: the Rust equivalent of the Bun server's cwd. Defaults to the process cwd.
+//! - `BR_DATA_DIR`: the base directory for data files. Defaults to the process cwd.
 //!
-//! The SQLite files live in `<data_dir>/src/database/`, because Bun resolves them as
-//! `path.resolve('src/database/<name>.sqlite')` against its cwd (dev checkout and packaged
-//! sidecar alike, where the cwd is `%APPDATA%\BetterRack`). Pointing `BR_DATA_DIR` at that folder
-//! therefore reuses the existing data with no migration.
+//! The SQLite files live in `<data_dir>/src/database/`, to keep existing data
+//! (dev checkout and packaged sidecar alike, where the base is `%APPDATA%\BetterRack`) usable
+//! as is.
 
 use std::path::PathBuf;
 
 pub const DEFAULT_PORT: u16 = 3000;
 pub const DEFAULT_LOG_LEVEL: &str = "info";
-/// Relative to the data dir; matches the Bun layout.
+/// Relative to the data dir.
 pub const DB_SUBDIR: &str = "src/database";
 pub const COMIC_DATA_DB: &str = "comic-data.sqlite";
 pub const PREFERENCES_DB: &str = "preferences.sqlite";
@@ -42,8 +41,10 @@ impl Config {
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>, cwd: PathBuf) -> Self {
         let non_empty = |k: &str| get(k).filter(|v| !v.is_empty());
         Self {
-            // Bun: unset or empty -> 3000, otherwise Number(PORT). Unparseable falls back too.
-            port: non_empty("PORT").and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT),
+            // Unset or empty -> 3000, otherwise the parsed value. Unparseable falls back too.
+            port: non_empty("PORT")
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(DEFAULT_PORT),
             api_key: non_empty("BR_API_KEY"),
             log_level: non_empty("LOG_LEVEL").unwrap_or_else(|| DEFAULT_LOG_LEVEL.into()),
             seven_zip_path: non_empty("SEVEN_ZIP_PATH").map(PathBuf::from),
@@ -69,7 +70,7 @@ impl Config {
     }
 }
 
-/// Constant-time comparison for API keys (length leak only, like the Bun middleware).
+/// Constant-time comparison for API keys (length leak only).
 pub fn keys_match(provided: &str, required: &str) -> bool {
     let (a, b) = (provided.as_bytes(), required.as_bytes());
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
@@ -81,7 +82,10 @@ mod tests {
     use std::collections::HashMap;
 
     fn cfg(pairs: &[(&str, &str)]) -> Config {
-        let m: HashMap<String, String> = pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let m: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         Config::from_lookup(|k| m.get(k).cloned(), PathBuf::from("cwd"))
     }
 
@@ -98,7 +102,10 @@ mod tests {
     #[test]
     fn empty_values_count_as_unset() {
         let c = cfg(&[("PORT", ""), ("BR_API_KEY", ""), ("BR_DATA_DIR", "")]);
-        assert_eq!((c.port, c.api_key, c.data_dir), (3000, None, PathBuf::from("cwd")));
+        assert_eq!(
+            (c.port, c.api_key, c.data_dir),
+            (3000, None, PathBuf::from("cwd"))
+        );
     }
 
     #[test]
@@ -110,9 +117,18 @@ mod tests {
     #[test]
     fn db_files_follow_the_bun_layout() {
         let c = cfg(&[("BR_DATA_DIR", "data")]);
-        assert_eq!(c.comic_data_db(), PathBuf::from("data").join("src/database/comic-data.sqlite"));
-        assert_eq!(c.preferences_db(), PathBuf::from("data").join("src/database/preferences.sqlite"));
-        assert_eq!(c.jobs_db(), PathBuf::from("data").join("src/database/jobs.sqlite"));
+        assert_eq!(
+            c.comic_data_db(),
+            PathBuf::from("data").join("src/database/comic-data.sqlite")
+        );
+        assert_eq!(
+            c.preferences_db(),
+            PathBuf::from("data").join("src/database/preferences.sqlite")
+        );
+        assert_eq!(
+            c.jobs_db(),
+            PathBuf::from("data").join("src/database/jobs.sqlite")
+        );
     }
 
     #[test]

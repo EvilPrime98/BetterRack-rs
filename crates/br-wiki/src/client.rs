@@ -15,7 +15,8 @@ use std::time::{Duration, Instant};
 const USER_AGENT: &str = "better-wiki (https://www.npmjs.com/package/better-wiki)";
 const CHUNK: usize = 50;
 
-static SCALE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"/scale-to-width-down/[0-9]+").unwrap());
+static SCALE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"/scale-to-width-down/[0-9]+").unwrap());
 
 /// Network behaviour; `Default` is better-wiki's (15 s timeout, 2 retries, 5 min cache).
 #[derive(Debug, Clone)]
@@ -32,7 +33,13 @@ pub struct ClientOptions {
 
 impl Default for ClientOptions {
     fn default() -> Self {
-        Self { cache_ttl: Duration::from_secs(300), timeout: Duration::from_secs(15), retries: 2, backoff_base: Duration::from_millis(250), api_base: None }
+        Self {
+            cache_ttl: Duration::from_secs(300),
+            timeout: Duration::from_secs(15),
+            retries: 2,
+            backoff_base: Duration::from_millis(250),
+            api_base: None,
+        }
     }
 }
 
@@ -73,7 +80,12 @@ struct Cache {
 
 impl WikiClient {
     pub fn new(wiki_url: &str, http: reqwest::Client, opts: ClientOptions) -> Self {
-        Self { http, wiki_url: wiki_url.to_string(), opts, cache: Mutex::new(Cache::default()) }
+        Self {
+            http,
+            wiki_url: wiki_url.to_string(),
+            opts,
+            cache: Mutex::new(Cache::default()),
+        }
     }
 
     pub fn wiki_url(&self) -> &str {
@@ -82,20 +94,38 @@ impl WikiClient {
 
     fn api_url(&self, params: &[(&str, String)]) -> String {
         let mut query = url::form_urlencoded::Serializer::new(String::new());
-        query.append_pair("format", "json").append_pair("origin", "*");
+        query
+            .append_pair("format", "json")
+            .append_pair("origin", "*");
         for (k, v) in params {
             query.append_pair(k, v);
         }
-        format!("{}/api.php?{}", self.opts.api_base.as_deref().unwrap_or(&self.wiki_url), query.finish())
+        format!(
+            "{}/api.php?{}",
+            self.opts.api_base.as_deref().unwrap_or(&self.wiki_url),
+            query.finish()
+        )
     }
 
     async fn fetch(&self, url: &str) -> Result<Value> {
         let mut last = WikiError::Http(format!("API request failed for {url}"));
         for attempt in 0..=self.opts.retries {
-            let sent = self.http.get(url).header("User-Agent", USER_AGENT).timeout(self.opts.timeout).send().await;
+            let sent = self
+                .http
+                .get(url)
+                .header("User-Agent", USER_AGENT)
+                .timeout(self.opts.timeout)
+                .send()
+                .await;
             let outcome = match sent {
-                Ok(res) if res.status().is_success() => res.json::<Value>().await.map_err(|e| WikiError::Http(e.to_string())),
-                Ok(res) => Err(WikiError::Http(format!("API request failed: {}", res.status()))),
+                Ok(res) if res.status().is_success() => res
+                    .json::<Value>()
+                    .await
+                    .map_err(|e| WikiError::Http(e.to_string())),
+                Ok(res) => Err(WikiError::Http(format!(
+                    "API request failed: {}",
+                    res.status()
+                ))),
                 Err(e) => Err(WikiError::Http(e.to_string())),
             };
             match outcome {
@@ -122,7 +152,11 @@ impl WikiClient {
         }
         let data = self.fetch(&url).await?;
         let mut cache = self.cache.lock().unwrap();
-        if cache.entries.insert(url.clone(), (now, data.clone())).is_none() {
+        if cache
+            .entries
+            .insert(url.clone(), (now, data.clone()))
+            .is_none()
+        {
             cache.order.push_back(url);
         }
         if cache.entries.len() > 1000 {
@@ -137,7 +171,12 @@ impl WikiClient {
 
     /// `getPage(query, flags)`: a generator search in namespace 0, filtered by category.
     pub async fn get_page(&self, query: &str, flags: &PageFlags) -> Result<Vec<Page>> {
-        let targets: Vec<String> = flags.category.iter().chain(&flags.categories_or).cloned().collect();
+        let targets: Vec<String> = flags
+            .category
+            .iter()
+            .chain(&flags.categories_or)
+            .cloned()
+            .collect();
         let limit = flags.limit.filter(|l| *l > 0);
         let gsrlimit = limit.unwrap_or(20);
         let mut params: Vec<(&str, String)> = vec![
@@ -146,7 +185,15 @@ impl WikiClient {
             ("gsrsearch", query.into()),
             ("gsrnamespace", "0".into()),
             ("gsrlimit", gsrlimit.to_string()),
-            ("prop", if targets.is_empty() { "info|pageimages" } else { "info|pageimages|categories" }.into()),
+            (
+                "prop",
+                if targets.is_empty() {
+                    "info|pageimages"
+                } else {
+                    "info|pageimages|categories"
+                }
+                .into(),
+            ),
             ("inprop", "url".into()),
             ("piprop", "thumbnail".into()),
             ("pithumbsize", "200".into()),
@@ -161,7 +208,9 @@ impl WikiClient {
             return Ok(vec![]);
         }
         let truncated = data["continue"].get("clcontinue").is_some();
-        let mut pages = self.pages_from(&js_values(&data["query"]["pages"]), flags, truncated).await?;
+        let mut pages = self
+            .pages_from(&js_values(&data["query"]["pages"]), flags, truncated)
+            .await?;
 
         if !targets.is_empty() {
             let mut next_offset = data["continue"]["gsroffset"].as_i64();
@@ -182,7 +231,10 @@ impl WikiClient {
                         break;
                     }
                     let truncated = res["continue"].get("clcontinue").is_some();
-                    pages.extend(self.pages_from(&js_values(&res["query"]["pages"]), flags, truncated).await?);
+                    pages.extend(
+                        self.pages_from(&js_values(&res["query"]["pages"]), flags, truncated)
+                            .await?,
+                    );
                     match res["continue"]["gsroffset"].as_i64() {
                         Some(n) => next_offset = Some(n),
                         None => break,
@@ -194,7 +246,9 @@ impl WikiClient {
         } else {
             let mut data = data;
             while limit.is_some_and(|l| pages.len() < l) {
-                let Some(offset) = data["continue"]["gsroffset"].as_i64() else { break };
+                let Some(offset) = data["continue"]["gsroffset"].as_i64() else {
+                    break;
+                };
                 let mut p = params.clone();
                 p.push(("gsroffset", offset.to_string()));
                 if let Some(c) = data["continue"].get("continue").and_then(Value::as_str) {
@@ -204,7 +258,10 @@ impl WikiClient {
                 if data.get("query").is_none() {
                     break;
                 }
-                pages.extend(self.pages_from(&js_values(&data["query"]["pages"]), flags, false).await?);
+                pages.extend(
+                    self.pages_from(&js_values(&data["query"]["pages"]), flags, false)
+                        .await?,
+                );
             }
         }
 
@@ -215,24 +272,52 @@ impl WikiClient {
     }
 
     /// `getWikiPagesFromPages`: build pages from raw generator results and apply the category filters.
-    async fn pages_from(&self, raw: &[&Value], flags: &PageFlags, categories_truncated: bool) -> Result<Vec<Page>> {
-        let targets: Vec<String> = flags.category.iter().chain(&flags.categories_or).cloned().collect();
+    async fn pages_from(
+        &self,
+        raw: &[&Value],
+        flags: &PageFlags,
+        categories_truncated: bool,
+    ) -> Result<Vec<Page>> {
+        let targets: Vec<String> = flags
+            .category
+            .iter()
+            .chain(&flags.categories_or)
+            .cloned()
+            .collect();
         let ids_to_refetch: Vec<i64> = if !targets.is_empty() {
-            if categories_truncated { raw.iter().map(|p| page_id(p)).collect() } else { vec![] }
+            if categories_truncated {
+                raw.iter().map(|p| page_id(p)).collect()
+            } else {
+                vec![]
+            }
         } else {
-            raw.iter().filter(|p| p.get("categories").is_none()).map(|p| page_id(p)).collect()
+            raw.iter()
+                .filter(|p| p.get("categories").is_none())
+                .map(|p| page_id(p))
+                .collect()
         };
-        let fetched = self.categories_for_pages(&ids_to_refetch, (!targets.is_empty()).then_some(&targets[..])).await?;
+        let fetched = self
+            .categories_for_pages(
+                &ids_to_refetch,
+                (!targets.is_empty()).then_some(&targets[..]),
+            )
+            .await?;
 
         let mut pages: Vec<Page> = raw
             .iter()
             .map(|p| {
                 let id = page_id(p);
-                let categories = fetched.get(&id).cloned().unwrap_or_else(|| inline_categories(p));
+                let categories = fetched
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| inline_categories(p));
                 Page {
                     id,
                     title: p["title"].as_str().unwrap_or_default().to_string(),
-                    thumbnail: scale_url(p["thumbnail"]["source"].as_str().unwrap_or_default(), flags.thumbnail_size.as_deref()),
+                    thumbnail: scale_url(
+                        p["thumbnail"]["source"].as_str().unwrap_or_default(),
+                        flags.thumbnail_size.as_deref(),
+                    ),
                     categories,
                     source_wiki: self.wiki_url.clone(),
                 }
@@ -248,11 +333,22 @@ impl WikiClient {
     }
 
     /// `getCategoriesForPages`: category titles per page id, paged through `clcontinue`.
-    async fn categories_for_pages(&self, ids: &[i64], filter: Option<&[String]>) -> Result<HashMap<i64, Vec<String>>> {
+    async fn categories_for_pages(
+        &self,
+        ids: &[i64],
+        filter: Option<&[String]>,
+    ) -> Result<HashMap<i64, Vec<String>>> {
         let chunks = ids.chunks(CHUNK).map(|chunk| async move {
             let mut base: Vec<(&str, String)> = vec![
                 ("action", "query".into()),
-                ("pageids", chunk.iter().map(i64::to_string).collect::<Vec<_>>().join("|")),
+                (
+                    "pageids",
+                    chunk
+                        .iter()
+                        .map(i64::to_string)
+                        .collect::<Vec<_>>()
+                        .join("|"),
+                ),
                 ("prop", "categories".into()),
                 ("cllimit", "max".into()),
             ];
@@ -265,23 +361,39 @@ impl WikiClient {
                 for (key, page) in data["query"]["pages"].as_object().into_iter().flatten() {
                     out.push((key.parse().unwrap_or(-1), inline_categories(page)));
                 }
-                let Some(next) = data["continue"].get("clcontinue").cloned() else { break };
+                let Some(next) = data["continue"].get("clcontinue").cloned() else {
+                    break;
+                };
                 let mut p = base.clone();
                 p.push(("clcontinue", next.as_str().unwrap_or_default().to_string()));
-                p.push(("continue", data["continue"]["continue"].as_str().unwrap_or_default().to_string()));
+                p.push((
+                    "continue",
+                    data["continue"]["continue"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                ));
                 data = self.get(&p).await?;
             }
             Ok::<_, WikiError>(out)
         });
         let mut total: HashMap<i64, Vec<String>> = HashMap::new();
-        for (id, cats) in futures_util::future::try_join_all(chunks).await?.into_iter().flatten() {
+        for (id, cats) in futures_util::future::try_join_all(chunks)
+            .await?
+            .into_iter()
+            .flatten()
+        {
             total.entry(id).or_default().extend(cats);
         }
         Ok(total)
     }
 
     /// `getPageById(id, { thumbnailSize })` for a single id: `None` for a missing page.
-    pub async fn get_page_by_id(&self, id: i64, thumbnail_size: Option<&str>) -> Result<Option<Page>> {
+    pub async fn get_page_by_id(
+        &self,
+        id: i64,
+        thumbnail_size: Option<&str>,
+    ) -> Result<Option<Page>> {
         let data = self
             .get(&[
                 ("action", "query".into()),
@@ -293,11 +405,16 @@ impl WikiClient {
             ])
             .await?;
         // Only the first response is read: later `clcontinue` responses repeat the page.
-        let found = js_values(&data["query"]["pages"]).into_iter().find(|p| p.is_object() && p.get("missing").is_none() && p.get("categories").is_some());
+        let found = js_values(&data["query"]["pages"])
+            .into_iter()
+            .find(|p| p.is_object() && p.get("missing").is_none() && p.get("categories").is_some());
         Ok(found.map(|p| Page {
             id: page_id(p),
             title: p["title"].as_str().unwrap_or_default().to_string(),
-            thumbnail: scale_url(p["thumbnail"]["source"].as_str().unwrap_or_default(), thumbnail_size),
+            thumbnail: scale_url(
+                p["thumbnail"]["source"].as_str().unwrap_or_default(),
+                thumbnail_size,
+            ),
             categories: inline_categories(p),
             source_wiki: self.wiki_url.clone(),
         }))
@@ -314,18 +431,25 @@ impl WikiClient {
                 ("rvslots", "main".into()),
             ])
             .await?;
-        let page = js_values(&data["query"]["pages"]).into_iter().next().ok_or_else(|| WikiError::Http("no page in response".into()))?;
+        let page = js_values(&data["query"]["pages"])
+            .into_iter()
+            .next()
+            .ok_or_else(|| WikiError::Http("no page in response".into()))?;
         // A missing page has no `pageid` (JS throws on `undefined.toString()`); an invalid one is `-1`.
         match page["pageid"].as_i64() {
             Some(id) if id != -1 => {}
             _ => return Err(WikiError::Http(format!("Page \"{id}\" does not exist."))),
         }
-        Ok(page["revisions"][0]["slots"]["main"]["*"].as_str().map(str::to_string))
+        Ok(page["revisions"][0]["slots"]["main"]["*"]
+            .as_str()
+            .map(str::to_string))
     }
 
     /// `page.getStructuredContent()`.
     pub async fn get_structured_content(&self, page: &Page) -> Result<Content> {
-        Ok(parse_media_wiki_template(&self.get_page_content(page.id).await?.unwrap_or_default()))
+        Ok(parse_media_wiki_template(
+            &self.get_page_content(page.id).await?.unwrap_or_default(),
+        ))
     }
 
     /// `getFileUrl(name, width)`. The lookup key is the raw file name, while the API answers with
@@ -336,10 +460,20 @@ impl WikiClient {
             return Ok(String::new());
         }
         let data = self
-            .get(&[("action", "query".into()), ("titles", format!("File:{file_name}")), ("prop", "imageinfo".into()), ("iiprop", "url".into())])
+            .get(&[
+                ("action", "query".into()),
+                ("titles", format!("File:{file_name}")),
+                ("prop", "imageinfo".into()),
+                ("iiprop", "url".into()),
+            ])
             .await?;
         for page in js_values(&data["query"]["pages"]) {
-            let Some(url) = page["imageinfo"][0]["url"].as_str().filter(|u| !u.is_empty()) else { continue };
+            let Some(url) = page["imageinfo"][0]["url"]
+                .as_str()
+                .filter(|u| !u.is_empty())
+            else {
+                continue;
+            };
             let title = page["title"].as_str().unwrap_or_default();
             let key = match title.get(..5) {
                 Some(prefix) if prefix.eq_ignore_ascii_case("File:") => &title[5..],
@@ -358,17 +492,35 @@ fn page_id(p: &Value) -> i64 {
 }
 
 fn inline_categories(p: &Value) -> Vec<String> {
-    p["categories"].as_array().into_iter().flatten().filter_map(|c| c["title"].as_str().map(str::to_string)).collect()
+    p["categories"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["title"].as_str().map(str::to_string))
+        .collect()
 }
 
 /// `Object.values(obj)`: integer-like keys ascending first, then the others in insertion order.
 /// MediaWiki keys `query.pages` by page id, so this is the order the JS client iterates in.
 pub fn js_values(obj: &Value) -> Vec<&Value> {
-    let Some(map) = obj.as_object() else { return vec![] };
-    let is_index = |k: &str| k.parse::<u32>().is_ok_and(|n| n != u32::MAX && n.to_string() == k);
-    let mut indexed: Vec<(u32, &Value)> = map.iter().filter(|(k, _)| is_index(k)).map(|(k, v)| (k.parse().unwrap(), v)).collect();
+    let Some(map) = obj.as_object() else {
+        return vec![];
+    };
+    let is_index = |k: &str| {
+        k.parse::<u32>()
+            .is_ok_and(|n| n != u32::MAX && n.to_string() == k)
+    };
+    let mut indexed: Vec<(u32, &Value)> = map
+        .iter()
+        .filter(|(k, _)| is_index(k))
+        .map(|(k, v)| (k.parse().unwrap(), v))
+        .collect();
     indexed.sort_by_key(|(n, _)| *n);
-    indexed.into_iter().map(|(_, v)| v).chain(map.iter().filter(|(k, _)| !is_index(k)).map(|(_, v)| v)).collect()
+    indexed
+        .into_iter()
+        .map(|(_, v)| v)
+        .chain(map.iter().filter(|(k, _)| !is_index(k)).map(|(_, v)| v))
+        .collect()
 }
 
 /// `scaleUrl`: set (or, with no width, remove) the `scale-to-width-down` segment of a Fandom image URL.
@@ -376,12 +528,21 @@ pub fn scale_url(url: &str, width: Option<&str>) -> String {
     if url.is_empty() {
         return String::new();
     }
-    let Some(width) = width else { return SCALE.replace(url, "").into_owned() };
+    let Some(width) = width else {
+        return SCALE.replace(url, "").into_owned();
+    };
     if SCALE.is_match(url) {
-        return SCALE.replace(url, |_: &regex::Captures| format!("/scale-to-width-down/{width}")).into_owned();
+        return SCALE
+            .replace(url, |_: &regex::Captures| {
+                format!("/scale-to-width-down/{width}")
+            })
+            .into_owned();
     }
     let mut parts = url.split("/revision/latest");
-    let (f1, f2) = (parts.next().unwrap_or_default(), parts.next().unwrap_or_default());
+    let (f1, f2) = (
+        parts.next().unwrap_or_default(),
+        parts.next().unwrap_or_default(),
+    );
     if f2.is_empty() {
         return url.to_string();
     }
@@ -396,25 +557,55 @@ mod tests {
     #[test]
     fn scale_url_cases() {
         let base = "https://static.wikia.nocookie.net/dc/images/a/ab/X.jpg/revision/latest";
-        assert_eq!(scale_url(&format!("{base}?cb=1"), Some("120")), format!("{base}/scale-to-width-down/120?cb=1"));
-        assert_eq!(scale_url(&format!("{base}/scale-to-width-down/200?cb=1"), Some("120")), format!("{base}/scale-to-width-down/120?cb=1"));
-        assert_eq!(scale_url(&format!("{base}/scale-to-width-down/200?cb=1"), None), format!("{base}?cb=1"));
-        assert_eq!(scale_url(base, Some("120")), base, "nothing after /revision/latest");
-        assert_eq!(scale_url("https://x.test/plain.jpg", Some("120")), "https://x.test/plain.jpg");
+        assert_eq!(
+            scale_url(&format!("{base}?cb=1"), Some("120")),
+            format!("{base}/scale-to-width-down/120?cb=1")
+        );
+        assert_eq!(
+            scale_url(&format!("{base}/scale-to-width-down/200?cb=1"), Some("120")),
+            format!("{base}/scale-to-width-down/120?cb=1")
+        );
+        assert_eq!(
+            scale_url(&format!("{base}/scale-to-width-down/200?cb=1"), None),
+            format!("{base}?cb=1")
+        );
+        assert_eq!(
+            scale_url(base, Some("120")),
+            base,
+            "nothing after /revision/latest"
+        );
+        assert_eq!(
+            scale_url("https://x.test/plain.jpg", Some("120")),
+            "https://x.test/plain.jpg"
+        );
         assert_eq!(scale_url("", Some("120")), "");
     }
 
     #[test]
     fn object_values_orders_integer_keys_first() {
         let pages = json!({"900": {"n": 1}, "-1": {"n": 2}, "12": {"n": 3}, "abc": {"n": 4}, "5": {"n": 5}});
-        let order: Vec<i64> = js_values(&pages).iter().map(|v| v["n"].as_i64().unwrap()).collect();
+        let order: Vec<i64> = js_values(&pages)
+            .iter()
+            .map(|v| v["n"].as_i64().unwrap())
+            .collect();
         assert_eq!(order, vec![5, 3, 1, 2, 4]);
     }
 
     #[test]
     fn api_url_matches_urlsearchparams() {
-        let c = WikiClient::new("https://dc.fandom.com", reqwest::Client::new(), ClientOptions::default());
-        let url = c.api_url(&[("action", "query".into()), ("gsrsearch", "Batman & Robin: 1".into()), ("clcategories", "Category:Comics|Category:Collected Editions".into())]);
+        let c = WikiClient::new(
+            "https://dc.fandom.com",
+            reqwest::Client::new(),
+            ClientOptions::default(),
+        );
+        let url = c.api_url(&[
+            ("action", "query".into()),
+            ("gsrsearch", "Batman & Robin: 1".into()),
+            (
+                "clcategories",
+                "Category:Comics|Category:Collected Editions".into(),
+            ),
+        ]);
         assert_eq!(
             url,
             "https://dc.fandom.com/api.php?format=json&origin=*&action=query&gsrsearch=Batman+%26+Robin%3A+1&clcategories=Category%3AComics%7CCategory%3ACollected+Editions"

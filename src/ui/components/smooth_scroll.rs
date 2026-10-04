@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use gpui::{
-    App, Context, DispatchPhase, IntoElement, ScrollDelta, ScrollHandle, ScrollWheelEvent, Styled, Window,
-    canvas, point, px,
+    App, Context, DispatchPhase, IntoElement, ScrollDelta, ScrollHandle, ScrollWheelEvent, Styled,
+    Window, canvas, point, px,
 };
 
 /// Pixels per wheel line for notched wheels.
@@ -37,7 +37,10 @@ impl SmoothScroll {
             return;
         }
         let now = Instant::now();
-        let dt = self.last_frame.map_or(1.0 / 60.0, |t| (now - t).as_secs_f32()).min(0.05);
+        let dt = self
+            .last_frame
+            .map_or(1.0 / 60.0, |t| (now - t).as_secs_f32())
+            .min(0.05);
         self.last_frame = Some(now);
         let step = if self.pending.abs() < 0.5 {
             self.pending

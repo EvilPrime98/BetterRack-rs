@@ -1,9 +1,9 @@
-//! Library page (`pages/library-page.tsx`, `components/page-header`, `items-grid`).
+//! Library page.
 //!
 //! The grid is virtualized: items are chunked into rows (the column count follows the available
 //! width) and a `uniform_list` renders only the visible rows. Because only visible rows are built,
 //! "scrolled into view" is "built", which is where covers and lazy identification are
-//! requested (the IntersectionObserver in the React cards).
+//! requested.
 
 use std::rc::Rc;
 
@@ -13,7 +13,6 @@ use gpui::{
 };
 
 use crate::model::{FilterOption, LibraryEntry};
-use crate::ui::pages::common::{note, prefs_dropdown, view_controls};
 use crate::route::{GoBack, Navigate};
 use crate::state::Stores;
 use crate::state::library::apply_sort;
@@ -21,6 +20,7 @@ use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::items_grid::{PAGE_PAD_X, available_width, items_grid};
 use crate::ui::components::smooth_scroll::{SmoothScroll, wheel_capture};
 use crate::ui::icons::{Icon, icon};
+use crate::ui::pages::common::{note, prefs_dropdown, view_controls};
 use crate::ui::theme;
 
 struct Memo {
@@ -44,11 +44,18 @@ impl LibraryPage {
         cx.observe(&stores.library, |_, _, cx| cx.notify()).detach();
         cx.observe(&stores.comics, |_, _, cx| cx.notify()).detach();
         cx.observe(&stores.thumbs, |_, _, cx| cx.notify()).detach();
-        cx.observe(&stores.identify, |_, _, cx| cx.notify()).detach();
+        cx.observe(&stores.identify, |_, _, cx| cx.notify())
+            .detach();
         cx.observe(&stores.prefs, |_, _, cx| cx.notify()).detach();
         // `useEffect(() => fetchLibrary(), [uid])`: a stale cache is refreshed on every visit.
         stores.library.update(cx, |s, cx| s.fetch(cx).detach());
-        Self { uid, stores, scroll: UniformListScrollHandle::new(), smooth: SmoothScroll::default(), memo: None }
+        Self {
+            uid,
+            stores,
+            scroll: UniformListScrollHandle::new(),
+            smooth: SmoothScroll::default(),
+            memo: None,
+        }
     }
 
     /// Sorted page items, recomputed only when the library, folder or sort changes.
@@ -64,7 +71,10 @@ impl LibraryPage {
         let mut items = lib.page_items(self.uid.as_deref());
         apply_sort(&mut items, sort);
         let items = Rc::new(items);
-        self.memo = Some(Memo { key, items: items.clone() });
+        self.memo = Some(Memo {
+            key,
+            items: items.clone(),
+        });
         items
     }
 }
@@ -76,7 +86,12 @@ impl Render for LibraryPage {
         self.smooth.step(&base_handle, window);
         let (read_filter, kind, sidebar_collapsed, sort) = {
             let p = self.stores.prefs.read(cx);
-            (p.read_filter, p.prefs.comic_type, p.prefs.sidebar_collapsed, p.prefs.filter)
+            (
+                p.read_filter,
+                p.prefs.comic_type,
+                p.prefs.sidebar_collapsed,
+                p.prefs.filter,
+            )
         };
 
         // Folders always show; comics only when they pass the read filter.
@@ -144,8 +159,12 @@ impl Render for LibraryPage {
                     )
                     .child(prefs_dropdown(
                         "sort",
-                        [FilterOption::Alphabetically, FilterOption::CreationDate, FilterOption::ReleaseDate]
-                            .map(|v| (v, v.label())),
+                        [
+                            FilterOption::Alphabetically,
+                            FilterOption::CreationDate,
+                            FilterOption::ReleaseDate,
+                        ]
+                        .map(|v| (v, v.label())),
                         sort,
                         false,
                         &self.stores.prefs,
@@ -164,19 +183,43 @@ impl Render for LibraryPage {
                     .flex()
                     .items_center()
                     .gap(px(10.0))
-                    .child(button("new-folder", "New Folder", ButtonVariant::Secondary, {
-                        let parent = self.uid.clone();
-                        move |_, _, cx| crate::ui::modals::open_new_folder(cx, parent.clone())
-                    }))
-                    .child(view_controls(read_filter, kind, true, &self.stores.prefs, cx)),
+                    .child(button(
+                        "new-folder",
+                        "New Folder",
+                        ButtonVariant::Secondary,
+                        {
+                            let parent = self.uid.clone();
+                            move |_, _, cx| crate::ui::modals::open_new_folder(cx, parent.clone())
+                        },
+                    ))
+                    .child(view_controls(
+                        read_filter,
+                        kind,
+                        true,
+                        &self.stores.prefs,
+                        cx,
+                    )),
             );
 
         let body = if visible.is_empty() {
-            let msg = if loading && base.is_empty() { "Loading library…" } else { "No items to show." };
+            let msg = if loading && base.is_empty() {
+                "Loading library…"
+            } else {
+                "No items to show."
+            };
             note(msg).into_any_element()
         } else {
             let avail = available_width(window, !sidebar_collapsed);
-            items_grid("library-grid", base.clone(), visible.clone(), kind, &self.stores, &self.scroll, avail, cx)
+            items_grid(
+                "library-grid",
+                base.clone(),
+                visible.clone(),
+                kind,
+                &self.stores,
+                &self.scroll,
+                avail,
+                cx,
+            )
         };
 
         div()

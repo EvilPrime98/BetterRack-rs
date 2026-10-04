@@ -21,7 +21,9 @@ pub struct Hit {
 /// `fuse.search(query)` over a list of titles: matches only, best (lowest score) first.
 pub fn search<S: AsRef<str>>(titles: &[S], query: &str) -> Vec<Hit> {
     if js_trim(query).is_empty() {
-        return (0..titles.len()).map(|idx| Hit { idx, score: None }).collect();
+        return (0..titles.len())
+            .map(|idx| Hit { idx, score: None })
+            .collect();
     }
     let searcher = Bitap::new(query);
     let mut hits = Vec::new();
@@ -34,10 +36,18 @@ pub fn search<S: AsRef<str>>(titles: &[S], query: &str) -> Vec<Hit> {
         if is_match {
             let exponent = field_norm(title);
             let base = if score == 0.0 { f64::EPSILON } else { score };
-            hits.push(Hit { idx, score: Some(base.powf(exponent)) });
+            hits.push(Hit {
+                idx,
+                score: Some(base.powf(exponent)),
+            });
         }
     }
-    hits.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal).then(a.idx.cmp(&b.idx)));
+    hits.sort_by(|a, b| {
+        a.score
+            .partial_cmp(&b.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.idx.cmp(&b.idx))
+    });
     hits
 }
 
@@ -82,7 +92,11 @@ impl Bitap {
         let mut chunks = Vec::new();
         let mut add = |start: usize, end: usize| {
             let part = pattern[start..end].to_vec();
-            chunks.push(Chunk { alphabet: pattern_alphabet(&part), pattern: part, start_index: start });
+            chunks.push(Chunk {
+                alphabet: pattern_alphabet(&part),
+                pattern: part,
+                start_index: start,
+            });
         };
         if len > MAX_BITS {
             let remainder = len % MAX_BITS;
@@ -109,11 +123,19 @@ impl Bitap {
         let mut total = 0.0;
         let mut has_matches = false;
         for chunk in &self.chunks {
-            let (is_match, score) = bitap(&text, &chunk.pattern, &chunk.alphabet, chunk.start_index);
+            let (is_match, score) =
+                bitap(&text, &chunk.pattern, &chunk.alphabet, chunk.start_index);
             has_matches |= is_match;
             total += score;
         }
-        (has_matches, if has_matches { total / self.chunks.len() as f64 } else { 1.0 })
+        (
+            has_matches,
+            if has_matches {
+                total / self.chunks.len() as f64
+            } else {
+                1.0
+            },
+        )
     }
 }
 
@@ -135,16 +157,26 @@ fn index_of(text: &[u16], pattern: &[u16], from: usize) -> Option<usize> {
 
 /// Fuse's `bitapSearch` with the default options (`ignoreLocation: false`, `distance: 100`,
 /// `findAllMatches: false`, no match indices). Returns `(isMatch, score)`.
-fn bitap(text: &[u16], pattern: &[u16], alphabet: &HashMap<u16, i32>, location: usize) -> (bool, f64) {
+fn bitap(
+    text: &[u16],
+    pattern: &[u16],
+    alphabet: &HashMap<u16, i32>,
+    location: usize,
+) -> (bool, f64) {
     let pattern_len = pattern.len();
     let text_len = text.len();
     let expected = location.min(text_len) as i64;
     let mut threshold = THRESHOLD;
 
-    let calc = |errors: usize, at: i64| -> f64 { errors as f64 / pattern_len as f64 + (expected - at).abs() as f64 / DISTANCE };
+    let calc = |errors: usize, at: i64| -> f64 {
+        errors as f64 / pattern_len as f64 + (expected - at).abs() as f64 / DISTANCE
+    };
 
     let mut best_location = expected;
-    while let Some(index) = usize::try_from(best_location).ok().and_then(|from| index_of(text, pattern, from)) {
+    while let Some(index) = usize::try_from(best_location)
+        .ok()
+        .and_then(|from| index_of(text, pattern, from))
+    {
         threshold = threshold.min(calc(0, index as i64));
         best_location = (index + pattern_len) as i64;
     }
@@ -173,12 +205,22 @@ fn bitap(text: &[u16], pattern: &[u16], alphabet: &HashMap<u16, i32>, location: 
         let mut bits = vec![0i32; finish as usize + 2];
         bits[finish as usize + 1] = 1i32.wrapping_shl(i as u32).wrapping_sub(1);
 
-        let last = |idx: i64| -> i32 { usize::try_from(idx).ok().and_then(|u| last_bits.get(u)).copied().unwrap_or(0) };
+        let last = |idx: i64| -> i32 {
+            usize::try_from(idx)
+                .ok()
+                .and_then(|u| last_bits.get(u))
+                .copied()
+                .unwrap_or(0)
+        };
 
         let mut j = finish;
         while j >= start {
             let at = j - 1;
-            let char_match = text.get(at as usize).and_then(|c| alphabet.get(c)).copied().unwrap_or(0);
+            let char_match = text
+                .get(at as usize)
+                .and_then(|c| alphabet.get(c))
+                .copied()
+                .unwrap_or(0);
             let ju = j as usize;
             bits[ju] = (bits[ju + 1].wrapping_shl(1) | 1) & char_match;
             if i > 0 {

@@ -1,5 +1,5 @@
 //! The single error type of the server. Non-2xx answers are `{ "error": true, "message": "..." }`,
-//! except the two shapes Hono produces on its own (plain-text 401 and 500).
+//! except the two plain-text shapes (401 and 500).
 
 use axum::Json;
 use axum::http::{StatusCode, header};
@@ -10,7 +10,7 @@ use br_core::CoreError;
 pub enum ApiError {
     /// `{ error: true, message }` with the given status.
     Json(StatusCode, String),
-    /// Hono's default for an uncaught exception (bad JSON body, DB failure, ...).
+    /// Default for an uncaught exception (bad JSON body, DB failure, ...).
     Internal(String),
 }
 
@@ -33,7 +33,11 @@ impl From<CoreError> for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         match self {
-            Self::Json(status, message) => (status, Json(serde_json::json!({ "error": true, "message": message }))).into_response(),
+            Self::Json(status, message) => (
+                status,
+                Json(serde_json::json!({ "error": true, "message": message })),
+            )
+                .into_response(),
             Self::Internal(detail) => {
                 tracing::error!(%detail, "request failed");
                 text(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
@@ -42,7 +46,12 @@ impl IntoResponse for ApiError {
     }
 }
 
-/// Plain-text reply with Hono's content type.
+/// Plain-text reply.
 pub fn text(status: StatusCode, body: &'static str) -> Response {
-    (status, [(header::CONTENT_TYPE, "text/plain; charset=UTF-8")], body).into_response()
+    (
+        status,
+        [(header::CONTENT_TYPE, "text/plain; charset=UTF-8")],
+        body,
+    )
+        .into_response()
 }

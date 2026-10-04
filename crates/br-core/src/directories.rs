@@ -1,5 +1,5 @@
 //! `GET /api/directories`: every folder under the download dir and library roots.
-//! Port of `FileSystemModel.getDirectoriesUnder`.
+//! Directory listing under the library roots.
 
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
@@ -26,7 +26,9 @@ pub fn directories_under(roots: &[String], cwd: &str) -> Vec<String> {
 }
 
 fn recurse(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(read) = std::fs::read_dir(dir) else { return };
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut names: Vec<String> = read
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
@@ -95,13 +97,30 @@ mod tests {
         }
         std::fs::write(root.join("file.cbz"), b"").unwrap();
         let root_s = root.to_string_lossy().into_owned();
-        let got = directories_under(&[root_s.clone(), root_s.clone(), "Z:\\definitely\\missing".into()], &root_s);
+        let got = directories_under(
+            &[
+                root_s.clone(),
+                root_s.clone(),
+                "Z:\\definitely\\missing".into(),
+            ],
+            &root_s,
+        );
         let rel: Vec<String> = got
             .iter()
-            .map(|p| p.strip_prefix(&crate::uid::resolve_windows(&root_s, &root_s)).unwrap_or(p).to_string())
+            .map(|p| {
+                p.strip_prefix(&crate::uid::resolve_windows(&root_s, &root_s))
+                    .unwrap_or(p)
+                    .to_string()
+            })
             .collect();
         assert_eq!(rel[0], "");
-        assert_eq!(rel[1..5].iter().map(|s| s.trim_start_matches(['\\', '/']).replace('\\', "/")).collect::<Vec<_>>(), ["a", "a/x", "b", "b/nested"]);
+        assert_eq!(
+            rel[1..5]
+                .iter()
+                .map(|s| s.trim_start_matches(['\\', '/']).replace('\\', "/"))
+                .collect::<Vec<_>>(),
+            ["a", "a/x", "b", "b/nested"]
+        );
         assert!(got.last().unwrap().contains("missing"));
     }
 }

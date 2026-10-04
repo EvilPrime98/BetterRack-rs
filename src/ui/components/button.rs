@@ -1,8 +1,8 @@
 //! `BRButton` (`components/br-button`): 34 px tall, 4 px radius, 13 px / 600.
 
 use gpui::{
-    App, ClickEvent, ElementId, InteractiveElement, ParentElement, SharedString,
-    Stateful, StatefulInteractiveElement, Styled, Window, div, px, rgb,
+    App, ClickEvent, ElementId, InteractiveElement, ParentElement, SharedString, Stateful,
+    StatefulInteractiveElement, Styled, Window, div, px, rgb,
 };
 
 use crate::ui::theme;

@@ -2,29 +2,29 @@
 //! (`components/*-modal`), hosted by one global entity like the confirm dialog:
 //! `modals::open_new_folder(cx, parent)`, `modals::open_move_file(cx, uid)`,
 //! `modals::open_link_picker(cx, links, title, on_done)` and `modals::open_download_dir(cx, on_done)`
-//! from anywhere. The two pickers answer through a callback (`None` = dismissed), which stands in
-//! for the promises of the React context providers.
+//! from anywhere. The two pickers answer through a callback (`None` = dismissed).
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
-    AppContext as _, App, Context, Entity, FocusHandle, Focusable, Global, InteractiveElement,
+    App, AppContext as _, Context, Entity, FocusHandle, Focusable, Global, InteractiveElement,
     IntoElement, MouseButton, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, StyledImage as _, Subscription, Window, actions, div, img, prelude::*, px, rgb, uniform_list,
+    Styled, StyledImage as _, Subscription, Window, actions, div, img, prelude::*, px, rgb,
+    uniform_list,
 };
 
 use crate::model::{DEFAULT_IMAGE_SIZE, LibraryGroup, MetaSource, StoreLink, WikiComic, json_text};
-use crate::state::thumbnails::Thumb;
 use crate::platform::server_config;
-use crate::ui::confirm::{self, ConfirmOptions};
 use crate::runtime;
 use crate::state::Stores;
 use crate::state::directories::filter_dirs;
+use crate::state::thumbnails::Thumb;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::checkbox::checkbox;
 use crate::ui::components::text_input::{TextInput, TextInputEvent};
+use crate::ui::confirm::{self, ConfirmOptions};
 use crate::ui::icons::{Icon, icon};
 use crate::ui::theme;
 
@@ -102,10 +102,16 @@ pub fn move_destinations(groups: &[LibraryGroup], moving: &str) -> Vec<Destinati
 }
 
 /// Destinations passing the search box and the "Sub-folders" toggle.
-pub fn filter_destinations<'a>(all: &'a [Destination], query: &str, subfolders: bool) -> Vec<&'a Destination> {
+pub fn filter_destinations<'a>(
+    all: &'a [Destination],
+    query: &str,
+    subfolders: bool,
+) -> Vec<&'a Destination> {
     let q = query.trim().to_lowercase();
     all.iter()
-        .filter(|d| (subfolders || !d.nested) && (q.is_empty() || d.path.to_lowercase().contains(&q)))
+        .filter(|d| {
+            (subfolders || !d.nested) && (q.is_empty() || d.path.to_lowercase().contains(&q))
+        })
         .collect()
 }
 
@@ -119,7 +125,7 @@ enum DirList {
     Ready(Rc<Vec<String>>),
 }
 
-/// What the identify modal lists (`suggestions` + `isSearching` in the React component).
+/// What the identify modal lists.
 enum Suggestions {
     Idle,
     Searching,
@@ -128,13 +134,40 @@ enum Suggestions {
 }
 
 enum Modal {
-    NewFolder { parent: Option<String>, input: Entity<TextInput> },
-    MoveFile { uid: String, all: Rc<Vec<Destination>>, search: Entity<TextInput>, subfolders: bool },
-    LinkPicker { title: String, links: Rc<Vec<StoreLink>>, on_done: Option<PickLink> },
-    DownloadDir { dirs: DirList, search: Entity<TextInput>, subfolders: bool, on_done: Option<PickDir> },
-    Identify { uid: String, input: Entity<TextInput>, results: Suggestions },
+    NewFolder {
+        parent: Option<String>,
+        input: Entity<TextInput>,
+    },
+    MoveFile {
+        uid: String,
+        all: Rc<Vec<Destination>>,
+        search: Entity<TextInput>,
+        subfolders: bool,
+    },
+    LinkPicker {
+        title: String,
+        links: Rc<Vec<StoreLink>>,
+        on_done: Option<PickLink>,
+    },
+    DownloadDir {
+        dirs: DirList,
+        search: Entity<TextInput>,
+        subfolders: bool,
+        on_done: Option<PickDir>,
+    },
+    Identify {
+        uid: String,
+        input: Entity<TextInput>,
+        results: Suggestions,
+    },
     /// `ServerModal`: connect to a remote server, or go back to the local one.
-    Server { url: Entity<TextInput>, key: Entity<TextInput>, remote: bool, error: String, busy: bool },
+    Server {
+        url: Entity<TextInput>,
+        key: Entity<TextInput>,
+        remote: bool,
+        error: String,
+        busy: bool,
+    },
 }
 
 pub struct ModalHost {
@@ -154,7 +187,14 @@ impl Global for ModalGlobal {}
 
 pub fn init(cx: &mut App) -> Entity<ModalHost> {
     cx.bind_keys([gpui::KeyBinding::new("escape", CloseModal, Some("Modal"))]);
-    let host = cx.new(|cx| ModalHost { modal: None, needs_focus: false, dir_request: 0, ident_request: 0, focus: cx.focus_handle(), _subs: Vec::new() });
+    let host = cx.new(|cx| ModalHost {
+        modal: None,
+        needs_focus: false,
+        dir_request: 0,
+        ident_request: 0,
+        focus: cx.focus_handle(),
+        _subs: Vec::new(),
+    });
     cx.set_global(ModalGlobal(host.clone()));
     host
 }
@@ -169,11 +209,13 @@ pub fn open_new_folder(cx: &mut App, parent: Option<String>) {
     host.update(cx, |h, cx| {
         h.close(cx);
         let input = cx.new(|cx| TextInput::new("Folder name", cx));
-        h._subs = vec![cx.subscribe(&input, |this, _, ev: &TextInputEvent, cx| match ev {
-            TextInputEvent::Submit => this.submit_new_folder(cx),
-            TextInputEvent::Cancel => this.close(cx),
-            TextInputEvent::Changed => {}
-        })];
+        h._subs = vec![
+            cx.subscribe(&input, |this, _, ev: &TextInputEvent, cx| match ev {
+                TextInputEvent::Submit => this.submit_new_folder(cx),
+                TextInputEvent::Cancel => this.close(cx),
+                TextInputEvent::Changed => {}
+            }),
+        ];
         h.modal = Some(Modal::NewFolder { parent, input });
         h.needs_focus = true;
         cx.notify();
@@ -183,17 +225,26 @@ pub fn open_new_folder(cx: &mut App, parent: Option<String>) {
 /// `openMoveFileModal(uid, name)`.
 pub fn open_move_file(cx: &mut App, uid: String) {
     let Some(host) = host(cx) else { return };
-    let Some(stores) = cx.try_global::<Stores>().cloned() else { return };
+    let Some(stores) = cx.try_global::<Stores>().cloned() else {
+        return;
+    };
     let all = Rc::new(move_destinations(&stores.library.read(cx).groups, &uid));
     host.update(cx, |h, cx| {
         h.close(cx);
         let search = cx.new(|cx| TextInput::new("Search folders...", cx));
-        h._subs = vec![cx.subscribe(&search, |this, _, ev: &TextInputEvent, cx| match ev {
-            TextInputEvent::Changed => cx.notify(),
-            TextInputEvent::Cancel => this.close(cx),
-            TextInputEvent::Submit => {}
-        })];
-        h.modal = Some(Modal::MoveFile { uid, all, search, subfolders: true });
+        h._subs = vec![
+            cx.subscribe(&search, |this, _, ev: &TextInputEvent, cx| match ev {
+                TextInputEvent::Changed => cx.notify(),
+                TextInputEvent::Cancel => this.close(cx),
+                TextInputEvent::Submit => {}
+            }),
+        ];
+        h.modal = Some(Modal::MoveFile {
+            uid,
+            all,
+            search,
+            subfolders: true,
+        });
         h.needs_focus = true;
         cx.notify();
     });
@@ -206,11 +257,16 @@ pub fn open_server(cx: &mut App, _mandatory: bool) {
     let config = server_config::current().clone();
     host.update(cx, |h, cx| {
         h.close(cx);
-        let url = cx.new(|cx| TextInput::new("192.168.1.100:3000", cx).with_value(config.url.clone()));
+        let url =
+            cx.new(|cx| TextInput::new("192.168.1.100:3000", cx).with_value(config.url.clone()));
         let key = cx.new(|cx| {
-            TextInput::new("API key (optional)", cx).with_value(server_config::api_key().unwrap_or_default())
+            TextInput::new("API key (optional)", cx)
+                .with_value(server_config::api_key().unwrap_or_default())
         });
-        let on_event = |this: &mut ModalHost, _: Entity<TextInput>, ev: &TextInputEvent, cx: &mut Context<ModalHost>| {
+        let on_event = |this: &mut ModalHost,
+                        _: Entity<TextInput>,
+                        ev: &TextInputEvent,
+                        cx: &mut Context<ModalHost>| {
             match ev {
                 TextInputEvent::Submit => this.submit_server(cx),
                 TextInputEvent::Cancel => this.close(cx),
@@ -218,7 +274,13 @@ pub fn open_server(cx: &mut App, _mandatory: bool) {
             }
         };
         h._subs = vec![cx.subscribe(&url, on_event), cx.subscribe(&key, on_event)];
-        h.modal = Some(Modal::Server { url, key, remote: config.remote, error: String::new(), busy: false });
+        h.modal = Some(Modal::Server {
+            url,
+            key,
+            remote: config.remote,
+            error: String::new(),
+            busy: false,
+        });
         h.needs_focus = true;
         cx.notify();
     });
@@ -238,7 +300,11 @@ pub fn open_link_picker(
     };
     host.update(cx, |h, cx| {
         h.close(cx);
-        h.modal = Some(Modal::LinkPicker { title, links: Rc::new(links), on_done: Some(Box::new(on_done)) });
+        h.modal = Some(Modal::LinkPicker {
+            title,
+            links: Rc::new(links),
+            on_done: Some(Box::new(on_done)),
+        });
         h.needs_focus = true;
         cx.notify();
     });
@@ -256,19 +322,27 @@ pub fn open_download_dir(cx: &mut App, on_done: impl FnOnce(Option<String>, &mut
     host.update(cx, |h, cx| {
         h.close(cx);
         let search = cx.new(|cx| TextInput::new("Search folders...", cx));
-        h._subs = vec![cx.subscribe(&search, |this, _, ev: &TextInputEvent, cx| match ev {
-            TextInputEvent::Changed => cx.notify(),
-            TextInputEvent::Cancel => this.close(cx),
-            TextInputEvent::Submit => {}
-        })];
+        h._subs = vec![
+            cx.subscribe(&search, |this, _, ev: &TextInputEvent, cx| match ev {
+                TextInputEvent::Changed => cx.notify(),
+                TextInputEvent::Cancel => this.close(cx),
+                TextInputEvent::Submit => {}
+            }),
+        ];
         let dirs = cached.map_or(DirList::Loading, |d| DirList::Ready(Rc::new(d)));
-        h.modal = Some(Modal::DownloadDir { dirs, search, subfolders: true, on_done: Some(Box::new(on_done)) });
+        h.modal = Some(Modal::DownloadDir {
+            dirs,
+            search,
+            subfolders: true,
+            on_done: Some(Box::new(on_done)),
+        });
         h.needs_focus = true;
         h.dir_request += 1;
         let request = h.dir_request;
         cx.spawn(async move |this, cx| {
             let result = refresh.await;
-            this.update(cx, |h, cx| h.set_dirs(request, result, cx)).ok();
+            this.update(cx, |h, cx| h.set_dirs(request, result, cx))
+                .ok();
         })
         .detach();
         cx.notify();
@@ -282,17 +356,23 @@ pub fn open_identify(cx: &mut App, uid: String) {
     host.update(cx, |h, cx| {
         h.close(cx);
         let input = cx.new(|cx| TextInput::new("Search a comic..", cx));
-        let mut subs = vec![cx.subscribe(&input, |this, _, ev: &TextInputEvent, cx| match ev {
-            TextInputEvent::Changed => this.identify_query_changed(cx),
-            TextInputEvent::Cancel => this.close(cx),
-            TextInputEvent::Submit => {}
-        })];
+        let mut subs = vec![
+            cx.subscribe(&input, |this, _, ev: &TextInputEvent, cx| match ev {
+                TextInputEvent::Changed => this.identify_query_changed(cx),
+                TextInputEvent::Cancel => this.close(cx),
+                TextInputEvent::Submit => {}
+            }),
+        ];
         // Suggestion covers arrive asynchronously.
         if let Some(thumbs) = thumbs {
             subs.push(cx.observe(&thumbs, |_, _, cx| cx.notify()));
         }
         h._subs = subs;
-        h.modal = Some(Modal::Identify { uid, input, results: Suggestions::Idle });
+        h.modal = Some(Modal::Identify {
+            uid,
+            input,
+            results: Suggestions::Idle,
+        });
         h.needs_focus = true;
         cx.notify();
     });
@@ -312,7 +392,9 @@ pub fn dev_prefill_identify(cx: &mut App, query: &str) {
 impl ModalHost {
     /// Debounced (500 ms) wiki search; a newer keystroke, or closing, drops the older answer.
     fn identify_query_changed(&mut self, cx: &mut Context<Self>) {
-        let Some(Modal::Identify { input, results, .. }) = &mut self.modal else { return };
+        let Some(Modal::Identify { input, results, .. }) = &mut self.modal else {
+            return;
+        };
         let query = input.read(cx).value().trim().to_string();
         self.ident_request += 1;
         let request = self.ident_request;
@@ -321,11 +403,16 @@ impl ModalHost {
             cx.notify();
             return;
         }
-        let Some(client) = cx.try_global::<Stores>().and_then(|s| s.library.read(cx).client.clone()) else {
+        let Some(client) = cx
+            .try_global::<Stores>()
+            .and_then(|s| s.library.read(cx).client.clone())
+        else {
             return;
         };
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(500)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(500))
+                .await;
             let current = this
                 .update(cx, |h, cx| {
                     if h.ident_request != request {
@@ -342,17 +429,29 @@ impl ModalHost {
             if !current {
                 return;
             }
-            let found = runtime::run(async move { client.wiki_search(&query, DEFAULT_IMAGE_SIZE).await }).await;
-            this.update(cx, |h, cx| h.set_suggestions(request, found.map_err(|e| e.to_string()), cx)).ok();
+            let found =
+                runtime::run(async move { client.wiki_search(&query, DEFAULT_IMAGE_SIZE).await })
+                    .await;
+            this.update(cx, |h, cx| {
+                h.set_suggestions(request, found.map_err(|e| e.to_string()), cx)
+            })
+            .ok();
         })
         .detach();
     }
 
-    fn set_suggestions(&mut self, request: u64, found: Result<Vec<WikiComic>, String>, cx: &mut Context<Self>) {
+    fn set_suggestions(
+        &mut self,
+        request: u64,
+        found: Result<Vec<WikiComic>, String>,
+        cx: &mut Context<Self>,
+    ) {
         if request != self.ident_request {
             return;
         }
-        let Some(Modal::Identify { results, .. }) = &mut self.modal else { return };
+        let Some(Modal::Identify { results, .. }) = &mut self.modal else {
+            return;
+        };
         *results = match found {
             Ok(comics) => {
                 if let Some(stores) = cx.try_global::<Stores>().cloned() {
@@ -374,20 +473,30 @@ impl ModalHost {
 
     /// Commit a pick: the card updates at once; a failed commit rolls back with an error toast.
     fn pick_comic(&mut self, comic: WikiComic, cx: &mut Context<Self>) {
-        let Some(Modal::Identify { uid, .. }) = &self.modal else { return };
+        let Some(Modal::Identify { uid, .. }) = &self.modal else {
+            return;
+        };
         let uid = uid.clone();
         self.close(cx);
-        let Some(stores) = cx.try_global::<Stores>().cloned() else { return };
-        let Some(client) = stores.library.read(cx).client.clone() else { return };
+        let Some(stores) = cx.try_global::<Stores>().cloned() else {
+            return;
+        };
+        let Some(client) = stores.library.read(cx).client.clone() else {
+            return;
+        };
         let previous = stores.identify.read(cx).snapshot(&uid);
-        stores.identify.update(cx, |s, cx| s.set_identified(&uid, Some(comic.clone()), Some(MetaSource::Wiki), cx));
+        stores.identify.update(cx, |s, cx| {
+            s.set_identified(&uid, Some(comic.clone()), Some(MetaSource::Wiki), cx)
+        });
         cx.spawn(async move |_, cx| {
             let (id, c) = (uid.clone(), comic);
             let result = runtime::run(async move { client.identify_file(&id, &c).await }).await;
             cx.update(|cx| match result {
                 Ok(()) => crate::ui::toast::success(cx, "Comic identified"),
                 Err(e) => {
-                    stores.identify.update(cx, |s, cx| s.restore(&uid, previous, cx));
+                    stores
+                        .identify
+                        .update(cx, |s, cx| s.restore(&uid, previous, cx));
                     crate::ui::toast::error(cx, e.to_string());
                 }
             });
@@ -397,12 +506,17 @@ impl ModalHost {
 
     /// "Unidentify" button: confirm, then clear the metadata.
     fn unidentify(&mut self, cx: &mut Context<Self>) {
-        let Some(Modal::Identify { uid, .. }) = &self.modal else { return };
+        let Some(Modal::Identify { uid, .. }) = &self.modal else {
+            return;
+        };
         let uid = uid.clone();
         confirm::ask(
             cx,
-            ConfirmOptions::new("Un-identify comic?", "This will remove the identified metadata for this comic.")
-                .labels("Un-identify", "Cancel"),
+            ConfirmOptions::new(
+                "Un-identify comic?",
+                "This will remove the identified metadata for this comic.",
+            )
+            .labels("Un-identify", "Cancel"),
             move |answer, _, cx| {
                 if answer != Some(true) {
                     return;
@@ -411,7 +525,9 @@ impl ModalHost {
                     host.update(cx, |h, cx| h.close(cx));
                 }
                 if let Some(stores) = cx.try_global::<Stores>().cloned() {
-                    stores.library.update(cx, |s, cx| s.unidentify_file(uid, cx));
+                    stores
+                        .library
+                        .update(cx, |s, cx| s.unidentify_file(uid, cx));
                 }
             },
         );
@@ -425,17 +541,30 @@ impl ModalHost {
         // A dismissed picker answers `None` so the flow waiting on it can end. Deferred, so the
         // callback may open another modal.
         match modal {
-            Some(Modal::LinkPicker { on_done: Some(done), .. }) => cx.defer(move |cx| done(None, cx)),
-            Some(Modal::DownloadDir { on_done: Some(done), .. }) => cx.defer(move |cx| done(None, cx)),
+            Some(Modal::LinkPicker {
+                on_done: Some(done),
+                ..
+            }) => cx.defer(move |cx| done(None, cx)),
+            Some(Modal::DownloadDir {
+                on_done: Some(done),
+                ..
+            }) => cx.defer(move |cx| done(None, cx)),
             _ => {}
         }
     }
 
-    fn set_dirs(&mut self, request: u64, result: Result<Vec<String>, String>, cx: &mut Context<Self>) {
+    fn set_dirs(
+        &mut self,
+        request: u64,
+        result: Result<Vec<String>, String>,
+        cx: &mut Context<Self>,
+    ) {
         if request != self.dir_request {
             return;
         }
-        let Some(Modal::DownloadDir { dirs, .. }) = &mut self.modal else { return };
+        let Some(Modal::DownloadDir { dirs, .. }) = &mut self.modal else {
+            return;
+        };
         match (result, &*dirs) {
             (Ok(fresh), DirList::Ready(shown)) if **shown == fresh => return,
             (Ok(fresh), _) => *dirs = DirList::Ready(Rc::new(fresh)),
@@ -447,7 +576,9 @@ impl ModalHost {
     }
 
     fn pick_link(&mut self, link: StoreLink, cx: &mut Context<Self>) {
-        let Some(Modal::LinkPicker { on_done, .. }) = &mut self.modal else { return };
+        let Some(Modal::LinkPicker { on_done, .. }) = &mut self.modal else {
+            return;
+        };
         let done = on_done.take();
         self.close(cx);
         if let Some(done) = done {
@@ -456,7 +587,9 @@ impl ModalHost {
     }
 
     fn pick_dir(&mut self, dir: String, cx: &mut Context<Self>) {
-        let Some(Modal::DownloadDir { on_done, .. }) = &mut self.modal else { return };
+        let Some(Modal::DownloadDir { on_done, .. }) = &mut self.modal else {
+            return;
+        };
         let done = on_done.take();
         self.close(cx);
         if let Some(done) = done {
@@ -465,7 +598,9 @@ impl ModalHost {
     }
 
     fn submit_new_folder(&mut self, cx: &mut Context<Self>) {
-        let Some(Modal::NewFolder { parent, input }) = &self.modal else { return };
+        let Some(Modal::NewFolder { parent, input }) = &self.modal else {
+            return;
+        };
         let name = input.read(cx).value().trim().to_string();
         if name.is_empty() {
             return;
@@ -473,14 +608,25 @@ impl ModalHost {
         let parent = parent.clone();
         self.close(cx);
         if let Some(stores) = cx.try_global::<Stores>().cloned() {
-            stores.library.update(cx, |s, cx| s.create_folder(name, parent, cx));
+            stores
+                .library
+                .update(cx, |s, cx| s.create_folder(name, parent, cx));
         }
     }
 
     /// "Connect": remote on = check the server answers as BetterRack, save it (key to the keychain),
     /// relaunch. Remote off = back to the local sidecar.
     fn submit_server(&mut self, cx: &mut Context<Self>) {
-        let Some(Modal::Server { url, key, remote, error, busy }) = &mut self.modal else { return };
+        let Some(Modal::Server {
+            url,
+            key,
+            remote,
+            error,
+            busy,
+        }) = &mut self.modal
+        else {
+            return;
+        };
         if *busy {
             return;
         }
@@ -489,7 +635,10 @@ impl ModalHost {
             cx.defer(|cx| crate::app::unlink_server(cx));
             return;
         }
-        let (url, key) = (url.read(cx).value().trim().to_string(), key.read(cx).value().trim().to_string());
+        let (url, key) = (
+            url.read(cx).value().trim().to_string(),
+            key.read(cx).value().trim().to_string(),
+        );
         if url.is_empty() {
             *error = "Enter the server address.".into();
             cx.notify();
@@ -502,7 +651,8 @@ impl ModalHost {
             let check = {
                 let (url, key) = (url.clone(), key.clone());
                 runtime::run(async move {
-                    let client = crate::api::ApiClient::new(&url, Some(key)).map_err(|e| e.to_string())?;
+                    let client =
+                        crate::api::ApiClient::new(&url, Some(key)).map_err(|e| e.to_string())?;
                     match client.healthz().await {
                         Ok(h) if h.app == "betterrack" => Ok(()),
                         Ok(_) => Err("That server does not look like BetterRack.".to_string()),
@@ -533,7 +683,9 @@ impl ModalHost {
     fn move_to(&mut self, uid: String, target: Option<String>, cx: &mut Context<Self>) {
         self.close(cx);
         if let Some(stores) = cx.try_global::<Stores>().cloned() {
-            stores.library.update(cx, |s, cx| s.move_file(uid, target, cx));
+            stores
+                .library
+                .update(cx, |s, cx| s.move_file(uid, target, cx));
         }
     }
 
@@ -560,7 +712,12 @@ impl ModalHost {
     }
 
     fn note(text: impl Into<SharedString>) -> gpui::Div {
-        div().py(px(16.0)).text_center().text_size(px(13.0)).text_color(rgb(0x8f8f8f)).child(text.into())
+        div()
+            .py(px(16.0))
+            .text_center()
+            .text_size(px(13.0))
+            .text_color(rgb(0x8f8f8f))
+            .child(text.into())
     }
 
     fn field(input: &Entity<TextInput>) -> impl IntoElement {
@@ -585,7 +742,9 @@ impl Focusable for ModalHost {
 
 impl Render for ModalHost {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(modal) = &self.modal else { return div().into_any_element() };
+        let Some(modal) = &self.modal else {
+            return div().into_any_element();
+        };
         if self.needs_focus {
             self.needs_focus = false;
             match modal {
@@ -610,10 +769,16 @@ impl Render for ModalHost {
             }
         }
 
-        // The identify search sits near the top, like the command-palette style of the original.
+        // The identify search sits near the top, command-palette style.
         let top_aligned = matches!(modal, Modal::Identify { .. });
         let body = match modal {
-            Modal::Server { url, key, remote, error, busy } => {
+            Modal::Server {
+                url,
+                key,
+                remote,
+                error,
+                busy,
+            } => {
                 let this = cx.entity();
                 self.frame("Connect to your server", cx)
                     .child(
@@ -623,22 +788,37 @@ impl Render for ModalHost {
                             .child("Enter the address of the BetterRack server on your network."),
                     )
                     .child(Self::field(url))
-                    .child(checkbox("server-remote", "Use this as my library server", *remote, move |on, _, cx| {
-                        this.update(cx, |h, cx| {
-                            if let Some(Modal::Server { remote, .. }) = &mut h.modal {
-                                *remote = on;
-                                cx.notify();
-                            }
-                        })
-                    }))
+                    .child(checkbox(
+                        "server-remote",
+                        "Use this as my library server",
+                        *remote,
+                        move |on, _, cx| {
+                            this.update(cx, |h, cx| {
+                                if let Some(Modal::Server { remote, .. }) = &mut h.modal {
+                                    *remote = on;
+                                    cx.notify();
+                                }
+                            })
+                        },
+                    ))
                     .when(*remote, |s| s.child(Self::field(key)))
-                    .child(div().text_size(px(12.0)).text_color(theme::error()).child(error.clone()))
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .text_color(theme::error())
+                            .child(error.clone()),
+                    )
                     .child(
                         div()
                             .flex()
                             .justify_end()
                             .gap(px(8.0))
-                            .child(button("srv-cancel", "Cancel", ButtonVariant::Secondary, cx.listener(|this, _, _, cx| this.close(cx))))
+                            .child(button(
+                                "srv-cancel",
+                                "Cancel",
+                                ButtonVariant::Secondary,
+                                cx.listener(|this, _, _, cx| this.close(cx)),
+                            ))
                             .child(button(
                                 "srv-connect",
                                 if *busy { "Connecting…" } else { "Connect" },
@@ -656,18 +836,42 @@ impl Render for ModalHost {
                         .flex()
                         .justify_end()
                         .gap(px(8.0))
-                        .child(button("nf-cancel", "Cancel", ButtonVariant::Secondary, cx.listener(|this, _, _, cx| this.close(cx))))
-                        .child(button("nf-create", "Create", ButtonVariant::Classic, cx.listener(|this, _, _, cx| this.submit_new_folder(cx)))),
+                        .child(button(
+                            "nf-cancel",
+                            "Cancel",
+                            ButtonVariant::Secondary,
+                            cx.listener(|this, _, _, cx| this.close(cx)),
+                        ))
+                        .child(button(
+                            "nf-create",
+                            "Create",
+                            ButtonVariant::Classic,
+                            cx.listener(|this, _, _, cx| this.submit_new_folder(cx)),
+                        )),
                 )
                 .into_any_element(),
-            Modal::MoveFile { uid, all, search, subfolders } => {
+            Modal::MoveFile {
+                uid,
+                all,
+                search,
+                subfolders,
+            } => {
                 let query = search.read(cx).value().to_string();
-                let shown: Rc<Vec<Destination>> =
-                    Rc::new(filter_destinations(all, &query, *subfolders).into_iter().cloned().collect());
+                let shown: Rc<Vec<Destination>> = Rc::new(
+                    filter_destinations(all, &query, *subfolders)
+                        .into_iter()
+                        .cloned()
+                        .collect(),
+                );
                 let q = query.trim().to_lowercase();
                 let show_root = q.is_empty() || "library root".contains(&q);
-                let empty_note = (!show_root && shown.is_empty())
-                    .then(|| if all.is_empty() { "No folders yet." } else { "No folders match your search." });
+                let empty_note = (!show_root && shown.is_empty()).then(|| {
+                    if all.is_empty() {
+                        "No folders yet."
+                    } else {
+                        "No folders match your search."
+                    }
+                });
                 // Row 0 is "Library root" when it matches, then the folders.
                 let total = shown.len() + usize::from(show_root);
                 let moving = uid.clone();
@@ -679,13 +883,16 @@ impl Render for ModalHost {
                     cx.processor(move |_this, range: std::ops::Range<usize>, _w, cx| {
                         range
                             .map(|ix| {
-                                let (target, label, glyph_color): (Option<String>, SharedString, _) =
-                                    if show_root && ix == 0 {
-                                        (None, "Library root".into(), theme::accent())
-                                    } else {
-                                        let d = &rows[ix - usize::from(show_root)];
-                                        (Some(d.uid.clone()), d.path.clone().into(), rgb(0xc7c7c7))
-                                    };
+                                let (target, label, glyph_color): (
+                                    Option<String>,
+                                    SharedString,
+                                    _,
+                                ) = if show_root && ix == 0 {
+                                    (None, "Library root".into(), theme::accent())
+                                } else {
+                                    let d = &rows[ix - usize::from(show_root)];
+                                    (Some(d.uid.clone()), d.path.clone().into(), rgb(0xc7c7c7))
+                                };
                                 let moving = moving.clone();
                                 div()
                                     .id(SharedString::from(format!("move-target-{ix}")))
@@ -722,7 +929,9 @@ impl Render for ModalHost {
                                 let this = cx.entity();
                                 move |on, _, cx| {
                                     this.update(cx, |h, cx| {
-                                        if let Some(Modal::MoveFile { subfolders, .. }) = &mut h.modal {
+                                        if let Some(Modal::MoveFile { subfolders, .. }) =
+                                            &mut h.modal
+                                        {
                                             *subfolders = on;
                                             cx.notify();
                                         }
@@ -731,47 +940,61 @@ impl Render for ModalHost {
                             })),
                     )
                     .child(list)
-                    .children(empty_note.map(|n| {
-                        div().text_size(px(13.0)).text_color(rgb(0x9a9a9a)).child(n)
-                    }))
+                    .children(
+                        empty_note
+                            .map(|n| div().text_size(px(13.0)).text_color(rgb(0x9a9a9a)).child(n)),
+                    )
                     .into_any_element()
             }
             Modal::LinkPicker { title, links, .. } => {
-                let rows = links.iter().enumerate().map(|(ix, link)| {
-                    let picked = link.clone();
-                    div()
-                        .id(SharedString::from(format!("link-{ix}")))
-                        .flex()
-                        .items_center()
-                        .gap(px(10.0))
-                        .px(px(10.0))
-                        .py(px(9.0))
-                        .rounded(px(8.0))
-                        .cursor_pointer()
-                        .text_size(px(13.0))
-                        .text_color(rgb(0xe0e0e0))
-                        .hover(|s| s.bg(gpui::rgba(0xffffff0f)))
-                        .on_click(cx.listener(move |this, _, _, cx| this.pick_link(picked.clone(), cx)))
-                        .child(
+                let rows =
+                    links
+                        .iter()
+                        .enumerate()
+                        .map(|(ix, link)| {
+                            let picked = link.clone();
                             div()
-                                .flex_none()
-                                .min_w(px(22.0))
-                                .px(px(6.0))
-                                .py(px(2.0))
-                                .rounded(px(5.0))
-                                .bg(gpui::rgba(0x34c3d11f))
-                                .text_center()
-                                .text_size(px(10.0))
-                                .font_weight(gpui::FontWeight::BOLD)
-                                .text_color(theme::accent())
-                                .child((ix + 1).to_string()),
-                        )
-                        .child(div().min_w_0().truncate().child(link.title.clone()))
-                }).collect::<Vec<_>>();
+                                .id(SharedString::from(format!("link-{ix}")))
+                                .flex()
+                                .items_center()
+                                .gap(px(10.0))
+                                .px(px(10.0))
+                                .py(px(9.0))
+                                .rounded(px(8.0))
+                                .cursor_pointer()
+                                .text_size(px(13.0))
+                                .text_color(rgb(0xe0e0e0))
+                                .hover(|s| s.bg(gpui::rgba(0xffffff0f)))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.pick_link(picked.clone(), cx)
+                                }))
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .min_w(px(22.0))
+                                        .px(px(6.0))
+                                        .py(px(2.0))
+                                        .rounded(px(5.0))
+                                        .bg(gpui::rgba(0x34c3d11f))
+                                        .text_center()
+                                        .text_size(px(10.0))
+                                        .font_weight(gpui::FontWeight::BOLD)
+                                        .text_color(theme::accent())
+                                        .child((ix + 1).to_string()),
+                                )
+                                .child(div().min_w_0().truncate().child(link.title.clone()))
+                        })
+                        .collect::<Vec<_>>();
                 self.frame("Choose a link", cx)
                     .w(px(460.0))
                     .when(!title.is_empty(), |s| {
-                        s.child(div().truncate().text_size(px(12.0)).text_color(rgb(0x8f8f8f)).child(title.clone()))
+                        s.child(
+                            div()
+                                .truncate()
+                                .text_size(px(12.0))
+                                .text_color(rgb(0x8f8f8f))
+                                .child(title.clone()),
+                        )
                     })
                     .child(
                         div()
@@ -781,12 +1004,19 @@ impl Render for ModalHost {
                             .gap(px(2.0))
                             .max_h(px(320.0))
                             .overflow_y_scroll()
-                            .when(links.is_empty(), |s| s.child(Self::note("No links available.")))
+                            .when(links.is_empty(), |s| {
+                                s.child(Self::note("No links available."))
+                            })
                             .children(rows),
                     )
                     .into_any_element()
             }
-            Modal::DownloadDir { dirs, search, subfolders, .. } => {
+            Modal::DownloadDir {
+                dirs,
+                search,
+                subfolders,
+                ..
+            } => {
                 let query = search.read(cx).value().to_string();
                 let default_dir = cx
                     .try_global::<Stores>()
@@ -795,9 +1025,12 @@ impl Render for ModalHost {
                 let (shown, empty_note): (Rc<Vec<String>>, Option<&'static str>) = match dirs {
                     DirList::Loading => (Rc::default(), Some("Loading…")),
                     DirList::Failed(_) => (Rc::default(), None),
-                    DirList::Ready(all) if all.is_empty() => {
-                        (Rc::default(), Some("No directories available. Set a download or library folder in Settings."))
-                    }
+                    DirList::Ready(all) if all.is_empty() => (
+                        Rc::default(),
+                        Some(
+                            "No directories available. Set a download or library folder in Settings.",
+                        ),
+                    ),
                     DirList::Ready(all) => {
                         let shown = filter_dirs(all, &query, *subfolders);
                         let note = shown.is_empty().then_some("No folders match your search.");
@@ -832,7 +1065,9 @@ impl Render for ModalHost {
                                     .text_color(rgb(0xe0e0e0))
                                     .when(is_default, |s| s.bg(gpui::rgba(0x34c3d114)))
                                     .hover(|s| s.bg(gpui::rgba(0xffffff0f)))
-                                    .on_click(cx.listener(move |this, _, _, cx| this.pick_dir(chosen.clone(), cx)))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.pick_dir(chosen.clone(), cx)
+                                    }))
                                     .child(icon(Icon::Folder, px(14.0)).text_color(if is_default {
                                         theme::accent()
                                     } else {
@@ -871,7 +1106,9 @@ impl Render for ModalHost {
                                 let this = cx.entity();
                                 move |on, _, cx| {
                                     this.update(cx, |h, cx| {
-                                        if let Some(Modal::DownloadDir { subfolders, .. }) = &mut h.modal {
+                                        if let Some(Modal::DownloadDir { subfolders, .. }) =
+                                            &mut h.modal
+                                        {
                                             *subfolders = on;
                                             cx.notify();
                                         }
@@ -884,15 +1121,25 @@ impl Render for ModalHost {
                     .children(failed.map(Self::note))
                     .into_any_element()
             }
-            Modal::Identify { uid, input, results } => {
+            Modal::Identify {
+                uid,
+                input,
+                results,
+            } => {
                 let thumbs = cx.try_global::<Stores>().map(|s| s.thumbs.clone());
                 let list: gpui::AnyElement = match results {
                     Suggestions::Found(comics) if !comics.is_empty() => {
                         let rows = comics.iter().enumerate().map(|(ix, comic)| {
-                            let thumb = thumbs.as_ref().and_then(|t| t.read(cx).get(&comic.cover()).cloned());
+                            let thumb = thumbs
+                                .as_ref()
+                                .and_then(|t| t.read(cx).get(&comic.cover()).cloned());
                             let picked = comic.clone();
                             let issue = json_text(&comic.issue);
-                            let issue = if issue.is_empty() { issue } else { format!("#{issue}") };
+                            let issue = if issue.is_empty() {
+                                issue
+                            } else {
+                                format!("#{issue}")
+                            };
                             let meta = [json_text(&comic.volume), issue]
                                 .into_iter()
                                 .filter(|s| !s.is_empty())
@@ -906,9 +1153,9 @@ impl Render for ModalHost {
                                 .overflow_hidden()
                                 .bg(rgb(0x232222));
                             let cover = match thumb {
-                                Some(Thumb::Ready(image)) => {
-                                    cover.child(img(image).size_full().object_fit(gpui::ObjectFit::Cover))
-                                }
+                                Some(Thumb::Ready(image)) => cover.child(
+                                    img(image).size_full().object_fit(gpui::ObjectFit::Cover),
+                                ),
                                 _ => cover,
                             };
                             div()
@@ -921,7 +1168,9 @@ impl Render for ModalHost {
                                 .rounded(px(8.0))
                                 .cursor_pointer()
                                 .hover(|s| s.bg(gpui::rgba(0xffffff0f)))
-                                .on_click(cx.listener(move |this, _, _, cx| this.pick_comic(picked.clone(), cx)))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.pick_comic(picked.clone(), cx)
+                                }))
                                 .child(cover)
                                 .child(
                                     div()
@@ -963,10 +1212,14 @@ impl Render for ModalHost {
                         let text: SharedString = match other {
                             Suggestions::Searching => "Searching…".into(),
                             Suggestions::Failed(m) if !m.is_empty() => m.clone().into(),
-                            Suggestions::Found(_) | Suggestions::Failed(_) => "No comics found".into(),
+                            Suggestions::Found(_) | Suggestions::Failed(_) => {
+                                "No comics found".into()
+                            }
                             // Typing but still inside the debounce window: nothing to say yet.
                             Suggestions::Idle if !query.is_empty() => "".into(),
-                            Suggestions::Idle => format!("Start typing to search the wiki for item: {uid}").into(),
+                            Suggestions::Idle => {
+                                format!("Start typing to search the wiki for item: {uid}").into()
+                            }
                         };
                         Self::note(text).px(px(10.0)).into_any_element()
                     }
@@ -1044,7 +1297,10 @@ impl Render for ModalHost {
             .when(top_aligned, |s| s.pt(px(96.0)))
             .bg(gpui::rgba(0x0000008c))
             .occlude()
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.close(cx)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| this.close(cx)),
+            )
             .child(
                 div()
                     .id("modal-body")
@@ -1083,16 +1339,25 @@ mod tests {
     #[test]
     fn paths_are_group_then_ancestors() {
         assert_eq!(folder_path("g", &groups()), "Comics");
-        assert_eq!(folder_path("c", &groups()), "Comics / Batman / Year One / Deep");
+        assert_eq!(
+            folder_path("c", &groups()),
+            "Comics / Batman / Year One / Deep"
+        );
         assert_eq!(folder_path("d", &groups()), "Comics / Superman");
     }
 
     #[test]
     fn a_folder_cannot_move_into_its_own_subtree() {
-        let uids: Vec<_> = move_destinations(&groups(), "a").into_iter().map(|d| d.uid).collect();
+        let uids: Vec<_> = move_destinations(&groups(), "a")
+            .into_iter()
+            .map(|d| d.uid)
+            .collect();
         assert_eq!(uids, ["d"]);
         // A file excludes only itself (and files are not destinations anyway).
-        let uids: Vec<_> = move_destinations(&groups(), "f").into_iter().map(|d| d.uid).collect();
+        let uids: Vec<_> = move_destinations(&groups(), "f")
+            .into_iter()
+            .map(|d| d.uid)
+            .collect();
         assert_eq!(uids, ["a", "b", "c", "d"]);
     }
 
@@ -1102,7 +1367,10 @@ mod tests {
         // The search runs on the whole path, so the folder nested under "Year One" matches too.
         assert_eq!(filter_destinations(&all, "year", true).len(), 2);
         assert_eq!(filter_destinations(&all, "year", false).len(), 0);
-        let top: Vec<_> = filter_destinations(&all, "", false).iter().map(|d| d.uid.as_str()).collect();
+        let top: Vec<_> = filter_destinations(&all, "", false)
+            .iter()
+            .map(|d| d.uid.as_str())
+            .collect();
         assert_eq!(top, ["a", "d"]);
     }
 }

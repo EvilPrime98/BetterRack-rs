@@ -1,4 +1,4 @@
-//! Update check (`electron/update-check.ts`): on a packaged start, ask GitHub for the latest release
+//! Update check: on a packaged start, ask GitHub for the latest release
 //! and offer to download its installer. A skipped version is remembered and not offered again.
 //!
 //! Network parts must run on the Tokio runtime (see [`crate::runtime::run`]).
@@ -47,7 +47,11 @@ fn repo() -> String {
 fn parts(v: &str) -> [u64; 3] {
     let mut out = [0; 3];
     for (slot, piece) in out.iter_mut().zip(v.trim_start_matches('v').split('.')) {
-        *slot = piece.split(['-', '+']).next().and_then(|n| n.parse().ok()).unwrap_or(0);
+        *slot = piece
+            .split(['-', '+'])
+            .next()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0);
     }
     out
 }
@@ -66,8 +70,15 @@ fn pick(release: RawRelease, current: &str) -> Option<Update> {
     if release.draft || release.prerelease || !is_newer(&version, current) {
         return None;
     }
-    let asset = release.assets.into_iter().find(|a| a.name.to_lowercase().ends_with(asset_suffix()))?;
-    Some(Update { version, asset_name: asset.name, asset_url: asset.browser_download_url })
+    let asset = release
+        .assets
+        .into_iter()
+        .find(|a| a.name.to_lowercase().ends_with(asset_suffix()))?;
+    Some(Update {
+        version,
+        asset_name: asset.name,
+        asset_url: asset.browser_download_url,
+    })
 }
 
 /// `Some` when a newer, non-skipped release with a matching installer exists. Every failure is a
@@ -75,7 +86,10 @@ fn pick(release: RawRelease, current: &str) -> Option<Update> {
 pub async fn check(current: &str) -> Option<Update> {
     let result: Result<Option<Update>, reqwest::Error> = async {
         let resp = reqwest::Client::new()
-            .get(format!("https://api.github.com/repos/{}/releases/latest", repo()))
+            .get(format!(
+                "https://api.github.com/repos/{}/releases/latest",
+                repo()
+            ))
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", USER_AGENT)
             .timeout(Duration::from_secs(10))
@@ -99,11 +113,17 @@ pub async fn check(current: &str) -> Option<Update> {
 }
 
 fn skip_file() -> Option<PathBuf> {
-    Some(dirs::config_dir()?.join("BetterRack").join("skipped-update.txt"))
+    Some(
+        dirs::config_dir()?
+            .join("BetterRack")
+            .join("skipped-update.txt"),
+    )
 }
 
 fn skipped() -> Option<String> {
-    std::fs::read_to_string(skip_file()?).ok().map(|s| s.trim().to_string())
+    std::fs::read_to_string(skip_file()?)
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 /// "Skip this version".
@@ -136,10 +156,14 @@ pub async fn download(update: &Update) -> Result<PathBuf, String> {
     if !resp.status().is_success() {
         return Err(format!("download failed ({})", resp.status()));
     }
-    let mut out = tokio::fs::File::create(&path).await.map_err(|e| e.to_string())?;
+    let mut out = tokio::fs::File::create(&path)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut stream = resp.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        out.write_all(&chunk.map_err(|e| e.to_string())?).await.map_err(|e| e.to_string())?;
+        out.write_all(&chunk.map_err(|e| e.to_string())?)
+            .await
+            .map_err(|e| e.to_string())?;
     }
     out.flush().await.map_err(|e| e.to_string())?;
     tracing::info!("update {} downloaded to {}", update.version, path.display());
@@ -148,7 +172,11 @@ pub async fn download(update: &Update) -> Result<PathBuf, String> {
 
 /// Run the installer on Windows, reveal the file elsewhere.
 pub fn open_download(path: &std::path::Path) {
-    let target = if cfg!(windows) { Some(path) } else { path.parent() };
+    let target = if cfg!(windows) {
+        Some(path)
+    } else {
+        path.parent()
+    };
     if let Some(t) = target {
         if let Err(e) = open::that(t) {
             tracing::warn!("could not open {}: {e}", t.display());
@@ -185,6 +213,11 @@ mod tests {
         assert!(pick(release(false, true, vec![asset()]), "1.0.0").is_none());
         assert!(pick(release(false, false, vec![]), "1.0.0").is_none());
         assert!(pick(release(false, false, vec![asset()]), "2.0.0").is_none());
-        assert_eq!(pick(release(false, false, vec![asset()]), "1.0.0").unwrap().version, "2.0.0");
+        assert_eq!(
+            pick(release(false, false, vec![asset()]), "1.0.0")
+                .unwrap()
+                .version,
+            "2.0.0"
+        );
     }
 }

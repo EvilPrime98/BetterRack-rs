@@ -9,7 +9,7 @@ use br_core::directories::directories_under;
 use br_core::settings::AppSettings;
 use serde_json::{Map, Value, json};
 
-/// Hono's `c.req.json()` throws on a bad body and the app answers 500; keep that.
+/// A bad JSON body answers 500.
 fn json_object(body: &Bytes) -> Result<Map<String, Value>, ApiError> {
     match serde_json::from_slice::<Value>(body) {
         Ok(Value::Object(m)) => Ok(m),
@@ -23,10 +23,15 @@ pub async fn get_settings(State(s): State<AppState>) -> Result<Json<AppSettings>
 }
 
 /// `outputDirs` is stripped: library folders change only through `/library-folder`.
-pub async fn update_settings(State(s): State<AppState>, body: Bytes) -> Result<Json<AppSettings>, ApiError> {
+pub async fn update_settings(
+    State(s): State<AppState>,
+    body: Bytes,
+) -> Result<Json<AppSettings>, ApiError> {
     let mut partial = json_object(&body)?;
     partial.shift_remove("outputDirs");
-    Ok(Json(blocking(move || s.prefs.update_app_settings(&partial)).await?))
+    Ok(Json(
+        blocking(move || s.prefs.update_app_settings(&partial)).await?,
+    ))
 }
 
 fn folder_path(body: &Bytes) -> Result<String, ApiError> {
@@ -37,18 +42,26 @@ fn folder_path(body: &Bytes) -> Result<String, ApiError> {
     }
 }
 
-/// Resolved library roots (`LibraryModel.libPaths`), in the form the Bun server persists them.
+/// Resolved library roots (`LibraryModel.libPaths`), in the form they are persisted.
 fn library_paths(s: &AppState) -> br_core::Result<Vec<String>> {
     let cwd = s.config.data_dir.to_string_lossy().into_owned();
-    Ok(s.prefs.get_app_settings()?.output_dirs.iter().map(|p| br_core::uid::resolve_windows(p, &cwd)).collect())
+    Ok(s.prefs
+        .get_app_settings()?
+        .output_dirs
+        .iter()
+        .map(|p| br_core::uid::resolve_windows(p, &cwd))
+        .collect())
 }
 
 fn set_library_paths(s: &AppState, paths: Vec<String>) -> br_core::Result<AppSettings> {
-    s.prefs.update_app_settings(json!({ "outputDirs": paths }).as_object().unwrap())
+    s.prefs
+        .update_app_settings(json!({ "outputDirs": paths }).as_object().unwrap())
 }
 
-
-pub async fn add_library_folder(State(s): State<AppState>, body: Bytes) -> Result<Json<AppSettings>, ApiError> {
+pub async fn add_library_folder(
+    State(s): State<AppState>,
+    body: Bytes,
+) -> Result<Json<AppSettings>, ApiError> {
     let path = folder_path(&body)?;
     let scan_state = s.clone();
     let result = blocking(move || {
@@ -71,13 +84,19 @@ pub async fn add_library_folder(State(s): State<AppState>, body: Bytes) -> Resul
     result.map(Json).map_err(ApiError::bad_request)
 }
 
-pub async fn remove_library_folder(State(s): State<AppState>, body: Bytes) -> Result<Json<AppSettings>, ApiError> {
+pub async fn remove_library_folder(
+    State(s): State<AppState>,
+    body: Bytes,
+) -> Result<Json<AppSettings>, ApiError> {
     let path = folder_path(&body)?;
     let scan_state = s.clone();
     let settings = blocking(move || {
         let cwd = s.config.data_dir.to_string_lossy().into_owned();
         let resolved = br_core::uid::resolve_windows(&path, &cwd);
-        let paths = library_paths(&s)?.into_iter().filter(|p| *p != resolved).collect();
+        let paths = library_paths(&s)?
+            .into_iter()
+            .filter(|p| *p != resolved)
+            .collect();
         set_library_paths(&s, paths)
     })
     .await?;
@@ -85,23 +104,38 @@ pub async fn remove_library_folder(State(s): State<AppState>, body: Bytes) -> Re
     Ok(Json(settings))
 }
 
-pub async fn get_comic_data(State(s): State<AppState>) -> Result<Json<Map<String, Value>>, ApiError> {
+pub async fn get_comic_data(
+    State(s): State<AppState>,
+) -> Result<Json<Map<String, Value>>, ApiError> {
     Ok(Json(blocking(move || s.comic_data.get_all()).await?))
 }
 
-pub async fn patch_comic_data(State(s): State<AppState>, Path(uid): Path<String>, body: Bytes) -> Result<Json<Map<String, Value>>, ApiError> {
+pub async fn patch_comic_data(
+    State(s): State<AppState>,
+    Path(uid): Path<String>,
+    body: Bytes,
+) -> Result<Json<Map<String, Value>>, ApiError> {
     if uid.is_empty() {
         return Err(ApiError::bad_request("A valid uid is required."));
     }
     let partial = json_object(&body)?;
-    Ok(Json(blocking(move || s.comic_data.upsert(&uid, &partial)).await?))
+    Ok(Json(
+        blocking(move || s.comic_data.upsert(&uid, &partial)).await?,
+    ))
 }
 
 pub async fn directories(State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
     let dirs = blocking(move || {
         let settings = s.prefs.get_app_settings()?;
-        let roots: Vec<String> = Some(settings.download_dir).filter(|d| !d.is_empty()).into_iter().chain(settings.output_dirs).collect();
-        Ok(directories_under(&roots, &s.config.data_dir.to_string_lossy()))
+        let roots: Vec<String> = Some(settings.download_dir)
+            .filter(|d| !d.is_empty())
+            .into_iter()
+            .chain(settings.output_dirs)
+            .collect();
+        Ok(directories_under(
+            &roots,
+            &s.config.data_dir.to_string_lossy(),
+        ))
     })
     .await?;
     Ok(Json(json!({ "directories": dirs })))

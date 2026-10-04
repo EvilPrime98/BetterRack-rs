@@ -1,8 +1,8 @@
 //! `comic-data.sqlite` (`comic_data`): per-uid reading progress, rating and identified metadata.
 //!
-//! Rows are exposed as JSON objects (`TComicData` in the Bun source) rather than a struct, so the
+//! Rows are exposed as JSON objects rather than a struct, so the
 //! opaque `comic` payload and any extra keys a client sends round-trip untouched. Merge rules
-//! follow `ComicDataModel.upsert` exactly: `{uid, ...existing, ...partial}`, with `lastReadAt`
+//! are `{uid, ...existing, ...partial}`, with `lastReadAt`
 //! bumped only when `currentPage` or `readPer` changes.
 
 use crate::Result;
@@ -50,7 +50,12 @@ impl ComicDataStore {
                     last_read_at INTEGER
                 )",
             )?;
-            for col in ["identified INTEGER", "comic TEXT", "meta_source TEXT", "last_read_at INTEGER"] {
+            for col in [
+                "identified INTEGER",
+                "comic TEXT",
+                "meta_source TEXT",
+                "last_read_at INTEGER",
+            ] {
                 add_column_if_missing(&c, "comic_data", col);
             }
         }
@@ -71,7 +76,10 @@ impl ComicDataStore {
 
     pub fn get_by_uid(&self, uid: &str) -> Result<Option<ComicRecord>> {
         let c = self.db.conn();
-        Ok(c.query_row(&format!("{SELECT} WHERE uid = ?1"), [uid], row_to_record).optional()?)
+        Ok(
+            c.query_row(&format!("{SELECT} WHERE uid = ?1"), [uid], row_to_record)
+                .optional()?,
+        )
     }
 
     pub fn upsert(&self, uid: &str, partial: &ComicRecord) -> Result<ComicRecord> {
@@ -87,9 +95,9 @@ impl ComicDataStore {
             }
         }
 
-        let changed = ["currentPage", "readPer"].iter().any(|k| {
-            !js_strict_eq(merged.get(*k), existing.as_ref().and_then(|e| e.get(*k)))
-        });
+        let changed = ["currentPage", "readPer"]
+            .iter()
+            .any(|k| !js_strict_eq(merged.get(*k), existing.as_ref().and_then(|e| e.get(*k))));
         let last_read = if changed {
             Some(Value::from(now_ms()))
         } else {
@@ -154,7 +162,10 @@ impl ComicDataStore {
 }
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// JS truthiness for the values that can reach `merged.comic ? ... : null`.
@@ -182,7 +193,10 @@ fn js_strict_eq(a: Option<&Value>, b: Option<&Value>) -> bool {
 fn plain(v: Option<&Value>) -> Sql {
     match v {
         Some(Value::Bool(b)) => Sql::Integer(*b as i64),
-        Some(Value::Number(n)) => n.as_i64().map(Sql::Integer).unwrap_or_else(|| Sql::Real(n.as_f64().unwrap_or(0.0))),
+        Some(Value::Number(n)) => n
+            .as_i64()
+            .map(Sql::Integer)
+            .unwrap_or_else(|| Sql::Real(n.as_f64().unwrap_or(0.0))),
         Some(Value::String(s)) => Sql::Text(s.clone()),
         _ => Sql::Null,
     }
@@ -212,9 +226,18 @@ fn row_to_record(r: &rusqlite::Row<'_>) -> rusqlite::Result<ComicRecord> {
         }
     };
     put("prefId", num(r.get(1)?));
-    put("sourceWiki", r.get::<_, Option<String>>(2)?.map(Value::from));
-    put("metaSource", r.get::<_, Option<String>>(3)?.map(Value::from));
-    put("identified", r.get::<_, Option<i64>>(5)?.map(|i| Value::Bool(i != 0)));
+    put(
+        "sourceWiki",
+        r.get::<_, Option<String>>(2)?.map(Value::from),
+    );
+    put(
+        "metaSource",
+        r.get::<_, Option<String>>(3)?.map(Value::from),
+    );
+    put(
+        "identified",
+        r.get::<_, Option<i64>>(5)?.map(|i| Value::Bool(i != 0)),
+    );
     // JS: `row.comic ? JSON.parse(row.comic) : undefined`. Unparseable text would throw there; skip it here.
     put(
         "comic",
@@ -229,10 +252,17 @@ fn row_to_record(r: &rusqlite::Row<'_>) -> rusqlite::Result<ComicRecord> {
     put(
         "readPer",
         r.get::<_, Option<f64>>(9)?.map(|f| {
-            if f.fract() == 0.0 && f.abs() < 9e15 { Value::from(f as i64) } else { Number::from_f64(f).map_or(Value::Null, Value::Number) }
+            if f.fract() == 0.0 && f.abs() < 9e15 {
+                Value::from(f as i64)
+            } else {
+                Number::from_f64(f).map_or(Value::Null, Value::Number)
+            }
         }),
     );
-    put("read", r.get::<_, Option<i64>>(10)?.map(|i| Value::Bool(i != 0)));
+    put(
+        "read",
+        r.get::<_, Option<i64>>(10)?.map(|i| Value::Bool(i != 0)),
+    );
     put("lastReadAt", num(r.get(11)?));
     Ok(m)
 }
@@ -253,13 +283,17 @@ mod tests {
         assert_eq!(a["rating"], 4);
         assert!(!a.contains_key("lastReadAt"));
 
-        let b = s.upsert("u1", &obj(json!({"currentPage": 3, "readPer": 0.5}))).unwrap();
+        let b = s
+            .upsert("u1", &obj(json!({"currentPage": 3, "readPer": 0.5})))
+            .unwrap();
         assert_eq!(b["rating"], 4);
         let stamp = b["lastReadAt"].as_i64().unwrap();
         assert!(stamp > 0);
 
         // Unchanged progress keeps the old timestamp.
-        let c = s.upsert("u1", &obj(json!({"rating": 5, "currentPage": 3}))).unwrap();
+        let c = s
+            .upsert("u1", &obj(json!({"rating": 5, "currentPage": 3})))
+            .unwrap();
         assert_eq!(c["lastReadAt"].as_i64().unwrap(), stamp);
         assert_eq!(s.get_by_uid("u1").unwrap().unwrap(), c);
     }
@@ -288,7 +322,9 @@ mod tests {
         s.reset_identification().unwrap();
         let r = s.get_by_uid("u").unwrap().unwrap();
         assert_eq!(r["rating"], 3);
-        assert!(!r.contains_key("identified") && !r.contains_key("comic") && !r.contains_key("prefId"));
+        assert!(
+            !r.contains_key("identified") && !r.contains_key("comic") && !r.contains_key("prefId")
+        );
     }
 
     #[test]
@@ -302,7 +338,11 @@ mod tests {
             .unwrap();
         let s = ComicDataStore::open(&path).unwrap();
         let r = s.get_by_uid("old").unwrap().unwrap();
-        assert_eq!((r["rating"].as_i64(), r["read"].as_bool()), (Some(2), Some(true)));
-        s.upsert("old", &obj(json!({"identified": true, "comic": {"a": 1}}))).unwrap();
+        assert_eq!(
+            (r["rating"].as_i64(), r["read"].as_bool()),
+            (Some(2), Some(true))
+        );
+        s.upsert("old", &obj(json!({"identified": true, "comic": {"a": 1}})))
+            .unwrap();
     }
 }

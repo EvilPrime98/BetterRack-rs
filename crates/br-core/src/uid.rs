@@ -1,4 +1,4 @@
-//! Entry uid, compatible with the Bun server's `LibraryModel.uidFromPath`.
+//! Entry uid, stable across versions (derived from the resolved path).
 //!
 //! `uid = sha256(path.resolve(p))` as hex, sliced into a UUID-shaped string. Existing user data
 //! (progress, ratings, identified metadata) is keyed by it, so the hashed string must match
@@ -27,7 +27,7 @@ pub fn uid_from_path(abs_path: &str) -> String {
     )
 }
 
-/// Port of Node's `path.resolve(p)` for the Windows flavour: backslashes, `.`/`..` collapsed,
+/// Resolve `p` like Node's `path.resolve(p)` for the Windows flavour: backslashes, `.`/`..` collapsed,
 /// no trailing separator (except a bare root like `C:\`), no `\\?\` prefix, drive-letter case
 /// kept as given. `cwd` is used for relative inputs.
 pub fn resolve_windows(input: &str, cwd: &str) -> String {
@@ -54,7 +54,10 @@ pub fn resolve_windows(input: &str, cwd: &str) -> String {
         let mut it = r.splitn(3, SEP);
         let server = it.next().unwrap_or("");
         let share = it.next().unwrap_or("");
-        (format!(r"\\{server}\{share}\"), it.next().unwrap_or("").to_string())
+        (
+            format!(r"\\{server}\{share}\"),
+            it.next().unwrap_or("").to_string(),
+        )
     } else {
         (full[..3].to_string(), full[3..].to_string())
     };
@@ -77,11 +80,13 @@ pub fn resolve_windows(input: &str, cwd: &str) -> String {
     }
 }
 
-/// Resolve a filesystem path the way the Bun server would on this platform.
+/// Resolve a filesystem path the way the uid derivation expects on this platform.
 pub fn resolve(path: &Path) -> String {
     #[cfg(windows)]
     {
-        let cwd = std::env::current_dir().map(|p| p.display().to_string()).unwrap_or_default();
+        let cwd = std::env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
         resolve_windows(&path.to_string_lossy(), &cwd)
     }
     #[cfg(not(windows))]
@@ -117,7 +122,10 @@ mod tests {
     fn resolve_matches_node_path_resolve() {
         let cwd = r"C:\work";
         assert_eq!(resolve_windows(r"C:\Comics\", cwd), r"C:\Comics");
-        assert_eq!(resolve_windows("C:/Comics/DC/../Marvel", cwd), r"C:\Comics\Marvel");
+        assert_eq!(
+            resolve_windows("C:/Comics/DC/../Marvel", cwd),
+            r"C:\Comics\Marvel"
+        );
         assert_eq!(resolve_windows(r"\\?\D:\x\y", cwd), r"D:\x\y");
         assert_eq!(resolve_windows(r"sub\a.cbz", cwd), r"C:\work\sub\a.cbz");
         assert_eq!(resolve_windows(r"d:\Comics", cwd), r"d:\Comics");
@@ -125,14 +133,21 @@ mod tests {
         assert_eq!(resolve_windows(r"\\nas\share\a\", cwd), r"\\nas\share\a");
     }
 
-    /// Real `(uid, path)` pairs captured from the running Bun server (`GET /api/library`).
+    /// Real `(uid, path)` pairs captured from `GET /api/library`.
     /// One `uid<TAB>path` per line in `tests/fixtures/uid_pairs.txt`; `#` lines are comments.
     #[test]
     fn uids_match_bun_server() {
         let data = include_str!("../tests/fixtures/uid_pairs.txt");
-        for line in data.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')) {
+        for line in data
+            .lines()
+            .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        {
             let (uid, path) = line.split_once('\t').expect("uid<TAB>path");
-            assert_eq!(uid_from_path(&resolve_windows(path, r"C:\")), uid, "path {path}");
+            assert_eq!(
+                uid_from_path(&resolve_windows(path, r"C:\")),
+                uid,
+                "path {path}"
+            );
         }
     }
 }

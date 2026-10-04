@@ -1,6 +1,6 @@
 //! Approximation of `a.localeCompare(b, undefined, { numeric: true })` (ICU root collation, default
 //! sensitivity), used to order archive pages. Page order defines page numbers and therefore saved
-//! reading progress, so it must match what the Bun server produced.
+//! reading progress, so it must stay stable across versions.
 //!
 //! Primary level: whitespace < punctuation < digits (compared by value) < letters, letters
 //! case-insensitively. Ties fall back to "lowercase before uppercase", then code points.
@@ -110,22 +110,34 @@ mod tests {
 
     #[test]
     fn numbers_compare_by_value() {
-        assert_eq!(sorted(vec!["page10.png", "page2.png", "page1.png", "page11.png"]), ["page1.png", "page2.png", "page10.png", "page11.png"]);
+        assert_eq!(
+            sorted(vec!["page10.png", "page2.png", "page1.png", "page11.png"]),
+            ["page1.png", "page2.png", "page10.png", "page11.png"]
+        );
     }
 
     #[test]
     fn leading_zeros_do_not_change_the_value() {
-        assert_eq!(sorted(vec!["p010.jpg", "p002.jpg", "p100.jpg"]), ["p002.jpg", "p010.jpg", "p100.jpg"]);
+        assert_eq!(
+            sorted(vec!["p010.jpg", "p002.jpg", "p100.jpg"]),
+            ["p002.jpg", "p010.jpg", "p100.jpg"]
+        );
     }
 
     #[test]
     fn case_is_secondary_lowercase_first() {
-        assert_eq!(sorted(vec!["B.png", "a.png", "A.png", "b.png"]), ["a.png", "A.png", "b.png", "B.png"]);
+        assert_eq!(
+            sorted(vec!["B.png", "a.png", "A.png", "b.png"]),
+            ["a.png", "A.png", "b.png", "B.png"]
+        );
     }
 
     #[test]
     fn punctuation_sorts_before_digits_and_letters() {
-        assert_eq!(sorted(vec!["a1", "a_1", "a-1", "aa"]), ["a_1", "a-1", "a1", "aa"]);
+        assert_eq!(
+            sorted(vec!["a1", "a_1", "a-1", "aa"]),
+            ["a_1", "a-1", "a1", "aa"]
+        );
     }
 
     #[test]

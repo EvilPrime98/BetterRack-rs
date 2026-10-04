@@ -1,4 +1,4 @@
-//! Drop-in replacement for the Bun server.
+//! Standalone BetterRack HTTP server.
 //!
 //! Env (see `br_core::config`): `PORT` (default 3000, `0` = OS-picked), `BR_API_KEY`, `LOG_LEVEL`,
 //! `SEVEN_ZIP_PATH`, `BR_DATA_DIR`.
@@ -17,10 +17,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stderr)
         .init();
 
-    let (port, data_dir, auth) = (config.port, config.data_dir.clone(), config.api_key.is_some());
-    let state = AppState::open_with_wiki(config, std::sync::Arc::new(LiveWiki::new(br_wiki::WikiService::default())))?;
-    // Like the Bun `LibraryModel` constructor: scan in the background. Library requests wait for
-    // it (`await libModel.ready`); the scan is registered before the port opens.
+    let (port, data_dir, auth) = (
+        config.port,
+        config.data_dir.clone(),
+        config.api_key.is_some(),
+    );
+    let state = AppState::open_with_wiki(
+        config,
+        std::sync::Arc::new(LiveWiki::new(br_wiki::WikiService::default())),
+    )?;
+    // Scan in the background. Library requests wait for it; the scan is registered before the port opens.
     state.spawn_rescan();
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).await?;

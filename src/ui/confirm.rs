@@ -1,10 +1,10 @@
-//! `confirmModal.store.ts` + `confirm-modal.tsx`. React's promise becomes a callback:
+//! Confirm dialog. The result is delivered through a callback:
 //! `Some(true)` confirmed, `Some(false)` cancelled, `None` dismissed (Esc / backdrop).
 
-use gpui::{AppContext as _,
-    App, Context, Entity, FocusHandle, Focusable, Global, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window,
-    actions, div, px,
+use gpui::{
+    App, AppContext as _, Context, Entity, FocusHandle, Focusable, Global, InteractiveElement,
+    IntoElement, MouseButton, ParentElement, Render, SharedString, StatefulInteractiveElement,
+    Styled, Window, actions, div, px,
 };
 
 use crate::ui::components::button::{ButtonVariant, button};
@@ -56,8 +56,15 @@ struct ConfirmGlobal(Entity<ConfirmHost>);
 impl Global for ConfirmGlobal {}
 
 pub fn init(cx: &mut App) -> Entity<ConfirmHost> {
-    cx.bind_keys([gpui::KeyBinding::new("escape", Dismiss, Some("ConfirmModal"))]);
-    let host = cx.new(|cx| ConfirmHost { pending: None, focus: cx.focus_handle() });
+    cx.bind_keys([gpui::KeyBinding::new(
+        "escape",
+        Dismiss,
+        Some("ConfirmModal"),
+    )]);
+    let host = cx.new(|cx| ConfirmHost {
+        pending: None,
+        focus: cx.focus_handle(),
+    });
     cx.set_global(ConfirmGlobal(host.clone()));
     host
 }
@@ -69,10 +76,16 @@ pub fn ask(
     options: ConfirmOptions,
     on_answer: impl FnOnce(Option<bool>, bool, &mut App) + 'static,
 ) {
-    let Some(host) = cx.try_global::<ConfirmGlobal>().map(|g| g.0.clone()) else { return };
+    let Some(host) = cx.try_global::<ConfirmGlobal>().map(|g| g.0.clone()) else {
+        return;
+    };
     let previous = host.update(cx, |host, cx| {
         let previous = host.pending.take();
-        host.pending = Some(Pending { options, dont_ask: false, on_answer: Box::new(on_answer) });
+        host.pending = Some(Pending {
+            options,
+            dont_ask: false,
+            on_answer: Box::new(on_answer),
+        });
         cx.notify();
         previous
     });
@@ -100,13 +113,19 @@ impl Focusable for ConfirmHost {
 
 impl Render for ConfirmHost {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(p) = &self.pending else { return div().into_any_element() };
+        let Some(p) = &self.pending else {
+            return div().into_any_element();
+        };
         if !self.focus.is_focused(window) {
             window.focus(&self.focus, cx);
         }
         let dont_ask = p.dont_ask;
         let checkbox = p.options.dont_ask_again.then(|| {
-            let mut tick = div().size(px(16.0)).rounded(px(4.0)).border_1().border_color(theme::accent());
+            let mut tick = div()
+                .size(px(16.0))
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(theme::accent());
             if dont_ask {
                 tick = tick.bg(theme::accent());
             }
@@ -141,7 +160,10 @@ impl Render for ConfirmHost {
             .p(px(16.0))
             .bg(gpui::rgba(0x0000008c))
             .occlude()
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.resolve(None, cx)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| this.resolve(None, cx)),
+            )
             .child(
                 div()
                     .id("confirm-modal")

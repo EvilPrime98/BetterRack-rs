@@ -1,4 +1,4 @@
-//! Port of `models/library/series.ts`: groups issues of one series by cleaning the file name.
+//! Groups issues of one series by cleaning the file name.
 
 use regex::Regex;
 use std::sync::LazyLock;
@@ -9,7 +9,8 @@ fn re(pattern: &str) -> Regex {
 }
 
 // JS `\b` and `\d` are ASCII-only, so those are spelled `(?-u:\b)` and `[0-9]` here.
-static EXTENSION: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\.(?:cbz|cbr|cb7|cbt|zip|rar|7z|pdf)$"));
+static EXTENSION: LazyLock<Regex> =
+    LazyLock::new(|| re(r"(?i)\.(?:cbz|cbr|cb7|cbt|zip|rar|7z|pdf)$"));
 static TRAILING_GROUP: LazyLock<Regex> = LazyLock::new(|| re(r"\s*(?:\([^)]*\)|\[[^\]]*\])\s*$"));
 static ANY_GROUP: LazyLock<Regex> = LazyLock::new(|| re(r"\([^)]*\)|\[[^\]]*\]"));
 static YEAR_GROUP: LazyLock<Regex> = LazyLock::new(|| re(r"^[(\[]\s*((?:19|20)[0-9]{2})\s*[)\]]$"));
@@ -21,16 +22,22 @@ static TRAILING_ISSUE: LazyLock<Regex> = LazyLock::new(|| {
         r"(?:\s+of\s+[0-9]+)?$",
     ))
 });
-static TRAILING_VOLUME: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)(?-u:\b)(?:volume|vol\.?|v)\s*[0-9]+$"));
+static TRAILING_VOLUME: LazyLock<Regex> =
+    LazyLock::new(|| re(r"(?i)(?-u:\b)(?:volume|vol\.?|v)\s*[0-9]+$"));
 static TRAILING_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r"[\s\-–:#,]+$"));
 static MARKS: LazyLock<Regex> = LazyLock::new(|| re(r"\p{M}+"));
-static VOLUME_WORD: LazyLock<Regex> = LazyLock::new(|| re(r"(?-u:\b)(?:volume|vol\.?|v)\s*0*([0-9]+)(?-u:\b)"));
+static VOLUME_WORD: LazyLock<Regex> =
+    LazyLock::new(|| re(r"(?-u:\b)(?:volume|vol\.?|v)\s*0*([0-9]+)(?-u:\b)"));
 static NON_ALNUM: LazyLock<Regex> = LazyLock::new(|| re(r"[^\p{L}\p{N}]+"));
 static LEADING_THE: LazyLock<Regex> = LazyLock::new(|| re(r"^the\s+(\S)"));
 static WHITESPACE: LazyLock<Regex> = LazyLock::new(|| re(r"\s+"));
 
 fn clean_base(raw: &str) -> String {
-    let mut base = EXTENSION.replace(raw, "").replace('_', " ").trim().to_string();
+    let mut base = EXTENSION
+        .replace(raw, "")
+        .replace('_', " ")
+        .trim()
+        .to_string();
     if !base.chars().any(char::is_whitespace) {
         base = base.replace('.', " ");
     }
@@ -38,9 +45,11 @@ fn clean_base(raw: &str) -> String {
         base = TRAILING_GROUP.replace(&base, "").into_owned();
     }
     base = ANY_GROUP
-        .replace_all(&base, |caps: &regex::Captures| match YEAR_GROUP.captures(&caps[0]) {
-            Some(y) => format!(" ({}) ", &y[1]),
-            None => " ".to_string(),
+        .replace_all(&base, |caps: &regex::Captures| {
+            match YEAR_GROUP.captures(&caps[0]) {
+                Some(y) => format!(" ({}) ", &y[1]),
+                None => " ".to_string(),
+            }
         })
         .into_owned();
     WHITESPACE.replace_all(&base, " ").trim().to_string()
@@ -83,7 +92,10 @@ pub fn series_of(file_name: &str, issue: Option<&str>) -> Series {
     };
 
     let folded: String = name.nfd().collect();
-    let key = MARKS.replace_all(&folded, "").to_lowercase().replace('&', " and ");
+    let key = MARKS
+        .replace_all(&folded, "")
+        .to_lowercase()
+        .replace('&', " and ");
     let key = VOLUME_WORD.replace_all(&key, "vol $1");
     let key = NON_ALNUM.replace_all(&key, " ");
     let key = LEADING_THE.replace(&key, "$1").trim().to_string();
@@ -108,7 +120,10 @@ mod tests {
 
     #[test]
     fn groups_files_by_file_name() {
-        assert_eq!(key("Absolute Superman Vol 1 12.cbz"), key("Absolute Superman Vol. 1 013 (2025).cbz"));
+        assert_eq!(
+            key("Absolute Superman Vol 1 12.cbz"),
+            key("Absolute Superman Vol. 1 013 (2025).cbz")
+        );
     }
 
     #[test]
@@ -118,7 +133,10 @@ mod tests {
 
     #[test]
     fn handles_dotted_names_and_trailing_release_tags() {
-        assert_eq!(key("Batman.012.cbz"), key("Batman 013 (Digital) [Group].cbz"));
+        assert_eq!(
+            key("Batman.012.cbz"),
+            key("Batman 013 (Digital) [Group].cbz")
+        );
     }
 
     #[test]
@@ -132,11 +150,17 @@ mod tests {
     #[test]
     fn a_year_before_the_issue_separates_volumes_of_the_same_title() {
         assert_ne!(key("Batman (2016) 012.cbz"), key("Batman (2011) 012.cbz"));
-        assert_eq!(key("Batman (2016) 012 (2017).cbz"), key("Batman (2016) 013.cbz"));
+        assert_eq!(
+            key("Batman (2016) 012 (2017).cbz"),
+            key("Batman (2016) 013.cbz")
+        );
     }
 
     #[test]
     fn normalizes_accents_ampersands_and_leading_the() {
-        assert_eq!(key("The Pokémon & Friends 1.cbz"), key("Pokemon and Friends 2.cbz"));
+        assert_eq!(
+            key("The Pokémon & Friends 1.cbz"),
+            key("Pokemon and Friends 2.cbz")
+        );
     }
 }

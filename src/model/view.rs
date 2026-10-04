@@ -1,4 +1,4 @@
-//! Client-side enums and constants (react/src/library.types.ts), with the read-filter predicate.
+//! Client-side enums and constants with the read-filter predicate.
 
 use serde::{Deserialize, Serialize};
 
@@ -85,8 +85,9 @@ pub enum LibraryStructure {
 /// "Recently added" window choices, in hours: day / week / month / year.
 pub const RECENT_WINDOW_HOURS: [u32; 4] = [24, 168, 720, 8760];
 
-/// Labels for [`RECENT_WINDOW_HOURS`] (`RECENT_WINDOW_OPTIONS` in the React source).
-pub const RECENT_WINDOW_LABELS: [&str; 4] = ["Last 24 hours", "Last week", "Last month", "Last year"];
+/// Labels for [`RECENT_WINDOW_HOURS`].
+pub const RECENT_WINDOW_LABELS: [&str; 4] =
+    ["Last 24 hours", "Last week", "Last month", "Last year"];
 
 /// Downloads page poll interval.
 pub const POLL_INTERVAL_MS: u64 = 750;
@@ -111,7 +112,10 @@ mod tests {
     }
 
     #[test]
-    fn filter_option_serializes_like_the_react_strings() {
-        assert_eq!(serde_json::to_string(&FilterOption::CreationDate).unwrap(), "\"Creation Date\"");
+    fn filter_option_serializes_as_display_strings() {
+        assert_eq!(
+            serde_json::to_string(&FilterOption::CreationDate).unwrap(),
+            "\"Creation Date\""
+        );
     }
 }

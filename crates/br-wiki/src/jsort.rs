@@ -29,7 +29,13 @@ pub fn sort_by<T: Clone>(items: &mut Vec<T>, cmp: impl Fn(&T, &T) -> f64) {
     let mut previous = 1;
     for idx in 2..n {
         let o = order(&items[idx], &items[previous]);
-        if descending { if o >= 0.0 { break; } } else if o < 0.0 { break; }
+        if descending {
+            if o >= 0.0 {
+                break;
+            }
+        } else if o < 0.0 {
+            break;
+        }
         previous = idx;
         run += 1;
     }
@@ -43,7 +49,11 @@ pub fn sort_by<T: Clone>(items: &mut Vec<T>, cmp: impl Fn(&T, &T) -> f64) {
         let (mut left, mut right) = (0, start);
         while left < right {
             let mid = left + ((right - left) >> 1);
-            if order(&pivot, &items[mid]) < 0.0 { right = mid } else { left = mid + 1 }
+            if order(&pivot, &items[mid]) < 0.0 {
+                right = mid
+            } else {
+                left = mid + 1
+            }
         }
         for p in (left + 1..=start).rev() {
             items[p] = items[p - 1].clone();

@@ -1,8 +1,7 @@
-//! Design tokens from `react/src/main.css` (MIGRATION.md §8). Dark theme only.
+//! Design tokens. Dark theme only.
 //!
 //! The `oklab()` backgrounds were converted to sRGB once (CSS Color 4 matrices):
-//! `oklab(0.298136 …)` → #2c2d32, `oklab(0.32 …)` → #313238 (matches `WINDOW_TITLE_BG` in
-//! `electron/window.config.ts`), `oklab(0.27 …)` → #25262b.
+//! `oklab(0.298136 …)` → #2c2d32, `oklab(0.32 …)` → #313238 (the window title bar colour), `oklab(0.27 …)` → #25262b.
 
 use gpui::{Pixels, Rgba, px, rgb, rgba};
 
@@ -32,7 +31,7 @@ pub fn bg_modal() -> Rgba {
 pub fn border_subtle() -> Rgba {
     rgba(0xffffff14)
 }
-#[allow(dead_code)] // design token from MIGRATION.md §8
+#[allow(dead_code)] // design token
 pub fn scrollbar_thumb() -> Rgba {
     rgb(0x4a4a4a)
 }
@@ -43,7 +42,7 @@ pub fn error() -> Rgba {
 pub fn text() -> Rgba {
     rgb(0xffffff)
 }
-/// The `#c7c7c7` the original icons default to.
+/// The `#c7c7c7` the icons default to.
 pub fn text_muted() -> Rgba {
     rgb(0xc7c7c7)
 }
@@ -58,7 +57,7 @@ pub fn header_height() -> Pixels {
 pub fn sidebar_width() -> Pixels {
     px(280.0)
 }
-#[allow(dead_code)] // design token from MIGRATION.md §8
+#[allow(dead_code)] // design token
 pub fn content_max_width() -> Pixels {
     px(1360.0)
 }

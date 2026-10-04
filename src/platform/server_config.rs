@@ -1,8 +1,7 @@
-//! Remote mode (`services/server-config.service.ts`, MIGRATION.md §7): the desktop app can talk to a
+//! Remote mode: the desktop app can talk to a
 //! remote BetterRack deployment instead of spawning the local sidecar.
 //!
-//! React kept `br_server_url`, `br_remote_mode` and `br_server_api_key` in localStorage. Here the URL
-//! and the flag live in `<config>/BetterRack/server.json` and the API key in the OS keychain
+//! The URL and the remote-mode flag live in `<config>/BetterRack/server.json` and the API key in the OS keychain
 //! (`keyring`), never in a file.
 
 use std::path::PathBuf;
@@ -39,8 +38,7 @@ pub fn load() -> ServerConfig {
         .unwrap_or_default()
 }
 
-/// The config as it was when the app started. Changing the server relaunches the app (the React
-/// app reloaded the page), so a process never sees it change.
+/// The config as it was when the app started. Changing the server relaunches the app, so a process never sees it change.
 pub fn current() -> &'static ServerConfig {
     static CURRENT: OnceLock<ServerConfig> = OnceLock::new();
     CURRENT.get_or_init(load)
@@ -88,13 +86,18 @@ fn store_api_key(key: &str) -> Result<(), String> {
             Err(e) => Err(e.to_string()),
         };
     }
-    entry.set_password(key).map_err(|e| format!("could not store the API key in the keychain: {e}"))
+    entry
+        .set_password(key)
+        .map_err(|e| format!("could not store the API key in the keychain: {e}"))
 }
 
 /// `setRemoteServer(url, apiKey)`: pair the URL with the remote flag and the optional key.
 pub fn set_remote(raw_url: &str, api_key: &str) -> Result<(), String> {
     store_api_key(api_key.trim())?;
-    save(&ServerConfig { url: crate::api::normalize_base_url(raw_url), remote: true })
+    save(&ServerConfig {
+        url: crate::api::normalize_base_url(raw_url),
+        remote: true,
+    })
 }
 
 /// `clearRemoteServer()`: back to the local sidecar.
@@ -109,8 +112,20 @@ mod tests {
 
     #[test]
     fn needs_setup_only_when_remote_without_url() {
-        assert!(ServerConfig { url: String::new(), remote: true }.needs_setup());
-        assert!(!ServerConfig { url: "http://x".into(), remote: true }.needs_setup());
+        assert!(
+            ServerConfig {
+                url: String::new(),
+                remote: true
+            }
+            .needs_setup()
+        );
+        assert!(
+            !ServerConfig {
+                url: "http://x".into(),
+                remote: true
+            }
+            .needs_setup()
+        );
         assert!(!ServerConfig::default().needs_setup());
     }
 

@@ -25,13 +25,23 @@ fn send(base: &str, method: &str, path: &str, key: Option<&str>) -> Reply {
     if let Some(k) = key {
         req = req.header("x-br-api-key", k);
     }
-    let r = req.send().unwrap_or_else(|e| panic!("{method} {base}{path}: {e}"));
+    let r = req
+        .send()
+        .unwrap_or_else(|e| panic!("{method} {base}{path}: {e}"));
     let status = r.status().as_u16();
     let headers = HEADERS
         .iter()
-        .filter_map(|h| r.headers().get(*h).map(|v| (h.to_string(), v.to_str().unwrap_or("").to_string())))
+        .filter_map(|h| {
+            r.headers()
+                .get(*h)
+                .map(|v| (h.to_string(), v.to_str().unwrap_or("").to_string()))
+        })
         .collect();
-    Reply { status, headers, body: r.bytes().unwrap().to_vec() }
+    Reply {
+        status,
+        headers,
+        body: r.bytes().unwrap().to_vec(),
+    }
 }
 
 /// Drop volatile keys; objects compare order-insensitively already (`serde_json::Map` is sorted).
@@ -54,7 +64,10 @@ fn diff(a: &Reply, b: &Reply) -> Vec<String> {
     if a.headers != b.headers {
         out.push(format!("headers {:?} != {:?}", a.headers, b.headers));
     }
-    match (serde_json::from_slice::<Value>(&a.body), serde_json::from_slice::<Value>(&b.body)) {
+    match (
+        serde_json::from_slice::<Value>(&a.body),
+        serde_json::from_slice::<Value>(&b.body),
+    ) {
         (Ok(mut x), Ok(mut y)) => {
             normalize(&mut x);
             normalize(&mut y);
@@ -62,7 +75,11 @@ fn diff(a: &Reply, b: &Reply) -> Vec<String> {
                 out.push("json body differs".into());
             }
         }
-        _ if a.body != b.body => out.push(format!("body bytes differ ({} vs {})", a.body.len(), b.body.len())),
+        _ if a.body != b.body => out.push(format!(
+            "body bytes differ ({} vs {})",
+            a.body.len(),
+            b.body.len()
+        )),
         _ => {}
     }
     out
@@ -76,7 +93,10 @@ fn rust_server_matches_bun_server() {
     let key = std::env::var("BR_API_KEY").ok();
 
     let mut failures = 0;
-    for line in REQUESTS.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')) {
+    for line in REQUESTS
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+    {
         let (method, path) = line.split_once(' ').expect("METHOD PATH");
         let (a, b) = (
             send(&reference, method, path, key.as_deref()),
@@ -95,7 +115,17 @@ fn rust_server_matches_bun_server() {
 
 #[test]
 fn diff_ignores_generated_at_and_key_order() {
-    let mk = |s: &str| Reply { status: 200, headers: vec![], body: s.as_bytes().to_vec() };
-    assert!(diff(&mk(r#"{"a":1,"b":2,"generatedAt":5}"#), &mk(r#"{"b":2,"a":1,"generatedAt":9}"#)).is_empty());
+    let mk = |s: &str| Reply {
+        status: 200,
+        headers: vec![],
+        body: s.as_bytes().to_vec(),
+    };
+    assert!(
+        diff(
+            &mk(r#"{"a":1,"b":2,"generatedAt":5}"#),
+            &mk(r#"{"b":2,"a":1,"generatedAt":9}"#)
+        )
+        .is_empty()
+    );
     assert!(!diff(&mk(r#"{"a":1}"#), &mk(r#"{"a":2}"#)).is_empty());
 }

@@ -8,7 +8,7 @@
 #   bin/7z(.exe) [+ 7z.dll]               bundled 7-Zip (SEVEN_ZIP_PATH)
 #   LICENSE, NOTICE.txt
 #
-# Needs: cargo. No bun, no Node, no sharp. 7-Zip is the one external input: point
+# Needs: cargo. 7-Zip is the one external input: point
 # SEVEN_ZIP_DIR at a folder holding the per-platform builds (`win32/`, `linux-x64/`), by default
 # `$BETTERRACK_SERVER_ROOT/vendor/7zip` of a BetterRack checkout.
 set -euo pipefail

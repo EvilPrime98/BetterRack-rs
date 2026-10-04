@@ -19,12 +19,19 @@ const IN_FLIGHT_SUFFIX: &str = ".part";
 const MAX_NETWORK_RETRIES: u32 = 3;
 const RETRY_BACKOFF_MS: u64 = 2000;
 const RETRY_BACKOFF_CAP_MS: u64 = 30_000;
-/// Progress ticks are coalesced to this interval (Bun emitted one per chunk).
+/// Progress ticks are coalesced to this interval.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
 const CUSTOM_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-const CLOUDFLARE_CHALLENGE_MARKERS: [&str; 6] = ["cloudflare", "just a moment", "attention required", "challenge-platform", "turnstile", "cf-challenge"];
+const CLOUDFLARE_CHALLENGE_MARKERS: [&str; 6] = [
+    "cloudflare",
+    "just a moment",
+    "attention required",
+    "challenge-platform",
+    "turnstile",
+    "cf-challenge",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -87,7 +94,12 @@ pub struct RetryOpts {
 
 impl Default for RetryOpts {
     fn default() -> Self {
-        Self { max_retries: MAX_NETWORK_RETRIES, backoff_ms: RETRY_BACKOFF_MS, backoff_cap_ms: RETRY_BACKOFF_CAP_MS, request_delay_ms: REQUEST_DELAY_MS }
+        Self {
+            max_retries: MAX_NETWORK_RETRIES,
+            backoff_ms: RETRY_BACKOFF_MS,
+            backoff_cap_ms: RETRY_BACKOFF_CAP_MS,
+            request_delay_ms: REQUEST_DELAY_MS,
+        }
     }
 }
 
@@ -137,11 +149,26 @@ pub struct Downloader {
 pub fn mb_text(bytes: u64) -> String {
     let v = bytes as f64 / 1024.0 / 1024.0;
     let f = v.fract();
-    if f == 0.25 || f == 0.75 { format!("{:.1}", v + 0.01) } else { format!("{v:.1}") }
+    if f == 0.25 || f == 0.75 {
+        format!("{:.1}", v + 0.01)
+    } else {
+        format!("{v:.1}")
+    }
 }
 
 pub fn sanitize_filename(name: &str) -> String {
-    let replaced: String = name.chars().map(|c| if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || (c as u32) < 0x20 { ' ' } else { c }).collect();
+    let replaced: String = name
+        .chars()
+        .map(|c| {
+            if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+                || (c as u32) < 0x20
+            {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
     let collapsed = replaced.split_whitespace().collect::<Vec<_>>().join(" ");
     collapsed.trim_end_matches(['.', ' ']).to_string()
 }
@@ -169,8 +196,15 @@ fn filename_from_disposition(header: Option<&str>) -> Option<String> {
     let header = header?;
     let lower = header.to_ascii_lowercase();
     if let Some(i) = lower.find("filename*=") {
-        let v = header[i + "filename*=".len()..].split(';').next().unwrap_or("").trim();
-        let v = v.strip_prefix("UTF-8''").or_else(|| v.strip_prefix("utf-8''")).unwrap_or(v);
+        let v = header[i + "filename*=".len()..]
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim();
+        let v = v
+            .strip_prefix("UTF-8''")
+            .or_else(|| v.strip_prefix("utf-8''"))
+            .unwrap_or(v);
         let v = v.trim_matches(|c| c == '"' || c == '\'');
         if !v.is_empty() {
             return Some(percent_decode(v));
@@ -196,23 +230,58 @@ enum Body {
 
 fn is_cloudflare_challenge(text: &str) -> bool {
     let lower = text.to_lowercase();
-    CLOUDFLARE_CHALLENGE_MARKERS.iter().any(|m| lower.contains(m))
+    CLOUDFLARE_CHALLENGE_MARKERS
+        .iter()
+        .any(|m| lower.contains(m))
 }
 
 impl Downloader {
-    pub fn new(client: reqwest::Client, rotating: RotatingFetch, pack: Option<Arc<PackExtractor>>, retry: RetryOpts, pixeldrain_host: &str) -> Self {
-        Self { client, rotating, pack, retry, pixeldrain_host: pixeldrain_host.to_string() }
+    pub fn new(
+        client: reqwest::Client,
+        rotating: RotatingFetch,
+        pack: Option<Arc<PackExtractor>>,
+        retry: RetryOpts,
+        pixeldrain_host: &str,
+    ) -> Self {
+        Self {
+            client,
+            rotating,
+            pack,
+            retry,
+            pixeldrain_host: pixeldrain_host.to_string(),
+        }
     }
 
     fn is_pixeldrain_url(&self, url: &str) -> bool {
-        url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).is_some_and(|h| h == self.pixeldrain_host || h.ends_with(&format!(".{}", self.pixeldrain_host)))
+        url::Url::parse(url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .is_some_and(|h| {
+                h == self.pixeldrain_host || h.ends_with(&format!(".{}", self.pixeldrain_host))
+            })
     }
 
-    async fn fetch_source(&self, url: &str, cancel: &CancellationToken) -> Result<reqwest::Response, DlError> {
+    async fn fetch_source(
+        &self,
+        url: &str,
+        cancel: &CancellationToken,
+    ) -> Result<reqwest::Response, DlError> {
         if self.is_pixeldrain_url(url) {
-            return Ok(self.rotating.fetch(url, &[("content-type", "application/octet-stream")], Some(cancel)).await?);
+            return Ok(self
+                .rotating
+                .fetch(
+                    url,
+                    &[("content-type", "application/octet-stream")],
+                    Some(cancel),
+                )
+                .await?);
         }
-        let send = self.client.get(url).header("user-agent", CUSTOM_USER_AGENT).header(CONTENT_TYPE, "application/octet-stream").send();
+        let send = self
+            .client
+            .get(url)
+            .header("user-agent", CUSTOM_USER_AGENT)
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .send();
         tokio::select! {
             r = send => r.map_err(|e| DlError::Failed(e.to_string())),
             () = cancel.cancelled() => Err(DlError::Aborted),
@@ -220,44 +289,75 @@ impl Downloader {
     }
 
     fn resolve_filename(&self, meta: &Meta, req: &DownloadRequest) -> String {
-        let from_disposition = filename_from_disposition(meta.headers.get(CONTENT_DISPOSITION).and_then(|v| v.to_str().ok()));
+        let from_disposition = filename_from_disposition(
+            meta.headers
+                .get(CONTENT_DISPOSITION)
+                .and_then(|v| v.to_str().ok()),
+        );
         let tail = meta.url.rsplit('/').next().unwrap_or("");
         let from_url = percent_decode(tail.split(['?', '#']).next().unwrap_or(""));
-        let pick = |opts: [Option<String>; 3]| opts.into_iter().flatten().find(|s| !s.is_empty()).unwrap_or_default();
+        let pick = |opts: [Option<String>; 3]| {
+            opts.into_iter()
+                .flatten()
+                .find(|s| !s.is_empty())
+                .unwrap_or_default()
+        };
         let raw = if self.is_pixeldrain_url(&req.download_link) {
             pick([from_disposition, Some(req.title.clone()), Some(from_url)])
         } else {
             pick([Some(from_url), from_disposition, Some(req.title.clone())])
         };
         let name = sanitize_filename(&raw);
-        if name.is_empty() { "download".to_string() } else { name }
+        if name.is_empty() {
+            "download".to_string()
+        } else {
+            name
+        }
     }
 
     /// Download `req`; returns the final path (a folder when a pack was unpacked). Failures are
     /// reported through a single terminal `error` event and yield `None`.
-    pub async fn download_comic(&self, req: DownloadRequest, on_progress: ProgressCb) -> Option<PathBuf> {
+    pub async fn download_comic(
+        &self,
+        req: DownloadRequest,
+        on_progress: ProgressCb,
+    ) -> Option<PathBuf> {
         if req.download_link.is_empty() {
             return None;
         }
         tracing::info!(title = %req.title, "download started");
-        on_progress(ProgressEvent::Preparing { title: req.title.clone() });
+        on_progress(ProgressEvent::Preparing {
+            title: req.title.clone(),
+        });
         match self.run(&req, &on_progress).await {
             Ok(dest) => Some(dest),
             Err(e) => {
-                on_progress(ProgressEvent::Error { message: e.message() });
+                on_progress(ProgressEvent::Error {
+                    message: e.message(),
+                });
                 None
             }
         }
     }
 
-    async fn run(&self, req: &DownloadRequest, on_progress: &ProgressCb) -> Result<PathBuf, DlError> {
+    async fn run(
+        &self,
+        req: &DownloadRequest,
+        on_progress: &ProgressCb,
+    ) -> Result<PathBuf, DlError> {
         let mut last_err = None;
         let mut dest = None;
         for attempt in 0..=self.retry.max_retries {
             if attempt > 0 {
-                let base = (2u64.saturating_pow(attempt) * self.retry.backoff_ms).min(self.retry.backoff_cap_ms);
+                let base = (2u64.saturating_pow(attempt) * self.retry.backoff_ms)
+                    .min(self.retry.backoff_cap_ms);
                 let backoff = base + fastrand::u64(0..=self.retry.backoff_ms.min(1000));
-                on_progress(ProgressEvent::Retrying { title: req.title.clone(), status: None, reason: RetryReason::Network, delay_sec: (backoff as f64 / 1000.0).round() as u64 });
+                on_progress(ProgressEvent::Retrying {
+                    title: req.title.clone(),
+                    status: None,
+                    reason: RetryReason::Network,
+                    delay_sec: (backoff as f64 / 1000.0).round() as u64,
+                });
                 if !abortable_sleep(backoff, Some(&req.cancel)).await {
                     return Err(DlError::Aborted);
                 }
@@ -269,7 +369,10 @@ impl Downloader {
                     break;
                 }
                 Err(e) => {
-                    if matches!(e, DlError::Fatal(_) | DlError::Aborted) || req.no_retry || req.cancel.is_cancelled() {
+                    if matches!(e, DlError::Fatal(_) | DlError::Aborted)
+                        || req.no_retry
+                        || req.cancel.is_cancelled()
+                    {
                         return Err(e);
                     }
                     tracing::error!(title = %req.title, attempt = attempt + 1, of = self.retry.max_retries + 1, err = %e.message(), "download attempt failed");
@@ -283,7 +386,10 @@ impl Downloader {
         let mut dest = dest.ok_or_else(|| DlError::Failed("Failed to download".into()))?;
 
         // Named now: pack extraction can turn `dest` into a folder.
-        let filename = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| req.title.clone());
+        let filename = dest
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| req.title.clone());
 
         if req.cancel.is_cancelled() {
             let _ = tokio::fs::remove_file(&dest).await;
@@ -291,11 +397,26 @@ impl Downloader {
         }
 
         if let Some(pack) = &self.pack {
-            let size = tokio::fs::metadata(&dest).await.map(|m| m.len()).unwrap_or(0);
+            let size = tokio::fs::metadata(&dest)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(0);
             if pack.should_inspect(&dest, size) {
-                let (pack, file, out_dir, title, cb) = (pack.clone(), dest.clone(), req.output_dir.clone(), req.title.clone(), on_progress.clone());
+                let (pack, file, out_dir, title, cb) = (
+                    pack.clone(),
+                    dest.clone(),
+                    req.output_dir.clone(),
+                    req.title.clone(),
+                    on_progress.clone(),
+                );
                 let result = tokio::task::spawn_blocking(move || {
-                    let progress = |done: usize, total: usize| cb(ProgressEvent::Extracting { title: title.clone(), done, total });
+                    let progress = |done: usize, total: usize| {
+                        cb(ProgressEvent::Extracting {
+                            title: title.clone(),
+                            done,
+                            total,
+                        })
+                    };
                     pack.extract_pack(&file, &out_dir, Some(&progress))
                 })
                 .await;
@@ -316,12 +437,24 @@ impl Downloader {
         Ok(dest)
     }
 
-    async fn stream_to_disk(&self, req: &DownloadRequest, on_progress: &ProgressCb) -> Result<PathBuf, DlError> {
+    async fn stream_to_disk(
+        &self,
+        req: &DownloadRequest,
+        on_progress: &ProgressCb,
+    ) -> Result<PathBuf, DlError> {
         let mut status_retries = 0;
         let (meta, body) = loop {
             let response = self.fetch_source(&req.download_link, &req.cancel).await?;
-            let meta = Meta { status: response.status(), headers: response.headers().clone(), url: response.url().to_string() };
-            let is_html = meta.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|t| t.contains("text/html"));
+            let meta = Meta {
+                status: response.status(),
+                headers: response.headers().clone(),
+                url: response.url().to_string(),
+            };
+            let is_html = meta
+                .headers
+                .get(CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|t| t.contains("text/html"));
             let body = if is_html {
                 let bytes = tokio::select! {
                     b = response.bytes() => b.map_err(|e| DlError::Failed(e.to_string()))?,
@@ -358,23 +491,49 @@ impl Downloader {
         let filename = self.resolve_filename(&meta, req);
         let dest = req.output_dir.join(&filename);
         let in_flight = PathBuf::from(format!("{}{IN_FLIGHT_SUFFIX}", dest.display()));
-        let total: u64 = meta.headers.get(CONTENT_LENGTH).and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok()).unwrap_or(0);
+        let total: u64 = meta
+            .headers
+            .get(CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
         let total_mb = mb_text(total);
 
-        tokio::fs::create_dir_all(&req.output_dir).await.map_err(|e| DlError::Failed(e.to_string()))?;
+        tokio::fs::create_dir_all(&req.output_dir)
+            .await
+            .map_err(|e| DlError::Failed(e.to_string()))?;
 
-        let result = write_body(body, &in_flight, total, &total_mb, &req.title, on_progress, &req.cancel).await;
+        let result = write_body(
+            body,
+            &in_flight,
+            total,
+            &total_mb,
+            &req.title,
+            on_progress,
+            &req.cancel,
+        )
+        .await;
         if let Err(e) = result {
             // A broken transfer leaves a truncated file; remove it before retrying or failing.
             let _ = tokio::fs::remove_file(&in_flight).await;
             return Err(e);
         }
-        tokio::fs::rename(&in_flight, &dest).await.map_err(|e| DlError::Failed(e.to_string()))?;
+        tokio::fs::rename(&in_flight, &dest)
+            .await
+            .map_err(|e| DlError::Failed(e.to_string()))?;
         Ok(dest)
     }
 }
 
-async fn write_body(body: Body, path: &Path, total: u64, total_mb: &str, title: &str, on_progress: &ProgressCb, cancel: &CancellationToken) -> Result<(), DlError> {
+async fn write_body(
+    body: Body,
+    path: &Path,
+    total: u64,
+    total_mb: &str,
+    title: &str,
+    on_progress: &ProgressCb,
+    cancel: &CancellationToken,
+) -> Result<(), DlError> {
     let io = |e: std::io::Error| DlError::Failed(e.to_string());
     let mut file = tokio::fs::File::create(path).await.map_err(io)?;
     let mut received: u64 = 0;
@@ -385,7 +544,12 @@ async fn write_body(body: Body, path: &Path, total: u64, total_mb: &str, title: 
         }
         last_emit = Some(Instant::now());
         let percent = if total > 0 { received * 100 / total } else { 0 };
-        on_progress(ProgressEvent::Progress { title: title.to_string(), percent, received_mb: mb_text(received), total_mb: total_mb.to_string() });
+        on_progress(ProgressEvent::Progress {
+            title: title.to_string(),
+            percent,
+            received_mb: mb_text(received),
+            total_mb: total_mb.to_string(),
+        });
     };
     match body {
         Body::Prefetched(bytes) => {
@@ -429,7 +593,10 @@ mod tests {
 
     #[test]
     fn sanitizes_names() {
-        assert_eq!(sanitize_filename("What If...? / Spider-Man"), "What If... Spider-Man");
+        assert_eq!(
+            sanitize_filename("What If...? / Spider-Man"),
+            "What If... Spider-Man"
+        );
         assert_eq!(sanitize_filename("a<b>c:d"), "a b c d");
         assert_eq!(sanitize_filename("..."), "");
         assert_eq!(sanitize_filename("name. "), "name");
@@ -437,19 +604,56 @@ mod tests {
 
     #[test]
     fn parses_content_disposition() {
-        assert_eq!(filename_from_disposition(Some("attachment; filename=\"Uncanny X-Men 001 (2019).cbz\"")).as_deref(), Some("Uncanny X-Men 001 (2019).cbz"));
-        assert_eq!(filename_from_disposition(Some("attachment; filename*=UTF-8''Caf%C3%A9.cbz")).as_deref(), Some("Café.cbz"));
-        assert_eq!(filename_from_disposition(Some("attachment; filename=plain.cbz")).as_deref(), Some("plain.cbz"));
+        assert_eq!(
+            filename_from_disposition(Some(
+                "attachment; filename=\"Uncanny X-Men 001 (2019).cbz\""
+            ))
+            .as_deref(),
+            Some("Uncanny X-Men 001 (2019).cbz")
+        );
+        assert_eq!(
+            filename_from_disposition(Some("attachment; filename*=UTF-8''Caf%C3%A9.cbz"))
+                .as_deref(),
+            Some("Café.cbz")
+        );
+        assert_eq!(
+            filename_from_disposition(Some("attachment; filename=plain.cbz")).as_deref(),
+            Some("plain.cbz")
+        );
         assert_eq!(filename_from_disposition(Some("inline")), None);
         assert_eq!(filename_from_disposition(None), None);
     }
 
     #[test]
     fn event_json_shapes() {
-        let v = ProgressEvent::Retrying { title: "T".into(), status: Some(503), reason: RetryReason::Http, delay_sec: 3 }.to_value();
-        assert_eq!(v, serde_json::json!({"type": "retrying", "title": "T", "status": 503, "reason": "http", "delaySec": 3}));
-        let v = ProgressEvent::Progress { title: "T".into(), percent: 5, received_mb: "1.0".into(), total_mb: "20.0".into() }.to_value();
-        assert_eq!(v, serde_json::json!({"type": "progress", "title": "T", "percent": 5, "receivedMB": "1.0", "totalMB": "20.0"}));
-        assert_eq!(ProgressEvent::Done { filename: "a.cbz".into() }.to_value(), serde_json::json!({"type": "done", "filename": "a.cbz"}));
+        let v = ProgressEvent::Retrying {
+            title: "T".into(),
+            status: Some(503),
+            reason: RetryReason::Http,
+            delay_sec: 3,
+        }
+        .to_value();
+        assert_eq!(
+            v,
+            serde_json::json!({"type": "retrying", "title": "T", "status": 503, "reason": "http", "delaySec": 3})
+        );
+        let v = ProgressEvent::Progress {
+            title: "T".into(),
+            percent: 5,
+            received_mb: "1.0".into(),
+            total_mb: "20.0".into(),
+        }
+        .to_value();
+        assert_eq!(
+            v,
+            serde_json::json!({"type": "progress", "title": "T", "percent": 5, "receivedMB": "1.0", "totalMB": "20.0"})
+        );
+        assert_eq!(
+            ProgressEvent::Done {
+                filename: "a.cbz".into()
+            }
+            .to_value(),
+            serde_json::json!({"type": "done", "filename": "a.cbz"})
+        );
     }
 }

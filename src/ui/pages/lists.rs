@@ -1,5 +1,5 @@
-//! The grid pages that are not the folder browser: Recently added (`recent-page.tsx`), Keep reading
-//! (`reading-page.tsx`), Filtered by writer (`filtered-page.tsx`) and Search (`search.page.tsx`).
+//! The grid pages that are not the folder browser: Recently added, Keep reading,
+//! Filtered by writer and Search.
 //! They share one entity because they differ only in where the items come from and in the header.
 //!
 //! Recent and Reading fetch a snapshot from the server and drop entries when the library store
@@ -13,14 +13,18 @@ use gpui::{
     StatefulInteractiveElement, Styled, UniformListScrollHandle, Window, div, px,
 };
 
-use crate::model::{FilterOption, LibraryEntry, ReadFilter, RECENT_WINDOW_HOURS, RECENT_WINDOW_LABELS};
+use crate::model::{
+    FilterOption, LibraryEntry, RECENT_WINDOW_HOURS, RECENT_WINDOW_LABELS, ReadFilter,
+};
 use crate::route::{GoBack, Navigate, Route};
 use crate::runtime;
 use crate::state::Stores;
 use crate::state::library::apply_sort;
 use crate::ui::components::items_grid::{PAGE_PAD_X, available_width, items_grid};
 use crate::ui::icons::{Icon, icon};
-use crate::ui::pages::common::{back_button, counter, cycle_button, header_bar, note, summary, view_controls};
+use crate::ui::pages::common::{
+    back_button, counter, cycle_button, header_bar, note, summary, view_controls,
+};
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -28,8 +32,12 @@ pub enum Source {
     Recent,
     Reading,
     /// Empty writer = every comic.
-    Filtered { writer: String },
-    Search { query: String },
+    Filtered {
+        writer: String,
+    },
+    Search {
+        query: String,
+    },
 }
 
 enum Load {
@@ -66,10 +74,16 @@ impl ListPage {
         .detach();
         cx.observe(&stores.comics, |_, _, cx| cx.notify()).detach();
         cx.observe(&stores.thumbs, |_, _, cx| cx.notify()).detach();
-        cx.observe(&stores.identify, |_, _, cx| cx.notify()).detach();
+        cx.observe(&stores.identify, |_, _, cx| cx.notify())
+            .detach();
         cx.observe(&stores.prefs, |_, _, cx| cx.notify()).detach();
 
-        let seen_delete = stores.library.read(cx).last_deleted.as_ref().map_or(0, |(n, _)| *n);
+        let seen_delete = stores
+            .library
+            .read(cx)
+            .last_deleted
+            .as_ref()
+            .map_or(0, |(n, _)| *n);
         let mut this = Self {
             source,
             stores,
@@ -97,7 +111,9 @@ impl ListPage {
     }
 
     fn fetch(&mut self, cx: &mut Context<Self>) {
-        let Some(client) = self.stores.library.read(cx).client.clone() else { return };
+        let Some(client) = self.stores.library.read(cx).client.clone() else {
+            return;
+        };
         self.request += 1;
         let request = self.request;
         self.load = Load::Loading;
@@ -111,7 +127,11 @@ impl ListPage {
                 flush.await;
             }
             let result = runtime::run(async move {
-                if reading { client.library_reading().await.map(|r| r.items) } else { client.library_recent(hours).await.map(|r| r.items) }
+                if reading {
+                    client.library_reading().await.map(|r| r.items)
+                } else {
+                    client.library_recent(hours).await.map(|r| r.items)
+                }
             })
             .await;
             this.update(cx, |this, cx| {
@@ -142,13 +162,21 @@ impl ListPage {
     /// A delete goes through the library store: drop the entry from the snapshot so its card leaves
     /// without a reload.
     fn drop_deleted(&mut self, cx: &mut Context<Self>) {
-        let Some((n, uid)) = self.stores.library.read(cx).last_deleted.clone() else { return };
+        let Some((n, uid)) = self.stores.library.read(cx).last_deleted.clone() else {
+            return;
+        };
         if n <= self.seen_delete {
             return;
         }
         self.seen_delete = n;
         if self.fetched.iter().any(|e| e.uid == uid) {
-            self.fetched = Rc::new(self.fetched.iter().filter(|e| e.uid != uid).cloned().collect());
+            self.fetched = Rc::new(
+                self.fetched
+                    .iter()
+                    .filter(|e| e.uid != uid)
+                    .cloned()
+                    .collect(),
+            );
         }
     }
 
@@ -169,12 +197,16 @@ impl ListPage {
                         .filter(|e| !e.did)
                         .filter(|e| {
                             writer.is_empty()
-                                || e.comic.as_ref().is_some_and(|c| c.writers().iter().any(|w| w == writer))
+                                || e.comic
+                                    .as_ref()
+                                    .is_some_and(|c| c.writers().iter().any(|w| w == writer))
                         })
                         .collect(),
                     Source::Search { query } => {
                         let q = query.trim().to_lowercase();
-                        all.into_iter().filter(|e| !e.did && e.name.to_lowercase().contains(&q)).collect()
+                        all.into_iter()
+                            .filter(|e| !e.did && e.name.to_lowercase().contains(&q))
+                            .collect()
                     }
                     _ => unreachable!(),
                 };
@@ -207,7 +239,8 @@ impl Render for ListPage {
                     .filter(|(_, i)| {
                         i.did || {
                             let rp = comics.read_per(&i.uid);
-                            read_filter.matches(rp) && (!reading_only || ReadFilter::Reading.matches(rp))
+                            read_filter.matches(rp)
+                                && (!reading_only || ReadFilter::Reading.matches(rp))
                         }
                     })
                     .map(|(ix, _)| ix)
@@ -229,7 +262,13 @@ impl Render for ListPage {
                         .flex()
                         .items_center()
                         .gap(px(10.0))
-                        .child(view_controls(read_filter, kind, true, &self.stores.prefs, cx))
+                        .child(view_controls(
+                            read_filter,
+                            kind,
+                            true,
+                            &self.stores.prefs,
+                            cx,
+                        ))
                         .child(cycle_button(
                             "recent-window",
                             label,
@@ -240,7 +279,10 @@ impl Render for ListPage {
                             }),
                         )),
                 );
-                (header, format!("Nothing added in the {}.", label.to_lowercase()))
+                (
+                    header,
+                    format!("Nothing added in the {}.", label.to_lowercase()),
+                )
             }
             Source::Reading => (
                 header_bar(
@@ -270,12 +312,18 @@ impl Render for ListPage {
                         .cursor_pointer()
                         .hover(|s| s.bg(gpui::rgba(0xffffff0f)))
                         .on_click(cx.listener(|_, _, _, cx| {
-                            cx.emit(Navigate(Route::Filtered { writer: String::new() }))
+                            cx.emit(Navigate(Route::Filtered {
+                                writer: String::new(),
+                            }))
                         }))
                         .child(icon(Icon::Close, px(12.0)).text_color(theme::text()))
                         .child("Clear filter")
                 });
-                let title = if writer.is_empty() { "All comics".to_string() } else { writer.clone() };
+                let title = if writer.is_empty() {
+                    "All comics".to_string()
+                } else {
+                    writer.clone()
+                };
                 (
                     header_bar(
                         div()
@@ -299,7 +347,17 @@ impl Render for ListPage {
                         .child(back_button("page-back", home_click(cx)))
                         .child(summary("Search", format!("\"{query}\"")))
                         .child(counter(visible.len())),
-                    div().flex().items_center().gap(px(10.0)).child(view_controls(read_filter, kind, true, &self.stores.prefs, cx)),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(10.0))
+                        .child(view_controls(
+                            read_filter,
+                            kind,
+                            true,
+                            &self.stores.prefs,
+                            cx,
+                        )),
                 ),
                 "No items to show.".to_string(),
             ),
@@ -316,7 +374,16 @@ impl Render for ListPage {
             Load::Ready if visible.is_empty() => note(empty_text).into_any_element(),
             Load::Ready => {
                 let avail = available_width(window, !sidebar_collapsed);
-                items_grid("list-grid", items.clone(), visible.clone(), kind, &self.stores, &self.scroll, avail, cx)
+                items_grid(
+                    "list-grid",
+                    items.clone(),
+                    visible.clone(),
+                    kind,
+                    &self.stores,
+                    &self.scroll,
+                    avail,
+                    cx,
+                )
             }
         };
 
@@ -327,11 +394,20 @@ impl Render for ListPage {
             .min_w_0()
             .h_full()
             .child(header)
-            .child(div().flex_1().min_h_0().px(px(PAGE_PAD_X)).pt(px(12.0)).child(body))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .px(px(PAGE_PAD_X))
+                    .pt(px(12.0))
+                    .child(body),
+            )
     }
 }
 
-/// Back button target: React sends these pages to `/`.
-fn home_click(cx: &mut Context<ListPage>) -> impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static {
+/// Back button target: these pages go to `/`.
+fn home_click(
+    cx: &mut Context<ListPage>,
+) -> impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static {
     cx.listener(|_, _, _, cx| cx.emit(Navigate(Route::home())))
 }

@@ -1,5 +1,4 @@
-//! `AppLoader` (`components/app-loader`): full-window splash while the startup sequence runs.
-//! The React spinner and pulse are CSS animations; here the spinner is a pulsing ring.
+//! `AppLoader`: full-window splash while the startup sequence runs. The spinner is a pulsing ring.
 
 use std::time::Duration;
 
@@ -26,7 +25,9 @@ pub fn app_loader(message: impl Into<SharedString>) -> impl IntoElement {
         .child(
             div().child(logo(88.0)).with_animation(
                 "loader-pulse",
-                Animation::new(Duration::from_millis(1800)).repeat().with_easing(ease_in_out),
+                Animation::new(Duration::from_millis(1800))
+                    .repeat()
+                    .with_easing(ease_in_out),
                 |el, t| el.opacity(1.0 - 0.15 * (1.0 - (2.0 * t - 1.0).abs())),
             ),
         )
@@ -52,5 +53,10 @@ pub fn app_loader(message: impl Into<SharedString>) -> impl IntoElement {
                     |el, t| el.opacity(0.5 + 0.5 * (t * std::f32::consts::TAU).sin().abs()),
                 ),
         )
-        .child(div().text_size(px(13.0)).text_color(rgb(0x8f8f8f)).child(message.into()))
+        .child(
+            div()
+                .text_size(px(13.0))
+                .text_color(rgb(0x8f8f8f))
+                .child(message.into()),
+        )
 }

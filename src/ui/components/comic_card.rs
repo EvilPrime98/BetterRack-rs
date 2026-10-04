@@ -1,7 +1,7 @@
 //! `ComicCard` (`components/comic-card/*`): `cover` (cover-only grid) and `detail` (cover + text).
 //! Built as a plain function so the virtualized grid can call it for visible rows only.
 //!
-//! Deviations from the React card: the "board"/"bag" overlay that marks read comics is reduced to
+//! Note: the "board"/"bag" overlay that marks read comics is reduced to
 //! a light cover outline.
 
 use std::time::Duration;
@@ -71,7 +71,11 @@ fn title_text(item: &LibraryEntry, info: &CardInfo, kind: ComicsType) -> String 
         out.push_str(&format!(" ({y})"));
     }
     let out = out.trim().to_string();
-    if out.is_empty() { item.name.clone() } else { out }
+    if out.is_empty() {
+        item.name.clone()
+    } else {
+        out
+    }
 }
 
 fn read_bar(percent: f32) -> impl IntoElement {
@@ -82,29 +86,44 @@ fn read_bar(percent: f32) -> impl IntoElement {
         .rounded(px(2.0))
         .overflow_hidden()
         .bg(rgb(0x605959))
-        .child(div().h_full().w(gpui::relative(pct / 100.0)).bg(if pct >= 100.0 {
-            rgb(0x13a629)
-        } else {
-            theme::accent()
-        }))
+        .child(
+            div()
+                .h_full()
+                .w(gpui::relative(pct / 100.0))
+                .bg(if pct >= 100.0 {
+                    rgb(0x13a629)
+                } else {
+                    theme::accent()
+                }),
+        )
 }
 
 fn rating(uid: &str, current: f32, stores: &Stores) -> impl IntoElement {
-    div().flex().items_center().gap(px(2.0)).children((1..=5).map(|n| {
-        let on = current >= n as f32;
-        let stores = stores.clone();
-        let uid = uid.to_string();
-        div()
-            .id(SharedString::from(format!("star-{uid}-{n}")))
-            .cursor_pointer()
-            .text_color(if on { rgb(0xfefcf3) } else { rgb(0x717479) })
-            .on_click(move |_, _, cx| {
-                // Clicking the current rating clears it.
-                let value = if current == n as f32 { 0.0 } else { n as f32 };
-                stores.comics.update(cx, |s, cx| s.set_rating(&uid, value, cx));
-            })
-            .child(icon(Icon::Star, px(15.0)).text_color(if on { rgb(0xfefcf3) } else { rgb(0x717479) }))
-    }))
+    div()
+        .flex()
+        .items_center()
+        .gap(px(2.0))
+        .children((1..=5).map(|n| {
+            let on = current >= n as f32;
+            let stores = stores.clone();
+            let uid = uid.to_string();
+            div()
+                .id(SharedString::from(format!("star-{uid}-{n}")))
+                .cursor_pointer()
+                .text_color(if on { rgb(0xfefcf3) } else { rgb(0x717479) })
+                .on_click(move |_, _, cx| {
+                    // Clicking the current rating clears it.
+                    let value = if current == n as f32 { 0.0 } else { n as f32 };
+                    stores
+                        .comics
+                        .update(cx, |s, cx| s.set_rating(&uid, value, cx));
+                })
+                .child(icon(Icon::Star, px(15.0)).text_color(if on {
+                    rgb(0xfefcf3)
+                } else {
+                    rgb(0x717479)
+                }))
+        }))
 }
 
 fn action_button(
@@ -121,13 +140,25 @@ fn action_button(
         .size(px(24.0))
         .rounded_full()
         .border_1()
-        .border_color(if hint_active { theme::accent() } else { rgba(0xffffff1f).into() })
+        .border_color(if hint_active {
+            theme::accent()
+        } else {
+            rgba(0xffffff1f).into()
+        })
         .bg(rgba(0x121212bf))
-        .text_color(if hint_active { theme::accent() } else { theme::text() })
+        .text_color(if hint_active {
+            theme::accent()
+        } else {
+            theme::text()
+        })
         .cursor_pointer()
         .hover(|s| s.bg(rgba(0x34c3d12e)).text_color(theme::accent()))
         .on_click(move |_, _, cx| on_click(cx))
-        .child(icon(glyph, px(13.0)).text_color(if hint_active { theme::accent() } else { theme::text() }))
+        .child(icon(glyph, px(13.0)).text_color(if hint_active {
+            theme::accent()
+        } else {
+            theme::text()
+        }))
 }
 
 fn info_row(label: &'static str, value: String) -> Option<impl IntoElement> {
@@ -146,7 +177,13 @@ fn info_row(label: &'static str, value: String) -> Option<impl IntoElement> {
                     .text_color(theme::accent())
                     .child(label.to_uppercase()),
             )
-            .child(div().min_w_0().truncate().text_color(rgb(0xcfcfcf)).child(value))
+            .child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .text_color(rgb(0xcfcfcf))
+                    .child(value),
+            )
     })
 }
 
@@ -160,9 +197,16 @@ fn cover(
     group: &SharedString,
 ) -> impl IntoElement {
     let h = w * COVER_RATIO;
-    let frame = div().relative().w(px(w)).h(px(h)).overflow_hidden().bg(rgb(0x232222));
+    let frame = div()
+        .relative()
+        .w(px(w))
+        .h(px(h))
+        .overflow_hidden()
+        .bg(rgb(0x232222));
     let frame = match thumb {
-        Some(Thumb::Ready(image)) => frame.child(img(image).size_full().object_fit(ObjectFit::Cover)),
+        Some(Thumb::Ready(image)) => {
+            frame.child(img(image).size_full().object_fit(ObjectFit::Cover))
+        }
         Some(Thumb::Missing) => frame
             .flex()
             .items_center()
@@ -183,9 +227,17 @@ fn cover(
                 ),
         ),
     };
-    let frame = if is_read { frame.border_1().border_color(rgba(0xffffff40)) } else { frame };
+    let frame = if is_read {
+        frame.border_1().border_color(rgba(0xffffff40))
+    } else {
+        frame
+    };
 
-    let issue = info.comic.as_ref().map(|c| json_text(&c.issue)).unwrap_or_default();
+    let issue = info
+        .comic
+        .as_ref()
+        .map(|c| json_text(&c.issue))
+        .unwrap_or_default();
     let badge = display(&issue).then(|| {
         let b = div()
             .absolute()
@@ -205,10 +257,16 @@ fn cover(
         if show_badge_always {
             b
         } else {
-            b.opacity(0.0).group_hover(group.clone(), |s| s.opacity(1.0))
+            b.opacity(0.0)
+                .group_hover(group.clone(), |s| s.opacity(1.0))
         }
     });
-    let event = info.comic.as_ref().and_then(|c| c.extra.get("event")).and_then(|v| v.as_str()).map(str::to_owned);
+    let event = info
+        .comic
+        .as_ref()
+        .and_then(|c| c.extra.get("event"))
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
     let event_badge = event.filter(|e| !e.is_empty()).map(|e| {
         let b = div()
             .absolute()
@@ -228,7 +286,8 @@ fn cover(
         if show_badge_always {
             b
         } else {
-            b.opacity(0.0).group_hover(group.clone(), |s| s.opacity(1.0))
+            b.opacity(0.0)
+                .group_hover(group.clone(), |s| s.opacity(1.0))
         }
     });
     frame.children(badge).children(event_badge)
@@ -269,31 +328,55 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
         .flex()
         .gap(px(5.0))
         .when_hover_only(detail, &group)
-        .child(action_button(format!("identify-{uid}").into(), Icon::Wand, info.identified, {
-            let uid = uid.clone();
-            move |cx| crate::ui::modals::open_identify(cx, uid.clone())
-        }))
+        .child(action_button(
+            format!("identify-{uid}").into(),
+            Icon::Wand,
+            info.identified,
+            {
+                let uid = uid.clone();
+                move |cx| crate::ui::modals::open_identify(cx, uid.clone())
+            },
+        ))
         .child(action_button(
             format!("read-{uid}").into(),
             Icon::BookOpen,
             is_read,
             {
                 let (stores, uid) = (stores.clone(), uid.clone());
-                move |cx| stores.comics.update(cx, |s, cx| s.set_read(&uid, !is_read, cx))
+                move |cx| {
+                    stores
+                        .comics
+                        .update(cx, |s, cx| s.set_read(&uid, !is_read, cx))
+                }
             },
         ))
-        .child(action_button(format!("refresh-{uid}").into(), Icon::Refresh, false, {
-            let (stores, uid) = (stores.clone(), uid.clone());
-            move |cx| refresh_comic(&stores, &uid, cx)
-        }))
-        .child(action_button(format!("move-{uid}").into(), Icon::Folder, false, {
-            let uid = uid.clone();
-            move |cx| crate::ui::modals::open_move_file(cx, uid.clone())
-        }))
-        .child(action_button(format!("delete-{uid}").into(), Icon::Trash, false, {
-            let (stores, uid, name) = (stores.clone(), uid.clone(), item.name.clone());
-            move |cx| confirm_delete(&stores, &uid, &name, cx)
-        }));
+        .child(action_button(
+            format!("refresh-{uid}").into(),
+            Icon::Refresh,
+            false,
+            {
+                let (stores, uid) = (stores.clone(), uid.clone());
+                move |cx| refresh_comic(&stores, &uid, cx)
+            },
+        ))
+        .child(action_button(
+            format!("move-{uid}").into(),
+            Icon::Folder,
+            false,
+            {
+                let uid = uid.clone();
+                move |cx| crate::ui::modals::open_move_file(cx, uid.clone())
+            },
+        ))
+        .child(action_button(
+            format!("delete-{uid}").into(),
+            Icon::Trash,
+            false,
+            {
+                let (stores, uid, name) = (stores.clone(), uid.clone(), item.name.clone());
+                move |cx| confirm_delete(&stores, &uid, &name, cx)
+            },
+        ));
 
     let title = title_text(item, info, env.kind);
     let title_el = div()
@@ -321,9 +404,17 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
             .border_color(rgba(0xffffff14))
             .flex_1()
             .child(if info.loading {
-                div().text_size(px(11.0)).text_color(rgb(0x8f8f8f)).child("Loading…").into_any_element()
+                div()
+                    .text_size(px(11.0))
+                    .text_color(rgb(0x8f8f8f))
+                    .child("Loading…")
+                    .into_any_element()
             } else if comic.is_none() {
-                div().text_size(px(11.0)).text_color(rgb(0x8f8f8f)).child("No information found.").into_any_element()
+                div()
+                    .text_size(px(11.0))
+                    .text_color(rgb(0x8f8f8f))
+                    .child("No information found.")
+                    .into_any_element()
             } else {
                 let c = comic.unwrap();
                 let details = c.page_id().map(|page_id| {
@@ -337,7 +428,10 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
                         .cursor_pointer()
                         .hover(|s| s.opacity(0.8))
                         .on_click(cx.listener(move |_, _, _, cx| {
-                            cx.emit(Navigate(Route::Details { page_id: page_id.clone(), source_wiki: source_wiki.clone() }))
+                            cx.emit(Navigate(Route::Details {
+                                page_id: page_id.clone(),
+                                source_wiki: source_wiki.clone(),
+                            }))
                         }))
                         .child("View more")
                 });
@@ -350,20 +444,30 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
                     .flex_col()
                     .gap(px(3.0))
                     .children(source.map(|s| {
-                        div().text_size(px(9.0)).text_color(rgb(0x8a8a8a)).child(s.to_uppercase())
+                        div()
+                            .text_size(px(9.0))
+                            .text_color(rgb(0x8a8a8a))
+                            .child(s.to_uppercase())
                     }))
                     .children(info_row("Comic", c.title.clone().unwrap_or_default()))
                     .children(info_row("Volume", json_text(&c.volume)))
                     .children(info_row("Issue", json_text(&c.issue)))
                     .children(info_row(
                         "Year",
-                        c.release_date.as_ref().and_then(|d| d.year()).map(|y| y.to_string()).unwrap_or_default(),
+                        c.release_date
+                            .as_ref()
+                            .and_then(|d| d.year())
+                            .map(|y| y.to_string())
+                            .unwrap_or_default(),
                     ))
                     .children(info_row("Writer", c.writers().join(", ")))
                     .children(info_row("Artist", c.artists().join(", ")))
                     .children(info_row(
                         "Released",
-                        c.release_date.as_ref().map(|d| d.display()).unwrap_or_default(),
+                        c.release_date
+                            .as_ref()
+                            .map(|d| d.display())
+                            .unwrap_or_default(),
                     ))
                     .children(details)
                     .into_any_element()
@@ -393,7 +497,15 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
                             .id(SharedString::from(format!("cover-{uid}")))
                             .cursor_pointer()
                             .on_click(open_cover)
-                            .child(cover(item, info, thumb, DETAIL_COVER_W, true, is_read, &group)),
+                            .child(cover(
+                                item,
+                                info,
+                                thumb,
+                                DETAIL_COVER_W,
+                                true,
+                                is_read,
+                                &group,
+                            )),
                     )
                     .child(read_bar(read_per)),
             )
@@ -452,7 +564,9 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
 /// The refresh button: regenerate the cover thumbnail and re-identify the comic, like
 /// `RefreshComicButton`. Either half may fail on its own.
 pub(crate) fn refresh_comic(stores: &Stores, uid: &str, cx: &mut App) {
-    let Some(client) = stores.thumbs.read(cx).client.clone() else { return };
+    let Some(client) = stores.thumbs.read(cx).client.clone() else {
+        return;
+    };
     let stores = stores.clone();
     let uid = uid.to_string();
     cx.spawn(async move |cx| {
@@ -467,9 +581,16 @@ pub(crate) fn refresh_comic(stores: &Stores, uid: &str, cx: &mut App) {
                 Err(e) => crate::ui::toast::error(cx, e.to_string()),
             }
             if let Ok(r) = ident {
-                let found = r.identified == Some(true) && r.comic.is_some() && r.meta_source.is_some();
-                let (comic, meta) = if found { (r.comic, r.meta_source) } else { (None, None) };
-                stores.identify.update(cx, |s, cx| s.set_identified(&uid, comic, meta, cx));
+                let found =
+                    r.identified == Some(true) && r.comic.is_some() && r.meta_source.is_some();
+                let (comic, meta) = if found {
+                    (r.comic, r.meta_source)
+                } else {
+                    (None, None)
+                };
+                stores
+                    .identify
+                    .update(cx, |s, cx| s.set_identified(&uid, comic, meta, cx));
             }
         });
     })
@@ -481,8 +602,11 @@ fn confirm_delete(stores: &Stores, uid: &str, name: &str, cx: &mut App) {
     let uid = uid.to_string();
     confirm::ask(
         cx,
-        ConfirmOptions::new("Delete comic?", format!("\"{name}\" will be permanently deleted from disk."))
-            .labels("Delete", "Cancel"),
+        ConfirmOptions::new(
+            "Delete comic?",
+            format!("\"{name}\" will be permanently deleted from disk."),
+        )
+        .labels("Delete", "Cancel"),
         move |answer, _, cx| {
             if answer == Some(true) {
                 library.update(cx, |s, cx| s.delete_file(uid, cx));
@@ -502,7 +626,8 @@ impl CardStyle for gpui::Div {
         if detail {
             self
         } else {
-            self.opacity(0.0).group_hover(group.clone(), |s| s.opacity(1.0))
+            self.opacity(0.0)
+                .group_hover(group.clone(), |s| s.opacity(1.0))
         }
     }
 

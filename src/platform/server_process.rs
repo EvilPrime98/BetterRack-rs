@@ -1,5 +1,5 @@
 //! Local backend: in-process `br-server` router (default), or a spawned Bun server as a dev escape
-//! hatch (discover its port, health-check it, kill it on exit). Mirrors `electron/main.ts` (MIGRATION.md §7).
+//! hatch (discover its port, health-check it, kill it on exit).
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -21,7 +21,9 @@ const LISTENING_MARKER: &str = "BR_SERVER_LISTENING";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
-    #[error("could not start the server ({0}). Is `bun` installed (needed for `BETTERRACK_SERVER_ROOT`)?")]
+    #[error(
+        "could not start the server ({0}). Is `bun` installed (needed for `BETTERRACK_SERVER_ROOT`)?"
+    )]
     Spawn(std::io::Error),
     #[error("port already in use. Close the other BetterRack/server instance and try again.\n{0}")]
     PortInUse(String),
@@ -61,11 +63,15 @@ pub fn is_packaged() -> bool {
 }
 
 fn app_dir() -> Option<PathBuf> {
-    std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf))
+    std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
 }
 
 fn seven_zip_exe(app_dir: &Path) -> PathBuf {
-    app_dir.join("bin").join(if cfg!(windows) { "7z.exe" } else { "7zz" })
+    app_dir
+        .join("bin")
+        .join(if cfg!(windows) { "7z.exe" } else { "7zz" })
 }
 
 /// Local mode without a sidecar: open `br-core` in this process and return a client that calls the
@@ -79,15 +85,20 @@ pub fn start_in_process() -> Result<ApiClient, String> {
         .join("BetterRack");
     std::fs::create_dir_all(&data_dir).map_err(|e| format!("{}: {e}", data_dir.display()))?;
 
-    let seven_zip_path = std::env::var_os("SEVEN_ZIP_PATH").map(PathBuf::from).or_else(|| {
-        let path = seven_zip_exe(app_dir.as_deref()?);
-        if path.exists() {
-            Some(path)
-        } else {
-            tracing::warn!("SEVEN_ZIP_PATH not set, {} is missing; falling back to `7z` on PATH", path.display());
-            None
-        }
-    });
+    let seven_zip_path = std::env::var_os("SEVEN_ZIP_PATH")
+        .map(PathBuf::from)
+        .or_else(|| {
+            let path = seven_zip_exe(app_dir.as_deref()?);
+            if path.exists() {
+                Some(path)
+            } else {
+                tracing::warn!(
+                    "SEVEN_ZIP_PATH not set, {} is missing; falling back to `7z` on PATH",
+                    path.display()
+                );
+                None
+            }
+        });
     let config = br_core::config::Config {
         port: 0,
         api_key: None,
@@ -95,8 +106,11 @@ pub fn start_in_process() -> Result<ApiClient, String> {
         seven_zip_path,
         data_dir,
     };
-    let wiki = Arc::new(br_server::wiki::LiveWiki::new(br_wiki::WikiService::default()));
-    let state = br_server::state::AppState::open_with_wiki(config, wiki).map_err(|e| e.to_string())?;
+    let wiki = Arc::new(br_server::wiki::LiveWiki::new(
+        br_wiki::WikiService::default(),
+    ));
+    let state =
+        br_server::state::AppState::open_with_wiki(config, wiki).map_err(|e| e.to_string())?;
     state.spawn_rescan();
     Ok(ApiClient::in_process(br_server::app(state)))
 }
@@ -136,7 +150,7 @@ impl ServerProcess {
         let mut child = cmd.spawn().map_err(ServerError::Spawn)?;
 
         // A job object kills the server even if we crash (kill_on_drop only covers clean drops),
-        // so a stale server never keeps holding its port (gotcha #11).
+        // so a stale server never keeps holding its port.
         #[cfg(windows)]
         let job = win_job::JobObject::adopt(&child);
 
@@ -167,7 +181,11 @@ impl ServerProcess {
             }
         });
 
-        let tail_text = || tail.lock().map(|t| t.iter().cloned().collect::<Vec<_>>().join("\n")).unwrap_or_default();
+        let tail_text = || {
+            tail.lock()
+                .map(|t| t.iter().cloned().collect::<Vec<_>>().join("\n"))
+                .unwrap_or_default()
+        };
 
         let port = tokio::select! {
             r = port_rx => match r {
@@ -182,7 +200,10 @@ impl ServerProcess {
         let client = ApiClient::new(&base_url, None).expect("valid local url");
         for _ in 0..HEALTH_ATTEMPTS {
             if let Ok(Some(status)) = child.try_wait() {
-                return Err(classify_exit(format!("exit status: {status}\n{}", tail_text())));
+                return Err(classify_exit(format!(
+                    "exit status: {status}\n{}",
+                    tail_text()
+                )));
             }
             if matches!(client.healthz().await, Ok(h) if h.app == "betterrack") {
                 return Ok(Self {
@@ -200,7 +221,11 @@ impl ServerProcess {
 
 /// `BR_SERVER_LISTENING 3000` → `Some(3000)`.
 pub fn parse_listening(line: &str) -> Option<u16> {
-    line.trim().strip_prefix(LISTENING_MARKER)?.trim().parse().ok()
+    line.trim()
+        .strip_prefix(LISTENING_MARKER)?
+        .trim()
+        .parse()
+        .ok()
 }
 
 fn push_tail(tail: &Mutex<VecDeque<String>>, line: String) {
@@ -226,9 +251,9 @@ mod win_job {
     use tokio::process::Child;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+        SetInformationJobObject,
     };
 
     /// Kill-on-close job: when our process dies the OS closes the handle and kills the child.
@@ -279,14 +304,23 @@ mod tests {
     #[test]
     fn parses_the_listening_marker() {
         assert_eq!(parse_listening("BR_SERVER_LISTENING 3000"), Some(3000));
-        assert_eq!(parse_listening("  BR_SERVER_LISTENING 54321\r"), Some(54321));
+        assert_eq!(
+            parse_listening("  BR_SERVER_LISTENING 54321\r"),
+            Some(54321)
+        );
         assert_eq!(parse_listening("Server running"), None);
         assert_eq!(parse_listening("BR_SERVER_LISTENING nope"), None);
     }
 
     #[test]
     fn detects_port_in_use() {
-        assert!(matches!(classify_exit("error: EADDRINUSE".into()), ServerError::PortInUse(_)));
-        assert!(matches!(classify_exit("boom".into()), ServerError::Exited(_)));
+        assert!(matches!(
+            classify_exit("error: EADDRINUSE".into()),
+            ServerError::PortInUse(_)
+        ));
+        assert!(matches!(
+            classify_exit("boom".into()),
+            ServerError::Exited(_)
+        ));
     }
 }

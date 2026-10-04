@@ -1,4 +1,4 @@
-//! Tokio ↔ GPUI bridge (MIGRATION.md §5.3).
+//! Tokio ↔ GPUI bridge.
 //!
 //! GPUI has its own executor and no Tokio, but `reqwest`/`tokio::process` need one. A dedicated
 //! multi-thread runtime lives in a `OnceLock`; run IO on it with [`run`] and await the result from
@@ -30,5 +30,8 @@ fn runtime() -> &'static Runtime {
 
 /// Run `fut` on the Tokio runtime and await its output from any executor (including GPUI's).
 pub async fn run<T: Send + 'static>(fut: impl Future<Output = T> + Send + 'static) -> T {
-    runtime().spawn(fut).await.expect("tokio task panicked or was cancelled")
+    runtime()
+        .spawn(fut)
+        .await
+        .expect("tokio task panicked or was cancelled")
 }

@@ -1,14 +1,19 @@
-//! File logging (`electron/logger.ts`): everything `tracing` emits, including the sidecar's
+//! File logging: everything `tracing` emits, including the sidecar's
 //! stdout/stderr lines, goes to `<data dir>/BetterRack/logs/betterrack.log.<date>` (7 days kept) as
 //! well as the console.
 
 use std::path::PathBuf;
 
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{EnvFilter, Layer as _, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+    EnvFilter, Layer as _, fmt, layer::SubscriberExt, util::SubscriberInitExt,
+};
 
 pub fn log_dir() -> PathBuf {
-    dirs::data_dir().unwrap_or_else(std::env::temp_dir).join("BetterRack").join("logs")
+    dirs::data_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("BetterRack")
+        .join("logs")
 }
 
 fn filter() -> EnvFilter {
@@ -34,9 +39,17 @@ pub fn init() -> Option<WorkerGuard> {
         }
         None => (None, None),
     };
-    let file = writer.map(|w| fmt::layer().with_ansi(false).with_writer(w).with_filter(filter()));
+    let file = writer.map(|w| {
+        fmt::layer()
+            .with_ansi(false)
+            .with_writer(w)
+            .with_filter(filter())
+    });
 
-    tracing_subscriber::registry().with(fmt::layer().with_filter(filter())).with(file).init();
+    tracing_subscriber::registry()
+        .with(fmt::layer().with_filter(filter()))
+        .with(file)
+        .init();
 
     // A panic on any thread lands in the log, not only on a console nobody sees.
     let default_hook = std::panic::take_hook();
@@ -44,6 +57,10 @@ pub fn init() -> Option<WorkerGuard> {
         tracing::error!("panic: {info}");
         default_hook(info);
     }));
-    tracing::info!("BetterRack {} starting (logs: {})", env!("CARGO_PKG_VERSION"), dir.display());
+    tracing::info!(
+        "BetterRack {} starting (logs: {})",
+        env!("CARGO_PKG_VERSION"),
+        dir.display()
+    );
     guard
 }

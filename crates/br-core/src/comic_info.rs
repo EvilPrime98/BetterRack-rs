@@ -1,9 +1,8 @@
-//! `ComicInfo.xml` parsing (port of `ComicInfoModel`) and the `WikiComic` DTO
-//! (port of `comiInfoToWikiComicDTO`).
+//! `ComicInfo.xml` parsing and the `WikiComic` DTO.
 //!
 //! Only what the server reads is modelled: the direct text children of `<ComicInfo>` and the
 //! `<Pages><Page .../></Pages>` attributes. Values are trimmed like fast-xml-parser does, and
-//! parse failures yield `None` instead of an error, like the TS model.
+//! parse failures yield `None` instead of an error.
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -44,11 +43,18 @@ fn node_of(e: &quick_xml::events::BytesStart<'_>) -> Node {
         .filter_map(|a| a.ok())
         .map(|a| {
             let key = String::from_utf8_lossy(a.key.as_ref()).into_owned();
-            let val = a.unescape_value().map(|v| v.into_owned()).unwrap_or_else(|_| String::from_utf8_lossy(&a.value).into_owned());
+            let val = a
+                .unescape_value()
+                .map(|v| v.into_owned())
+                .unwrap_or_else(|_| String::from_utf8_lossy(&a.value).into_owned());
             (key, val)
         })
         .collect();
-    Node { name: String::from_utf8_lossy(e.name().as_ref()).into_owned(), attrs, ..Node::default() }
+    Node {
+        name: String::from_utf8_lossy(e.name().as_ref()).into_owned(),
+        attrs,
+        ..Node::default()
+    }
 }
 
 fn build_tree(xml: &str) -> Option<Node> {
@@ -66,10 +72,16 @@ fn build_tree(xml: &str) -> Option<Node> {
                 }
             }
             Event::Text(t) => {
-                let s = t.unescape().map(|c| c.into_owned()).unwrap_or_else(|_| String::from_utf8_lossy(&t).into_owned());
+                let s = t
+                    .unescape()
+                    .map(|c| c.into_owned())
+                    .unwrap_or_else(|_| String::from_utf8_lossy(&t).into_owned());
                 stack.last_mut()?.text.push_str(&s);
             }
-            Event::CData(c) => stack.last_mut()?.text.push_str(&String::from_utf8_lossy(&c)),
+            Event::CData(c) => stack
+                .last_mut()?
+                .text
+                .push_str(&String::from_utf8_lossy(&c)),
             Event::Eof => break,
             _ => {}
         }
@@ -96,13 +108,19 @@ pub fn parse(xml: &str) -> Option<ComicInfo> {
                     .into_iter()
                     .filter(|p| p.name == "Page")
                     .map(|p| {
-                        let attr = |k: &str| p.attrs.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
-                        ComicPage { image: attr("Image"), bookmark: attr("Bookmark") }
+                        let attr =
+                            |k: &str| p.attrs.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+                        ComicPage {
+                            image: attr("Image"),
+                            bookmark: attr("Bookmark"),
+                        }
                     })
                     .collect();
             }
         } else {
-            out.fields.entry(child.name).or_insert_with(|| child.text.trim().to_string());
+            out.fields
+                .entry(child.name)
+                .or_insert_with(|| child.text.trim().to_string());
         }
     }
     Some(out)
@@ -114,7 +132,14 @@ pub fn js_number(s: &str) -> f64 {
     if t.is_empty() {
         return 0.0;
     }
-    for (prefix, radix) in [("0x", 16), ("0X", 16), ("0o", 8), ("0O", 8), ("0b", 2), ("0B", 2)] {
+    for (prefix, radix) in [
+        ("0x", 16),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
         if let Some(rest) = t.strip_prefix(prefix) {
             return u64::from_str_radix(rest, radix).map_or(f64::NAN, |n| n as f64);
         }
@@ -124,7 +149,9 @@ pub fn js_number(s: &str) -> f64 {
         "-Infinity" => return f64::NEG_INFINITY,
         _ => {}
     }
-    if t.chars().any(|c| c.is_ascii_alphabetic() && c != 'e' && c != 'E') {
+    if t.chars()
+        .any(|c| c.is_ascii_alphabetic() && c != 'e' && c != 'E')
+    {
         return f64::NAN;
     }
     t.parse::<f64>().unwrap_or(f64::NAN)
@@ -142,7 +169,9 @@ fn parse_int(s: &str) -> Option<i64> {
         Some(r) => (-1, r),
         None => (1, t.strip_prefix('+').unwrap_or(t)),
     };
-    let end = digits.find(|c: char| !c.is_ascii_digit()).unwrap_or(digits.len());
+    let end = digits
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(digits.len());
     (end > 0).then(|| sign * digits[..end].parse::<i64>().unwrap_or(i64::MAX))
 }
 
@@ -153,7 +182,14 @@ fn parse_float(s: &str) -> Option<f64> {
         .rev()
         .filter(|&i| t.is_char_boundary(i))
         .map(|i| &t[..i])
-        .find_map(|p| p.parse::<f64>().ok().filter(|f| f.is_finite() && !p.chars().any(|c| c.is_ascii_alphabetic() && c != 'e' && c != 'E')))
+        .find_map(|p| {
+            p.parse::<f64>().ok().filter(|f| {
+                f.is_finite()
+                    && !p
+                        .chars()
+                        .any(|c| c.is_ascii_alphabetic() && c != 'e' && c != 'E')
+            })
+        })
 }
 
 impl ComicInfo {
@@ -181,32 +217,53 @@ impl ComicInfo {
                 }
                 let image = p.image.as_deref().map_or(f64::NAN, js_number);
                 let page = js_positive_integer(image + 1.0)?;
-                Some(Bookmark { page, label: label.to_string() })
+                Some(Bookmark {
+                    page,
+                    label: label.to_string(),
+                })
             })
             .collect()
     }
 }
 
 fn split_list(value: Option<&str>) -> Vec<String> {
-    value.map(|v| v.split(',').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect()).unwrap_or_default()
+    value
+        .map(|v| {
+            v.split(',')
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn appearances(value: Option<&str>) -> Vec<Value> {
-    split_list(value).into_iter().map(|name| json!({ "name": name, "pageTitle": name })).collect()
+    split_list(value)
+        .into_iter()
+        .map(|name| json!({ "name": name, "pageTitle": name }))
+        .collect()
 }
 
 /// Count/Volume/Year/Month default to -1 when absent.
 fn int_or_empty(v: i64) -> String {
-    if v == -1 { String::new() } else { v.to_string() }
+    if v == -1 {
+        String::new()
+    } else {
+        v.to_string()
+    }
 }
 
-/// Key order matches the TS object literal, since the result is persisted as JSON.
+/// Key order is fixed, since the result is persisted as JSON.
 pub fn to_wiki_comic(info: &ComicInfo) -> Value {
     let rating = info.float("CommunityRating", 0.0);
     let mut other = appearances(info.text("Characters"));
     other.extend(appearances(info.text("Teams")));
-    let notes: Vec<Value> =
-        ["Notes", "Review"].iter().filter_map(|k| info.text(k)).filter(|v| !v.trim().is_empty()).map(|v| Value::String(v.to_string())).collect();
+    let notes: Vec<Value> = ["Notes", "Review"]
+        .iter()
+        .filter_map(|k| info.text(k))
+        .filter(|v| !v.trim().is_empty())
+        .map(|v| Value::String(v.to_string()))
+        .collect();
     json!({
         "title": info.text("Title").or(info.text("Series")).unwrap_or(""),
         "volume": int_or_empty(info.int("Volume", -1)),
@@ -284,7 +341,13 @@ mod tests {
 
     #[test]
     fn bookmarks_are_one_based_and_filtered() {
-        assert_eq!(parse(XML).unwrap().bookmarks(), vec![Bookmark { page: 3, label: "Chapter 2".into() }]);
+        assert_eq!(
+            parse(XML).unwrap().bookmarks(),
+            vec![Bookmark {
+                page: 3,
+                label: "Chapter 2".into()
+            }]
+        );
     }
 
     #[test]
@@ -306,7 +369,10 @@ mod tests {
         assert_eq!(v["volume"], "2");
         assert_eq!(v["issue"], "1");
         assert_eq!(v["credits"]["writers"], json!(["A & B", "C"]));
-        assert_eq!(v["releaseDate"], json!({ "releaseDay": "", "releaseMonth": "5", "releaseYear": "2020" }));
+        assert_eq!(
+            v["releaseDate"],
+            json!({ "releaseDay": "", "releaseMonth": "5", "releaseYear": "2020" })
+        );
         assert_eq!(v["rating"], "4.5");
         assert_eq!(v["notes"], json!(["a note"]));
         assert_eq!(
@@ -325,7 +391,14 @@ mod tests {
     #[test]
     fn dto_absent_values_are_empty() {
         let v = to_wiki_comic(&parse("<ComicInfo><Title>T</Title></ComicInfo>").unwrap());
-        assert_eq!((v["title"].as_str(), v["volume"].as_str(), v["rating"].as_str()), (Some("T"), Some(""), Some("")));
+        assert_eq!(
+            (
+                v["title"].as_str(),
+                v["volume"].as_str(),
+                v["rating"].as_str()
+            ),
+            (Some("T"), Some(""), Some(""))
+        );
     }
 
     #[test]

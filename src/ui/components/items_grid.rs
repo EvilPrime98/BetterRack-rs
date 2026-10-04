@@ -33,7 +33,11 @@ fn geometry(kind: ComicsType, avail: f32) -> (usize, f32, f32, f32) {
 /// Width available to the grid: the window minus the sidebar and the page padding.
 pub fn available_width(window: &Window, sidebar_visible: bool) -> f32 {
     f32::from(window.viewport_size().width)
-        - if sidebar_visible { f32::from(theme::sidebar_width()) } else { 0.0 }
+        - if sidebar_visible {
+            f32::from(theme::sidebar_width())
+        } else {
+            0.0
+        }
         - PAGE_PAD_X * 2.0
 }
 
@@ -59,7 +63,10 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
         rows,
         cx.processor(move |_this, range: std::ops::Range<usize>, _window, cx| {
             use gpui::{ParentElement as _, Styled as _};
-            let env = CardEnv { stores: stores.clone(), kind };
+            let env = CardEnv {
+                stores: stores.clone(),
+                kind,
+            };
             range
                 .map(|row| {
                     let first = row * cols;
@@ -73,7 +80,12 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
                         stores.identify.update(cx, |s, cx| s.ensure(item, cx));
                         let thumb = stores.thumbs.read(cx).get(&item.uid).cloned();
                         let info = stores.identify.read(cx).info(item);
-                        let cache = stores.comics.read(cx).get(&item.uid).cloned().unwrap_or_default();
+                        let cache = stores
+                            .comics
+                            .read(cx)
+                            .get(&item.uid)
+                            .cloned()
+                            .unwrap_or_default();
                         comic_card(item, &info, thumb, cache, &env, col_w, cx)
                     });
                     gpui::div()

@@ -1,27 +1,27 @@
-//! Settings page (`pages/settings.page.tsx`). A local draft of `{apiUrl, downloadDir, wikiSearch,
+//! Settings page. A local draft of `{apiUrl, downloadDir, wikiSearch,
 //! rescanOnStartup}` is saved with `PUT /api/settings`; library folders add/remove through their own
-//! endpoints and rescan afterwards. The draft resets whenever the stored settings change, as in
-//! React.
+//! endpoints and rescan afterwards. The draft resets whenever the stored settings change.
 //!
-//! The Server section shows what the app is attached to and, as in React, offers "Change server"
+//! The Server section shows what the app is attached to and offers "Change server"
 //! and (in remote mode) "Unlink server". Remote mode has no native folder picker (the paths belong
 //! to the remote machine), so "Browse…" is hidden there.
 
 use gpui::{
     AppContext as _, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, prelude::FluentBuilder as _, px, rgb,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div,
+    prelude::FluentBuilder as _, px, rgb,
 };
 
 use crate::model::SettingsUpdate;
+use crate::platform::server_config;
 use crate::state::Stores;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::checkbox::checkbox;
 use crate::ui::components::items_grid::PAGE_PAD_X;
 use crate::ui::components::text_input::{TextInput, TextInputEvent};
-use crate::platform::server_config;
 use crate::ui::confirm::{self, ConfirmOptions};
-use crate::ui::modals;
 use crate::ui::icons::{Icon, icon};
+use crate::ui::modals;
 use crate::ui::{theme, toast};
 
 pub struct SettingsPage {
@@ -39,8 +39,11 @@ pub struct SettingsPage {
 impl SettingsPage {
     pub fn new(stores: Stores, cx: &mut Context<Self>) -> Self {
         let s = stores.settings.read(cx).settings.clone();
-        let api_url = cx.new(|cx| TextInput::new("https://example.com/wp-json/wp/v2", cx).with_value(s.api_url.clone()));
-        let download_dir = cx.new(|cx| TextInput::new("/path/to/downloads", cx).with_value(s.download_dir.clone()));
+        let api_url = cx.new(|cx| {
+            TextInput::new("https://example.com/wp-json/wp/v2", cx).with_value(s.api_url.clone())
+        });
+        let download_dir = cx
+            .new(|cx| TextInput::new("/path/to/downloads", cx).with_value(s.download_dir.clone()));
         let folder_path = cx.new(|cx| TextInput::new("Folder path", cx));
         let subs = vec![
             cx.observe(&stores.settings, |this, _, cx| this.reset_draft(cx)),
@@ -69,8 +72,10 @@ impl SettingsPage {
     /// `useEffect(() => setDraft(settings), [settings])`.
     fn reset_draft(&mut self, cx: &mut Context<Self>) {
         let s = self.stores.settings.read(cx).settings.clone();
-        self.api_url.update(cx, |i, cx| i.set_value(s.api_url.clone(), cx));
-        self.download_dir.update(cx, |i, cx| i.set_value(s.download_dir.clone(), cx));
+        self.api_url
+            .update(cx, |i, cx| i.set_value(s.api_url.clone(), cx));
+        self.download_dir
+            .update(cx, |i, cx| i.set_value(s.download_dir.clone(), cx));
         self.wiki_search = s.wiki_search;
         self.rescan_on_startup = s.rescan_on_startup;
         cx.notify();
@@ -84,14 +89,21 @@ impl SettingsPage {
             wiki_search: Some(self.wiki_search),
             rescan_on_startup: Some(self.rescan_on_startup),
         };
-        let task = self.stores.settings.update(cx, |s, cx| s.update(update, cx));
+        let task = self
+            .stores
+            .settings
+            .update(cx, |s, cx| s.update(update, cx));
         cx.spawn(async move |this, cx| {
             let result = task.await;
             this.update(cx, |this, cx| {
                 match &result {
                     Ok(()) => toast::success(cx, "Settings saved"),
                     Err(e) => {
-                        let msg = if e.is_empty() { "Something went wrong.".to_string() } else { e.clone() };
+                        let msg = if e.is_empty() {
+                            "Something went wrong.".to_string()
+                        } else {
+                            e.clone()
+                        };
                         this.settings_error = msg.clone();
                         toast::error(cx, msg);
                     }
@@ -113,7 +125,10 @@ impl SettingsPage {
             return;
         }
         self.folder_error.clear();
-        let task = self.stores.settings.update(cx, |s, cx| s.add_library_folder(path, cx));
+        let task = self
+            .stores
+            .settings
+            .update(cx, |s, cx| s.add_library_folder(path, cx));
         let library = self.stores.library.clone();
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -125,7 +140,11 @@ impl SettingsPage {
                         library.update(cx, |l, cx| l.refresh(true, cx));
                     }
                     Err(e) => {
-                        let msg = if e.is_empty() { "There was an error adding the folder.".to_string() } else { e.clone() };
+                        let msg = if e.is_empty() {
+                            "There was an error adding the folder.".to_string()
+                        } else {
+                            e.clone()
+                        };
                         this.folder_error = msg.clone();
                         toast::error(cx, msg);
                     }
@@ -139,7 +158,10 @@ impl SettingsPage {
 
     fn remove_folder(&mut self, dir: String, cx: &mut Context<Self>) {
         self.folder_error.clear();
-        let task = self.stores.settings.update(cx, |s, cx| s.remove_library_folder(dir, cx));
+        let task = self
+            .stores
+            .settings
+            .update(cx, |s, cx| s.remove_library_folder(dir, cx));
         let library = self.stores.library.clone();
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -150,7 +172,11 @@ impl SettingsPage {
                         library.update(cx, |l, cx| l.refresh(true, cx));
                     }
                     Err(e) => {
-                        let msg = if e.is_empty() { "There was an error deleting the library.".to_string() } else { e.clone() };
+                        let msg = if e.is_empty() {
+                            "There was an error deleting the library.".to_string()
+                        } else {
+                            e.clone()
+                        };
                         this.folder_error = msg.clone();
                         toast::error(cx, msg);
                     }
@@ -163,11 +189,18 @@ impl SettingsPage {
     }
 
     /// Native folder picker. `then` gets the chosen path.
-    fn browse(&mut self, cx: &mut Context<Self>, then: impl FnOnce(&mut Self, String, &mut Context<Self>) + 'static) {
+    fn browse(
+        &mut self,
+        cx: &mut Context<Self>,
+        then: impl FnOnce(&mut Self, String, &mut Context<Self>) + 'static,
+    ) {
         self.folder_error.clear();
         cx.spawn(async move |this, cx| {
             let picked = crate::runtime::run(async {
-                rfd::AsyncFileDialog::new().pick_folder().await.map(|h| h.path().to_string_lossy().into_owned())
+                rfd::AsyncFileDialog::new()
+                    .pick_folder()
+                    .await
+                    .map(|h| h.path().to_string_lossy().into_owned())
             })
             .await;
             if let Some(path) = picked {
@@ -197,7 +230,10 @@ impl SettingsPage {
     }
 
     fn label(text: &'static str) -> impl IntoElement {
-        div().text_size(px(12.0)).text_color(rgb(0xb8b8b8)).child(text)
+        div()
+            .text_size(px(12.0))
+            .text_color(rgb(0xb8b8b8))
+            .child(text)
     }
 
     fn field(input: &Entity<TextInput>) -> gpui::Div {
@@ -220,7 +256,10 @@ impl Render for SettingsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (output_dirs, server_url) = {
             let s = self.stores.settings.read(cx);
-            (s.settings.output_dirs.clone(), s.client.as_ref().map(|c| c.base_url().to_string()))
+            (
+                s.settings.output_dirs.clone(),
+                s.client.as_ref().map(|c| c.base_url().to_string()),
+            )
         };
 
         let remote = server_config::current().remote;
@@ -269,29 +308,39 @@ impl Render for SettingsPage {
                     }),
             );
 
-        let downloads = Self::section("Downloads").child(Self::label("Download folder")).child(
-            div()
-                .flex()
-                .gap(px(8.0))
-                .child(Self::field(&self.download_dir))
-                .when(native_picker, |s| {
-                    s.child(button(
-                        "browse-download",
-                        "Browse…",
-                        ButtonVariant::Secondary,
-                        cx.listener(|this, _, _, cx| {
-                            this.browse(cx, |this, path, cx| this.download_dir.update(cx, |i, cx| i.set_value(path, cx)))
-                        }),
-                    ))
-                }),
-        );
+        let downloads = Self::section("Downloads")
+            .child(Self::label("Download folder"))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(8.0))
+                    .child(Self::field(&self.download_dir))
+                    .when(native_picker, |s| {
+                        s.child(button(
+                            "browse-download",
+                            "Browse…",
+                            ButtonVariant::Secondary,
+                            cx.listener(|this, _, _, cx| {
+                                this.browse(cx, |this, path, cx| {
+                                    this.download_dir.update(cx, |i, cx| i.set_value(path, cx))
+                                })
+                            }),
+                        ))
+                    }),
+            );
 
         let store = Self::section("Store configuration")
             .child(Self::label("API URL"))
             .child(div().flex().child(Self::field(&self.api_url)));
 
         let folder_rows: Vec<gpui::AnyElement> = if output_dirs.is_empty() {
-            vec![div().text_size(px(13.0)).text_color(rgb(0x9a9a9a)).child("No library folders configured yet.").into_any_element()]
+            vec![
+                div()
+                    .text_size(px(13.0))
+                    .text_color(rgb(0x9a9a9a))
+                    .child("No library folders configured yet.")
+                    .into_any_element(),
+            ]
         } else {
             output_dirs
                 .iter()
@@ -306,7 +355,13 @@ impl Render for SettingsPage {
                         .h(px(36.0))
                         .rounded(px(6.0))
                         .bg(gpui::rgba(0xffffff0a))
-                        .child(div().min_w_0().truncate().text_size(px(13.0)).child(dir.clone()))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .text_size(px(13.0))
+                                .child(dir.clone()),
+                        )
                         .child(
                             div()
                                 .id(SharedString::from(format!("remove-{dir}")))
@@ -317,7 +372,9 @@ impl Render for SettingsPage {
                                 .rounded_full()
                                 .cursor_pointer()
                                 .hover(|s| s.bg(gpui::rgba(0xe85d5d2e)))
-                                .on_click(cx.listener(move |this, _, _, cx| this.remove_folder(remove.clone(), cx)))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.remove_folder(remove.clone(), cx)
+                                }))
                                 .child(icon(Icon::Close, px(14.0)).text_color(theme::text())),
                         )
                         .into_any_element()
@@ -337,7 +394,9 @@ impl Render for SettingsPage {
                             "browse-library",
                             "Browse…",
                             ButtonVariant::Secondary,
-                            cx.listener(|this, _, _, cx| this.browse(cx, |this, path, cx| this.add_folder(path, cx))),
+                            cx.listener(|this, _, _, cx| {
+                                this.browse(cx, |this, path, cx| this.add_folder(path, cx))
+                            }),
                         ))
                     })
                     .child(button(
@@ -347,7 +406,12 @@ impl Render for SettingsPage {
                         cx.listener(|this, _, _, cx| this.add_folder_from_field(cx)),
                     )),
             )
-            .child(div().text_size(px(12.0)).text_color(theme::error()).child(self.folder_error.clone()));
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .text_color(theme::error())
+                    .child(self.folder_error.clone()),
+            );
 
         let identification = Self::section("Identification")
             .child(
@@ -407,14 +471,29 @@ impl Render for SettingsPage {
             .pb(px(18.0))
             .border_b_1()
             .border_color(theme::border_subtle())
-            .child(div().text_size(px(18.0)).font_weight(gpui::FontWeight::SEMIBOLD).child("Settings"))
+            .child(
+                div()
+                    .text_size(px(18.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child("Settings"),
+            )
             .child(
                 div()
                     .flex()
                     .items_center()
                     .gap(px(12.0))
-                    .child(div().text_size(px(12.0)).text_color(theme::error()).child(self.settings_error.clone()))
-                    .child(button("save", "Save", ButtonVariant::Classic, cx.listener(|this, _, _, cx| this.save(cx)))),
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .text_color(theme::error())
+                            .child(self.settings_error.clone()),
+                    )
+                    .child(button(
+                        "save",
+                        "Save",
+                        ButtonVariant::Classic,
+                        cx.listener(|this, _, _, cx| this.save(cx)),
+                    )),
             );
 
         div()
@@ -438,8 +517,27 @@ impl Render for SettingsPage {
                             .flex_wrap()
                             .gap(px(16.0))
                             .items_start()
-                            .child(div().flex().flex_col().gap(px(16.0)).flex_1().min_w(px(340.0)).child(server).child(downloads).child(store))
-                            .child(div().flex().flex_col().gap(px(16.0)).flex_1().min_w(px(340.0)).child(folders).child(identification)),
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(16.0))
+                                    .flex_1()
+                                    .min_w(px(340.0))
+                                    .child(server)
+                                    .child(downloads)
+                                    .child(store),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(16.0))
+                                    .flex_1()
+                                    .min_w(px(340.0))
+                                    .child(folders)
+                                    .child(identification),
+                            ),
                     ),
             )
     }
@@ -447,11 +545,17 @@ impl Render for SettingsPage {
 
 /// Adapter from the checkbox's `(bool, &mut Window, &mut App)` callback to a page mutation.
 trait ListenerToggle {
-    fn listener_toggle(&self, f: impl Fn(&mut SettingsPage, bool) + 'static) -> impl Fn(bool, &mut Window, &mut gpui::App) + 'static;
+    fn listener_toggle(
+        &self,
+        f: impl Fn(&mut SettingsPage, bool) + 'static,
+    ) -> impl Fn(bool, &mut Window, &mut gpui::App) + 'static;
 }
 
 impl ListenerToggle for Context<'_, SettingsPage> {
-    fn listener_toggle(&self, f: impl Fn(&mut SettingsPage, bool) + 'static) -> impl Fn(bool, &mut Window, &mut gpui::App) + 'static {
+    fn listener_toggle(
+        &self,
+        f: impl Fn(&mut SettingsPage, bool) + 'static,
+    ) -> impl Fn(bool, &mut Window, &mut gpui::App) + 'static {
         let this = self.entity();
         move |on, _, cx| {
             this.update(cx, |page, cx| {

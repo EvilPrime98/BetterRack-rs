@@ -8,8 +8,8 @@ use br_core::config::Config;
 use br_core::download::RetryOpts;
 use br_core::store::StoreTiming;
 use br_core::wiki::NoWiki;
-use br_server::state::{AppState, NetOptions};
 use br_server::app;
+use br_server::state::{AppState, NetOptions};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -53,15 +53,32 @@ async fn harness(configure_store: bool) -> Harness {
     let config = Config::from_lookup(|_| None, dir.path().to_path_buf());
     let net = NetOptions {
         store_timing: StoreTiming::instant(),
-        download_retry: RetryOpts { max_retries: 1, backoff_ms: 0, backoff_cap_ms: 0, request_delay_ms: 0 },
+        download_retry: RetryOpts {
+            max_retries: 1,
+            backoff_ms: 0,
+            backoff_cap_ms: 0,
+            request_delay_ms: 0,
+        },
         rotating: Some((0, 0, 0)),
         pixeldrain: None,
     };
     let state = AppState::open_with(config, Arc::new(NoWiki), net).unwrap();
     if configure_store {
-        state.prefs.update_app_settings(json!({"apiUrl": format!("{base}/wp/v2")}).as_object().unwrap()).unwrap();
+        state
+            .prefs
+            .update_app_settings(
+                json!({"apiUrl": format!("{base}/wp/v2")})
+                    .as_object()
+                    .unwrap(),
+            )
+            .unwrap();
     }
-    Harness { router: app(state), _dir: dir, out: tempfile::tempdir().unwrap(), base }
+    Harness {
+        router: app(state),
+        _dir: dir,
+        out: tempfile::tempdir().unwrap(),
+        base,
+    }
 }
 
 trait IntoResponse_ {
@@ -74,18 +91,36 @@ impl<T: axum::response::IntoResponse> IntoResponse_ for T {
 }
 
 async fn call(h: &Harness, method: &str, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
-    let req = Request::builder().method(method).uri(uri).header("content-type", "application/json");
+    let req = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json");
     let body = body.map_or(Body::empty(), |b| Body::from(b.to_string()));
-    let res = h.router.clone().oneshot(req.body(body).unwrap()).await.unwrap();
+    let res = h
+        .router
+        .clone()
+        .oneshot(req.body(body).unwrap())
+        .await
+        .unwrap();
     let status = res.status();
-    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 #[tokio::test]
 async fn store_routes_answer_409_until_the_api_url_is_set() {
     let h = harness(false).await;
-    for (m, u) in [("GET", "/api/comics?search=x"), ("GET", "/api/comics/1/links"), ("POST", "/api/downloads"), ("GET", "/api/downloads?id=1")] {
+    for (m, u) in [
+        ("GET", "/api/comics?search=x"),
+        ("GET", "/api/comics/1/links"),
+        ("POST", "/api/downloads"),
+        ("GET", "/api/downloads?id=1"),
+    ] {
         let (s, v) = call(&h, m, u, None).await;
         assert_eq!(s, StatusCode::CONFLICT, "{u}");
         assert_eq!(v["error"], true);
@@ -99,7 +134,10 @@ async fn search_decodes_titles_and_requires_a_query() {
     let h = harness(true).await;
     let (s, v) = call(&h, "GET", "/api/comics?search=bat", None).await;
     assert_eq!(s, StatusCode::OK);
-    assert_eq!(v[0], json!({"id": 1, "title": "Batman & Robin", "link": "https://x.test/b/", "thumbnailUrl": "https://x.test/c.jpg", "uploadDate": "2024-01-01T00:00:00"}));
+    assert_eq!(
+        v[0],
+        json!({"id": 1, "title": "Batman & Robin", "link": "https://x.test/b/", "thumbnailUrl": "https://x.test/c.jpg", "uploadDate": "2024-01-01T00:00:00"})
+    );
     let (_, exact) = call(&h, "GET", "/api/comics?search=superman&exact=true", None).await;
     assert_eq!(exact.as_array().unwrap().len(), 1);
     let (s, v) = call(&h, "GET", "/api/comics", None).await;
@@ -116,10 +154,19 @@ async fn links_then_download_runs_to_done_and_the_file_lands() {
     let uuid = v["links"][0]["uuid"].as_str().unwrap().to_string();
 
     let (s, v) = call(&h, "GET", "/api/comics/99/links", None).await;
-    assert_eq!((s, v["message"].as_str()), (StatusCode::NOT_FOUND, Some("No links found")));
+    assert_eq!(
+        (s, v["message"].as_str()),
+        (StatusCode::NOT_FOUND, Some("No links found"))
+    );
 
     let dir = h.out.path().to_string_lossy().to_string();
-    let (s, v) = call(&h, "POST", "/api/downloads", Some(json!({"id": 1, "title": "Batman 1", "uuid": uuid, "outputDir": dir, "strat": "all"}))).await;
+    let (s, v) = call(
+        &h,
+        "POST",
+        "/api/downloads",
+        Some(json!({"id": 1, "title": "Batman 1", "uuid": uuid, "outputDir": dir, "strat": "all"})),
+    )
+    .await;
     assert_eq!(s, StatusCode::CREATED);
     let job_id = v["jobId"].as_str().unwrap().to_string();
 
@@ -133,7 +180,10 @@ async fn links_then_download_runs_to_done_and_the_file_lands() {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     assert_eq!(state, "done");
-    assert_eq!(std::fs::read_to_string(h.out.path().join("batman.cbz")).unwrap(), "COMICBYTES");
+    assert_eq!(
+        std::fs::read_to_string(h.out.path().join("batman.cbz")).unwrap(),
+        "COMICBYTES"
+    );
 
     let (_, v) = call(&h, "GET", "/api/downloads/jobs", None).await;
     assert_eq!(v["jobs"][0]["jobId"], job_id.as_str());
@@ -152,8 +202,20 @@ async fn download_validation() {
     let h = harness(true).await;
     let (s, _) = call(&h, "POST", "/api/downloads", Some(json!({"title": "x"}))).await;
     assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
-    let (s, v) = call(&h, "POST", "/api/downloads", Some(json!({"id": 99, "title": "x", "uuid": "u"}))).await;
-    assert_eq!((s, v["message"].as_str()), (StatusCode::BAD_REQUEST, Some("This comic cannot be downloaded")));
+    let (s, v) = call(
+        &h,
+        "POST",
+        "/api/downloads",
+        Some(json!({"id": 99, "title": "x", "uuid": "u"})),
+    )
+    .await;
+    assert_eq!(
+        (s, v["message"].as_str()),
+        (
+            StatusCode::BAD_REQUEST,
+            Some("This comic cannot be downloaded")
+        )
+    );
     let (_, v) = call(&h, "GET", "/api/downloads/resource/1", None).await;
     assert_eq!(v, json!({"error": false, "job": null}));
 }

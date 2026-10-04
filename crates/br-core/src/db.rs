@@ -1,6 +1,5 @@
 //! A single SQLite connection behind a mutex. SQLite is single-writer, so one connection used from
-//! `spawn_blocking` is enough. No WAL: the Bun server does not enable it and both must be able to
-//! open the same files during the transition.
+//! `spawn_blocking` is enough. No WAL: existing databases do not use it.
 
 use crate::Result;
 use rusqlite::Connection;
@@ -17,11 +16,15 @@ impl Db {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        Ok(Self { conn: Mutex::new(Connection::open(path)?) })
+        Ok(Self {
+            conn: Mutex::new(Connection::open(path)?),
+        })
     }
 
     pub fn open_in_memory() -> Result<Self> {
-        Ok(Self { conn: Mutex::new(Connection::open_in_memory()?) })
+        Ok(Self {
+            conn: Mutex::new(Connection::open_in_memory()?),
+        })
     }
 
     pub fn conn(&self) -> MutexGuard<'_, Connection> {
@@ -29,7 +32,7 @@ impl Db {
     }
 }
 
-/// `ALTER TABLE .. ADD COLUMN`, ignoring "column already exists" like the Bun code does.
+/// `ALTER TABLE .. ADD COLUMN`, ignoring "column already exists".
 pub fn add_column_if_missing(conn: &Connection, table: &str, column_def: &str) {
     let _ = conn.execute(&format!("ALTER TABLE {table} ADD COLUMN {column_def}"), []);
 }
