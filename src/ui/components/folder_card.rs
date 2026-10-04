@@ -11,6 +11,7 @@ use crate::state::Stores;
 use crate::ui::components::comic_card::{COVER_MAX_CARD_W, COVER_RATIO};
 use crate::ui::confirm::{self, ConfirmOptions};
 use crate::ui::icons::{Icon, icon};
+use crate::ui::text::capitalize_words;
 use crate::ui::theme;
 
 pub fn folder_card<V: EventEmitter<Navigate> + 'static>(
@@ -128,7 +129,7 @@ pub fn folder_card<V: EventEmitter<Navigate> + 'static>(
                                     .truncate()
                                     .text_size(px(16.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .child(item.name.clone()),
+                                    .child(capitalize_words(&item.name)),
                             ),
                     )
                     .child(delete_button)
@@ -175,7 +176,7 @@ pub fn folder_card<V: EventEmitter<Navigate> + 'static>(
                                 .w_full()
                                 .text_center()
                                 .line_clamp(3)
-                                .child(item.name.clone()),
+                                .child(capitalize_words(&item.name)),
                         )
                         .child(
                             div()

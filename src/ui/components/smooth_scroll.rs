@@ -7,8 +7,7 @@
 use std::time::Instant;
 
 use gpui::{
-    App, Context, DispatchPhase, IntoElement, ScrollDelta, ScrollHandle, ScrollWheelEvent, Styled,
-    Window, canvas, point, px,
+    App, Context, DispatchPhase, IntoElement, ScrollDelta, ScrollWheelEvent, Styled, Window, canvas,
 };
 
 /// Pixels per wheel line for notched wheels.
@@ -30,8 +29,9 @@ impl SmoothScroll {
         self.pending = (self.pending + dy).clamp(-MAX_PENDING, MAX_PENDING);
     }
 
-    /// Apply this frame's share of the pending distance and ask for another frame while any is left.
-    pub fn step(&mut self, handle: &ScrollHandle, window: &mut Window) {
+    /// Hand this frame's share of the pending distance to `scroll_by` (positive = down) and ask for
+    /// another frame while any is left.
+    pub fn step(&mut self, window: &mut Window, scroll_by: impl FnOnce(f32)) {
         if self.pending == 0.0 {
             self.last_frame = None;
             return;
@@ -48,16 +48,7 @@ impl SmoothScroll {
             self.pending * (1.0 - (-dt / TAU).exp())
         };
         self.pending -= step;
-
-        let mut offset = handle.offset();
-        let min_y = -f32::from(handle.max_offset().y).max(0.0);
-        let y = (f32::from(offset.y) - step).clamp(min_y, 0.0);
-        if (y - f32::from(offset.y)).abs() < f32::EPSILON {
-            // Hit an end: nothing more to glide.
-            self.pending = 0.0;
-        }
-        offset.y = px(y);
-        handle.set_offset(point(offset.x, offset.y));
+        scroll_by(step);
 
         if self.pending != 0.0 {
             window.request_animation_frame();

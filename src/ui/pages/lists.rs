@@ -9,8 +9,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    Context, EventEmitter, InteractiveElement, IntoElement, ParentElement, Render,
-    StatefulInteractiveElement, Styled, UniformListScrollHandle, Window, div, px,
+    Context, EventEmitter, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use crate::model::{
@@ -20,11 +20,10 @@ use crate::route::{GoBack, Navigate, Route};
 use crate::runtime;
 use crate::state::Stores;
 use crate::state::library::apply_sort;
-use crate::ui::components::items_grid::{PAGE_PAD_X, available_width, items_grid};
+use crate::ui::components::dropdown::dropdown;
+use crate::ui::components::items_grid::{GridScroll, PAGE_PAD_X, available_width, items_grid};
 use crate::ui::icons::{Icon, icon};
-use crate::ui::pages::common::{
-    back_button, counter, cycle_button, header_bar, note, summary, view_controls,
-};
+use crate::ui::pages::common::{back_button, counter, header_bar, note, summary, view_controls};
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -49,7 +48,7 @@ enum Load {
 pub struct ListPage {
     source: Source,
     stores: Stores,
-    scroll: UniformListScrollHandle,
+    scroll: GridScroll,
     /// Index into `RECENT_WINDOW_*`.
     window_ix: usize,
     /// Server snapshot (Recent, Reading).
@@ -87,7 +86,7 @@ impl ListPage {
         let mut this = Self {
             source,
             stores,
-            scroll: UniformListScrollHandle::new(),
+            scroll: GridScroll::new(),
             window_ix: 0,
             fetched: Rc::new(Vec::new()),
             load: Load::Ready,
@@ -269,15 +268,36 @@ impl Render for ListPage {
                             &self.stores.prefs,
                             cx,
                         ))
-                        .child(cycle_button(
-                            "recent-window",
-                            label,
-                            cx.listener(|this, _, _, cx| {
-                                this.window_ix = (this.window_ix + 1) % RECENT_WINDOW_HOURS.len();
-                                this.scroll = UniformListScrollHandle::new();
-                                this.fetch(cx);
-                            }),
-                        )),
+                        .child({
+                            let page = cx.entity();
+                            let prefs = &self.stores.prefs;
+                            let for_open = prefs.clone();
+                            dropdown(
+                                "recent-window",
+                                RECENT_WINDOW_LABELS
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(ix, l)| (ix, SharedString::from(*l)))
+                                    .collect(),
+                                self.window_ix,
+                                prefs.read(cx).open_menu == Some("recent-window"),
+                                true,
+                                move |open, cx| {
+                                    for_open.update(cx, |p, cx| {
+                                        p.set_menu_open("recent-window", open, cx)
+                                    })
+                                },
+                                move |ix, cx| {
+                                    page.update(cx, |this, cx| {
+                                        if this.window_ix != ix {
+                                            this.window_ix = ix;
+                                            this.scroll = GridScroll::new();
+                                            this.fetch(cx);
+                                        }
+                                    })
+                                },
+                            )
+                        }),
                 );
                 (
                     header,
@@ -375,7 +395,6 @@ impl Render for ListPage {
             Load::Ready => {
                 let avail = available_width(window, !sidebar_collapsed);
                 items_grid(
-                    "list-grid",
                     items.clone(),
                     visible.clone(),
                     kind,

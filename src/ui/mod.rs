@@ -5,5 +5,6 @@ pub mod icons;
 pub mod modals;
 pub mod pages;
 pub mod shell;
+pub mod text;
 pub mod theme;
 pub mod toast;

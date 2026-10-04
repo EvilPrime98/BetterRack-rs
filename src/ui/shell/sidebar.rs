@@ -16,22 +16,10 @@ use crate::state::Stores;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::text_input::{TextInput, TextInputEvent};
 use crate::ui::icons::{Icon, icon};
+use crate::ui::text::capitalize_words;
 use crate::ui::theme;
 
 const ROW_H: f32 = 36.0;
-
-/// Uppercases the first letter of every word ("Recently added" -> "Recently Added").
-fn capitalize_words(s: &str) -> String {
-    s.split(' ')
-        .map(|w| {
-            let mut c = w.chars();
-            c.next()
-                .map(|f| f.to_uppercase().chain(c).collect())
-                .unwrap_or_default()
-        })
-        .collect::<Vec<String>>()
-        .join(" ")
-}
 
 #[derive(Clone)]
 enum Row {

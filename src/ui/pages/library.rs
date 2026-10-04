@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use gpui::{
     Context, EventEmitter, InteractiveElement, IntoElement, ParentElement, Render,
-    StatefulInteractiveElement, Styled, UniformListScrollHandle, Window, div, prelude::*, px, rgb,
+    StatefulInteractiveElement, Styled, Window, div, prelude::*, px, rgb,
 };
 
 use crate::model::{FilterOption, LibraryEntry};
@@ -17,9 +17,10 @@ use crate::route::{GoBack, Navigate};
 use crate::state::Stores;
 use crate::state::library::apply_sort;
 use crate::ui::components::button::{ButtonVariant, button};
-use crate::ui::components::items_grid::{PAGE_PAD_X, available_width, items_grid};
+use crate::ui::components::items_grid::{GridScroll, PAGE_PAD_X, available_width, items_grid};
 use crate::ui::components::smooth_scroll::{SmoothScroll, wheel_capture};
 use crate::ui::icons::{Icon, icon};
+use crate::ui::text::capitalize_words;
 use crate::ui::pages::common::{note, prefs_dropdown, view_controls};
 use crate::ui::theme;
 
@@ -31,7 +32,7 @@ struct Memo {
 pub struct LibraryPage {
     uid: Option<String>,
     stores: Stores,
-    scroll: UniformListScrollHandle,
+    scroll: GridScroll,
     smooth: SmoothScroll,
     memo: Option<Memo>,
 }
@@ -47,12 +48,11 @@ impl LibraryPage {
         cx.observe(&stores.identify, |_, _, cx| cx.notify())
             .detach();
         cx.observe(&stores.prefs, |_, _, cx| cx.notify()).detach();
-        // `useEffect(() => fetchLibrary(), [uid])`: a stale cache is refreshed on every visit.
         stores.library.update(cx, |s, cx| s.fetch(cx).detach());
         Self {
             uid,
             stores,
-            scroll: UniformListScrollHandle::new(),
+            scroll: GridScroll::new(),
             smooth: SmoothScroll::default(),
             memo: None,
         }
@@ -82,8 +82,8 @@ impl LibraryPage {
 impl Render for LibraryPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let base = self.base_items(cx);
-        let base_handle = self.scroll.0.borrow().base_handle.clone();
-        self.smooth.step(&base_handle, window);
+        let scroll = self.scroll.clone();
+        self.smooth.step(window, |dy| scroll.scroll_by(dy));
         let (read_filter, kind, sidebar_collapsed, sort) = {
             let p = self.stores.prefs.read(cx);
             (
@@ -155,7 +155,7 @@ impl Render for LibraryPage {
                             .truncate()
                             .text_size(px(15.0))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child(title),
+                            .child(capitalize_words(&title)),
                     )
                     .child(prefs_dropdown(
                         "sort",
@@ -211,7 +211,6 @@ impl Render for LibraryPage {
         } else {
             let avail = available_width(window, !sidebar_collapsed);
             items_grid(
-                "library-grid",
                 base.clone(),
                 visible.clone(),
                 kind,

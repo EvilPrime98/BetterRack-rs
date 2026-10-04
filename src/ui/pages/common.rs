@@ -7,7 +7,6 @@ use gpui::{
 
 use crate::model::{ComicsType, ReadFilter};
 use crate::state::prefs::PrefsStore;
-use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::dropdown::dropdown;
 use crate::ui::components::items_grid::PAGE_PAD_X;
 use crate::ui::icons::{Icon, icon};
@@ -90,14 +89,6 @@ pub fn note(text: impl Into<SharedString>) -> impl IntoElement {
         .text_size(px(13.0))
         .text_color(rgb(0x808080))
         .child(text.into())
-}
-
-pub fn cycle_button(
-    id: &'static str,
-    label: impl Into<SharedString>,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    button(id, label, ButtonVariant::Secondary, on_click)
 }
 
 fn capitalize(s: &str) -> SharedString {
