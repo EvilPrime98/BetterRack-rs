@@ -13,11 +13,6 @@ pub enum Route {
     Reader {
         uid: String,
     },
-    /// `/details/:pageId?sourceWiki=`
-    Details {
-        page_id: String,
-        source_wiki: Option<String>,
-    },
     Settings,
     Store,
     StoreDownloads,
@@ -46,7 +41,6 @@ impl Route {
             } => "Search",
             Self::Library { .. } => "Library",
             Self::Reader { .. } => "Reader",
-            Self::Details { .. } => "Details",
             Self::Settings => "Settings",
             Self::Store => "Store",
             Self::StoreDownloads => "Downloads",

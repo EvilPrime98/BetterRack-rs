@@ -228,43 +228,6 @@ impl WikiComic {
     }
 }
 
-/// Roles shown on the Details page, in `CREDIT_ROLES` order.
-pub const CREDIT_ROLES: [(&str, &str); 7] = [
-    ("writers", "Writer"),
-    ("artists", "Artist"),
-    ("inkers", "Inker"),
-    ("colorists", "Colorist"),
-    ("letterers", "Letterer"),
-    ("editors", "Editor"),
-    ("executiveEditors", "Executive Editor"),
-];
-
-/// `APPEARING_GROUPS`.
-pub const APPEARING_GROUPS: [(&str, &str); 7] = [
-    ("featuredCharacters", "Featured Characters"),
-    ("supportingCharacters", "Supporting Characters"),
-    ("antagonists", "Antagonists"),
-    ("otherCharacters", "Other Characters"),
-    ("locations", "Locations"),
-    ("items", "Items"),
-    ("concepts", "Concepts"),
-];
-
-/// One entry of an appearing group.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Appearance {
-    pub name: String,
-    pub status_note: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CoverVariant {
-    pub cover_number: i64,
-    pub artists: Vec<String>,
-    pub image_url: String,
-    pub image_label: String,
-}
-
 /// Wiki text arrives with MediaWiki markup (`[[Page|label]]`, `'''bold'''`, `<!-- comments -->`).
 /// The readable form is shown: links become their label, emphasis
 /// quotes and comments are dropped.
@@ -296,144 +259,13 @@ pub fn clean_wiki_text(text: &str) -> String {
     out.trim().to_string()
 }
 
-fn strings(v: Option<&serde_json::Value>) -> Vec<String> {
-    v.and_then(|v| v.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str())
-                .map(clean_wiki_text)
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// The sections of `better-wiki`'s `WikiComic` that only the Details page reads. They stay in
-/// `extra` (so the identify commit round-trips them untouched) and are read through these.
 impl WikiComic {
-    fn extra_str(&self, key: &str) -> String {
+    pub fn cover(&self) -> String {
         self.extra
-            .get(key)
+            .get("cover")
             .and_then(|v| v.as_str())
             .map(clean_wiki_text)
             .unwrap_or_default()
-    }
-
-    pub fn cover(&self) -> String {
-        self.extra_str("cover")
-    }
-    pub fn synopsis(&self) -> String {
-        self.extra_str("synopsis")
-    }
-    pub fn rating_label(&self) -> String {
-        self.extra_str("rating")
-    }
-    pub fn event(&self) -> String {
-        self.extra_str("event")
-    }
-    pub fn source_wiki(&self) -> Option<String> {
-        Some(self.extra_str("sourceWiki")).filter(|s| !s.is_empty())
-    }
-    /// `pageId` is a number on the wire (a string is tolerated).
-    pub fn page_id(&self) -> Option<String> {
-        match self.extra.get("pageId")? {
-            serde_json::Value::Number(n) => Some(n.to_string()),
-            serde_json::Value::String(s) if !s.is_empty() => Some(s.clone()),
-            _ => None,
-        }
-    }
-    pub fn story_titles(&self) -> Vec<String> {
-        strings(self.extra.get("storyTitles"))
-    }
-    pub fn notes(&self) -> Vec<String> {
-        strings(self.extra.get("notes"))
-    }
-    pub fn trivia(&self) -> Vec<String> {
-        strings(self.extra.get("trivia"))
-    }
-    /// `(quote, speaker)`, only when there is a quote.
-    pub fn quotation(&self) -> Option<(String, String)> {
-        let q = self.extra.get("quotation")?;
-        let quote = clean_wiki_text(q.get("quote")?.as_str()?);
-        let speaker = clean_wiki_text(
-            q.get("speaker")
-                .and_then(|s| s.as_str())
-                .unwrap_or_default(),
-        );
-        (!quote.is_empty()).then_some((quote, speaker))
-    }
-
-    /// Credit rows with at least one name, in display order (`getCreditRows`).
-    pub fn credit_rows(&self) -> Vec<(&'static str, Vec<String>)> {
-        let Some(credits) = &self.credits else {
-            return Vec::new();
-        };
-        CREDIT_ROLES
-            .iter()
-            .filter_map(|(key, label)| {
-                let names = if *key == "writers" {
-                    credits.writers.clone()
-                } else {
-                    strings(credits.extra.get(*key))
-                };
-                // The wiki repeats a name once per story; list each person once.
-                let mut seen = std::collections::HashSet::new();
-                let names: Vec<String> = names
-                    .into_iter()
-                    .filter(|n| seen.insert(n.clone()))
-                    .collect();
-                (!names.is_empty()).then_some((*label, names))
-            })
-            .collect()
-    }
-
-    /// Non-empty appearing groups in display order (`getAppearingGroups`).
-    pub fn appearing_groups(&self) -> Vec<(&'static str, Vec<Appearance>)> {
-        let Some(appearing) = self.extra.get("appearing") else {
-            return Vec::new();
-        };
-        APPEARING_GROUPS
-            .iter()
-            .filter_map(|(key, label)| {
-                let entries: Vec<Appearance> = appearing
-                    .get(*key)?
-                    .as_array()?
-                    .iter()
-                    .filter_map(|e| {
-                        let name = e.get("name")?.as_str()?.to_string();
-                        let status_note = e
-                            .get("statusNote")
-                            .and_then(|s| s.as_str())
-                            .unwrap_or_default()
-                            .to_string();
-                        Some(Appearance { name, status_note })
-                    })
-                    .collect();
-                (!entries.is_empty()).then_some((*label, entries))
-            })
-            .collect()
-    }
-
-    pub fn cover_variants(&self) -> Vec<CoverVariant> {
-        let Some(list) = self.extra.get("coverVariants").and_then(|v| v.as_array()) else {
-            return Vec::new();
-        };
-        list.iter()
-            .map(|v| CoverVariant {
-                cover_number: v.get("coverNumber").and_then(|n| n.as_i64()).unwrap_or(0),
-                artists: strings(v.get("artists")),
-                image_url: v
-                    .get("imageUrl")
-                    .and_then(|s| s.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                image_label: v
-                    .get("imageLabel")
-                    .and_then(|s| s.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-            })
-            .collect()
     }
 }
 
@@ -702,44 +534,5 @@ mod tests {
         })
         .unwrap();
         assert_eq!(v, serde_json::json!({"wikiSearch": true}));
-    }
-
-    #[test]
-    fn wiki_markup_reads_as_plain_text() {
-        assert_eq!(
-            clean_wiki_text(
-                "[[Bruce Wayne (Earth-Two)|Bruce Wayne]] met '''Alfred''' <!-- x --> and [[Gotham]]."
-            ),
-            "Bruce Wayne met Alfred  and Gotham."
-        );
-        assert_eq!(clean_wiki_text("broken [[link"), "broken [[link");
-    }
-
-    #[test]
-    fn details_sections_read_from_extra() {
-        let c: WikiComic = serde_json::from_str(
-            r#"{"title":"Batman","pageId":42,"cover":"http://x/c.jpg","sourceWiki":"https://dc.fandom.com",
-            "credits":{"writers":["A"],"artists":["B","C"],"inkers":[]},
-            "appearing":{"featuredCharacters":[{"name":"Bruce","pageTitle":"Bruce","statusNote":"(dies)"}],"locations":[]},
-            "coverVariants":[{"coverNumber":2,"artists":["Z"],"imageLabel":"Variant"}],
-            "quotation":{"quote":"I am","speaker":"Bat"},"notes":["n"," "],"event":"Crisis"}"#,
-        )
-        .unwrap();
-        assert_eq!(c.page_id().as_deref(), Some("42"));
-        assert_eq!(
-            c.credit_rows(),
-            vec![
-                ("Writer", vec!["A".to_string()]),
-                ("Artist", vec!["B".to_string(), "C".to_string()])
-            ]
-        );
-        let groups = c.appearing_groups();
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].0, "Featured Characters");
-        assert_eq!(groups[0].1[0].status_note, "(dies)");
-        assert_eq!(c.cover_variants()[0].cover_number, 2);
-        assert_eq!(c.quotation(), Some(("I am".to_string(), "Bat".to_string())));
-        assert_eq!(c.notes(), vec!["n".to_string()]);
-        assert!(c.synopsis().is_empty());
     }
 }

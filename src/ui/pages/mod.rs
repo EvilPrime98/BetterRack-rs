@@ -1,5 +1,4 @@
 pub mod common;
-pub mod details;
 pub mod downloads;
 pub mod library;
 pub mod lists;

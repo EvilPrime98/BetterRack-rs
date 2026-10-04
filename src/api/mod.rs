@@ -464,19 +464,6 @@ impl ApiClient {
         self.json(rb).await
     }
 
-    pub async fn wiki_comic(
-        &self,
-        id: &str,
-        source_wiki: &str,
-        thumbnail_size: u32,
-    ) -> ApiResult<WikiComic> {
-        let rb = self.get(&["api", "wiki", "comic", id]).query(&[
-            ("sourceWiki", source_wiki.to_string()),
-            ("thumbnailSize", thumbnail_size.to_string()),
-        ]);
-        self.json(rb).await
-    }
-
     /// Search (or the "latest" feed when `search` is `None`). `page` is 1-based and the server
     /// answers with a bare array (a `{items:[…]}` envelope is tolerated). The store page does not
     /// send `exact`, so neither do we.

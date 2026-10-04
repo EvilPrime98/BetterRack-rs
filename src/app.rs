@@ -16,7 +16,6 @@ use crate::ui::app_loader::app_loader;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::confirm::{self, ConfirmHost, ConfirmOptions};
 use crate::ui::modals::{self, ModalHost};
-use crate::ui::pages::details::DetailsPage;
 use crate::ui::pages::downloads::DownloadsPage;
 use crate::ui::pages::library::LibraryPage;
 use crate::ui::pages::lists::{ListPage, Source};
@@ -55,7 +54,6 @@ enum Page {
     Settings(Entity<SettingsPage>),
     Store(Entity<StorePage>),
     Downloads(Entity<DownloadsPage>),
-    Details(Entity<DetailsPage>),
     Placeholder,
 }
 
@@ -415,24 +413,6 @@ impl AppRoot {
             Route::StoreDownloads => {
                 Page::Downloads(cx.new(|cx| DownloadsPage::new(self.stores.clone(), cx)))
             }
-            Route::Details {
-                page_id,
-                source_wiki,
-            } => {
-                let page =
-                    cx.new(|cx| DetailsPage::new(page_id, source_wiki, self.stores.clone(), cx));
-                self._page_subs.push(cx.subscribe_in(
-                    &page,
-                    window,
-                    |this, _, ev: &Navigate, window, cx| this.navigate(ev.0.clone(), window, cx),
-                ));
-                self._page_subs.push(cx.subscribe_in(
-                    &page,
-                    window,
-                    |this, _, _: &GoBack, window, cx| this.go_back(window, cx),
-                ));
-                Page::Details(page)
-            }
         };
     }
 
@@ -610,7 +590,6 @@ impl Render for AppRoot {
             Page::Settings(page) if !failed => AnyView::from(page.clone()).into_any_element(),
             Page::Store(page) if !failed => AnyView::from(page.clone()).into_any_element(),
             Page::Downloads(page) if !failed => AnyView::from(page.clone()).into_any_element(),
-            Page::Details(page) if !failed => AnyView::from(page.clone()).into_any_element(),
             _ => self.placeholder(cx),
         };
 
@@ -656,7 +635,7 @@ impl Render for AppRoot {
 }
 
 /// Dev aid. `BETTERRACK_OPEN_READER=<uid>`, or `BETTERRACK_OPEN=settings|store|downloads|recent|reading|
-/// search:<query>|writer:<name>|folder:<uid>|details:<pageId>`.
+/// search:<query>|writer:<name>|folder:<uid>`.
 fn dev_route() -> Option<Route> {
     if let Ok(uid) = std::env::var("BETTERRACK_OPEN_READER") {
         return Some(Route::Reader { uid });
@@ -669,10 +648,6 @@ fn dev_route() -> Option<Route> {
         },
         Some(("writer", w)) => Route::Filtered {
             writer: w.to_string(),
-        },
-        Some(("details", id)) => Route::Details {
-            page_id: id.to_string(),
-            source_wiki: Some("https://dc.fandom.com".to_string()),
         },
         Some(("folder", uid)) => Route::Library {
             uid: Some(uid.to_string()),

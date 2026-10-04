@@ -417,24 +417,6 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
                     .into_any_element()
             } else {
                 let c = comic.unwrap();
-                let details = c.page_id().map(|page_id| {
-                    let source_wiki = c.source_wiki();
-                    div()
-                        .id(SharedString::from(format!("details-{uid}")))
-                        .mt(px(4.0))
-                        .text_size(px(11.0))
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme::accent())
-                        .cursor_pointer()
-                        .hover(|s| s.opacity(0.8))
-                        .on_click(cx.listener(move |_, _, _, cx| {
-                            cx.emit(Navigate(Route::Details {
-                                page_id: page_id.clone(),
-                                source_wiki: source_wiki.clone(),
-                            }))
-                        }))
-                        .child("View more")
-                });
                 let source = info.meta_source.map(|m| match m {
                     MetaSource::Wiki => "From wiki",
                     MetaSource::Comicinfo => "From ComicInfo.xml",
@@ -469,7 +451,6 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
                             .map(|d| d.display())
                             .unwrap_or_default(),
                     ))
-                    .children(details)
                     .into_any_element()
             });
 
