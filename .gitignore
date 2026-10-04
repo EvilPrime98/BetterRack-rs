@@ -15,3 +15,7 @@ Thumbs.db
 .env
 .env.*
 *.log
+
+# tools
+.claude/
+CLAUDE.md
