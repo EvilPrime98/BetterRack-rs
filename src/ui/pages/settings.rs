@@ -24,6 +24,27 @@ use crate::ui::icons::{Icon, icon};
 use crate::ui::modals;
 use crate::ui::{theme, toast};
 
+const WIKI_SEARCH_TIP: &str = "Comics are always identified from ComicInfo.xml. When enabled, comics without it are looked up on the wiki.";
+
+/// Popup shown while hovering an option.
+struct HoverTip(SharedString);
+
+impl Render for HoverTip {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .max_w(px(280.0))
+            .px(px(10.0))
+            .py(px(8.0))
+            .rounded(px(6.0))
+            .border_1()
+            .border_color(gpui::rgba(0xffffff24))
+            .bg(rgb(0x1c1c1c))
+            .text_size(px(12.0))
+            .text_color(rgb(0xe6e6e6))
+            .child(self.0.clone())
+    }
+}
+
 pub struct SettingsPage {
     stores: Stores,
     api_url: Entity<TextInput>,
@@ -33,6 +54,8 @@ pub struct SettingsPage {
     rescan_on_startup: bool,
     settings_error: String,
     folder_error: String,
+    /// True while a native folder dialog is open; blocks re-triggering Browse.
+    picker_open: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -65,6 +88,7 @@ impl SettingsPage {
             rescan_on_startup: s.rescan_on_startup,
             settings_error: String::new(),
             folder_error: String::new(),
+            picker_open: false,
             _subs: subs,
         }
     }
@@ -194,6 +218,10 @@ impl SettingsPage {
         cx: &mut Context<Self>,
         then: impl FnOnce(&mut Self, String, &mut Context<Self>) + 'static,
     ) {
+        if self.picker_open {
+            return;
+        }
+        self.picker_open = true;
         self.folder_error.clear();
         cx.spawn(async move |this, cx| {
             let picked = crate::runtime::run(async {
@@ -203,9 +231,13 @@ impl SettingsPage {
                     .map(|h| h.path().to_string_lossy().into_owned())
             })
             .await;
-            if let Some(path) = picked {
-                this.update(cx, |this, cx| then(this, path, cx)).ok();
-            }
+            this.update(cx, |this, cx| {
+                this.picker_open = false;
+                if let Some(path) = picked {
+                    then(this, path, cx);
+                }
+            })
+            .ok();
         })
         .detach();
     }
@@ -419,17 +451,19 @@ impl Render for SettingsPage {
                     .flex()
                     .flex_col()
                     .gap(px(10.0))
-                    .child(checkbox(
-                        "wiki-search",
-                        "Search the wiki for metadata",
-                        self.wiki_search,
-                        cx.listener_toggle(|this, on| this.wiki_search = on),
-                    ))
                     .child(
                         div()
-                            .text_size(px(12.0))
-                            .text_color(rgb(0x9a9a9a))
-                            .child("Comics are always identified from ComicInfo.xml. When enabled, comics without it are looked up on the wiki."),
+                            .id("wiki-search-tip")
+                            .self_start()
+                            .tooltip(|_, cx| {
+                                cx.new(|_| HoverTip(WIKI_SEARCH_TIP.into())).into()
+                            })
+                            .child(checkbox(
+                                "wiki-search",
+                                "Search the wiki for metadata",
+                                self.wiki_search,
+                                cx.listener_toggle(|this, on| this.wiki_search = on),
+                            )),
                     )
                     .child(div().flex().child(button(
                         "reidentify-all",
