@@ -5,6 +5,14 @@
 
 BetterRack is a desktop app for organizing and reading a local comic book library (CBR/CBZ). It also includes a store to search and download comics from a configurable source, and metadata lookups through an integrated wiki.
 
+<img width="1239" height="949" alt="image" src="https://github.com/user-attachments/assets/4cd129e6-ea8d-4bf2-8f00-249398f78dd5" />
+
+<img width="1240" height="949" alt="image" src="https://github.com/user-attachments/assets/9f8203c0-1e25-4874-88ce-e49b3357a8ba" />
+
+<img width="1234" height="946" alt="image" src="https://github.com/user-attachments/assets/f6725fa2-c505-49e4-9a0c-8b5f47ef5573" />
+
+<img width="1237" height="946" alt="image" src="https://github.com/user-attachments/assets/6f51ccba-3772-4e24-a183-2b9558594bf8" />
+
 ## What BetterRack does
 
 - **Library**: scans your comic folders and keeps a browsable library of CBR and CBZ files, with thumbnails.
