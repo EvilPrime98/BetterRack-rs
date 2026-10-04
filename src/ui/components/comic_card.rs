@@ -4,10 +4,12 @@
 //! Deviations from the React card: the "board"/"bag" overlay that marks read comics is reduced to
 //! a light cover outline.
 
+use std::time::Duration;
+
 use gpui::{
-    AnyElement, App, Context, EventEmitter, InteractiveElement, IntoElement, ObjectFit,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled, StyledImage as _, div, img, px, rgb,
-    rgba,
+    Animation, AnimationExt as _, AnyElement, App, Context, EventEmitter, InteractiveElement,
+    IntoElement, ObjectFit, ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    StyledImage as _, div, img, px, rgb, rgba,
 };
 
 use crate::model::{ComicsType, LibraryEntry, MetaSource, json_text};
@@ -167,8 +169,19 @@ fn cover(
             .justify_center()
             .text_color(rgb(0x5c5c5c))
             .child(icon(Icon::BookOpen, px(36.0)).text_color(rgb(0x5c5c5c))),
-        // Loading / not requested yet: the plain dark frame stands in for the shimmer.
-        _ => frame,
+        // Loading / not requested yet: a pulsing ring while the thumbnail is generated.
+        _ => frame.flex().items_center().justify_center().child(
+            div()
+                .size(px((w * 0.2).clamp(18.0, 32.0)))
+                .rounded_full()
+                .border_2()
+                .border_color(theme::accent())
+                .with_animation(
+                    SharedString::from(format!("thumb-loader-{}", item.uid)),
+                    Animation::new(Duration::from_millis(900)).repeat(),
+                    |el, t| el.opacity(0.25 + 0.75 * (t * std::f32::consts::TAU).sin().abs()),
+                ),
+        ),
     };
     let frame = if is_read { frame.border_1().border_color(rgba(0xffffff40)) } else { frame };
 
@@ -218,7 +231,6 @@ fn cover(
             b.opacity(0.0).group_hover(group.clone(), |s| s.opacity(1.0))
         }
     });
-    let _ = item;
     frame.children(badge).children(event_badge)
 }
 
@@ -243,6 +255,11 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
     let read_per = if cache.read { 100.0 } else { cache.read_per };
     let is_read = cache.read;
     let open = {
+        let uid = uid.clone();
+        cx.listener(move |_, _, _, cx| cx.emit(Navigate(Route::Reader { uid: uid.clone() })))
+    };
+
+    let open_cover = {
         let uid = uid.clone();
         cx.listener(move |_, _, _, cx| cx.emit(Navigate(Route::Reader { uid: uid.clone() })))
     };
@@ -371,7 +388,13 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
                     .gap(px(6.0))
                     .w(px(DETAIL_COVER_W))
                     .flex_none()
-                    .child(cover(item, info, thumb, DETAIL_COVER_W, true, is_read, &group))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("cover-{uid}")))
+                            .cursor_pointer()
+                            .on_click(open_cover)
+                            .child(cover(item, info, thumb, DETAIL_COVER_W, true, is_read, &group)),
+                    )
                     .child(read_bar(read_per)),
             )
             .child(
@@ -411,7 +434,13 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
                 .gap(px(6.0))
                 .w(px(card_w))
                 .p(px(PAD_COVER))
-                .child(cover(item, info, thumb, inner_w, false, is_read, &group))
+                .child(
+                    div()
+                        .id(SharedString::from(format!("cover-{uid}")))
+                        .cursor_pointer()
+                        .on_click(open_cover)
+                        .child(cover(item, info, thumb, inner_w, false, is_read, &group)),
+                )
                 .child(read_bar(read_per))
                 .child(div().w_full().mt(px(2.0)).child(title_el))
                 .child(rating(&uid, cache.rating, &env.stores))
