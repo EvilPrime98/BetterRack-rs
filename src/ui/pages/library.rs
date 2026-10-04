@@ -20,8 +20,8 @@ use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::items_grid::{GridScroll, PAGE_PAD_X, available_width, items_grid};
 use crate::ui::components::smooth_scroll::{SmoothScroll, wheel_capture};
 use crate::ui::icons::{Icon, icon};
-use crate::ui::text::capitalize_words;
 use crate::ui::pages::common::{note, prefs_dropdown, view_controls};
+use crate::ui::text::capitalize_words;
 use crate::ui::theme;
 
 struct Memo {
