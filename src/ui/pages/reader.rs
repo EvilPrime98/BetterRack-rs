@@ -11,7 +11,7 @@
 use gpui::{
     AnyElement, App, Context, DispatchPhase, EventEmitter, FocusHandle, Focusable, InteractiveElement,
     IntoElement, KeyDownEvent, ListAlignment, ListOffset, ListState, ObjectFit, ParentElement, Render,
-    ScrollWheelEvent, StatefulInteractiveElement, Styled, StyledImage as _, Task, Window,
+    ScrollDelta, ScrollHandle, ScrollWheelEvent, StatefulInteractiveElement, Styled, StyledImage as _, Task, Window,
     WindowControlArea, canvas, div, img, list, prelude::*, px, relative, rgb, rgba,
 };
 
@@ -34,6 +34,10 @@ pub const DEFAULT_ASPECT: f32 = 1.5;
 /// Pages loaded on each side of the saved page before the reader opens (`PRELOAD_WINDOW`).
 pub const PRELOAD_WINDOW: u32 = 2;
 const TOOLBAR_HEIGHT: f32 = 56.0;
+/// Pixels per wheel line for notched (non-pixel) wheels.
+const WHEEL_LINE_PX: f32 = 24.0;
+/// Time constant of the scroll easing: ~63 % of the remaining distance is covered per `TAU`.
+const SCROLL_TAU: f32 = 0.08;
 
 /// `floor(min(3, viewerWidth / 900) * 100) / 100`, never below 1 (`useReaderZoom`).
 pub fn max_zoom(viewer_w: f32) -> f32 {
@@ -118,11 +122,15 @@ pub struct ReaderPage {
     touched: bool,
     header_visible: bool,
     bookmarks_open: bool,
+    bookmarks_scroll: ScrollHandle,
     refreshing: bool,
     zoom: f32,
     viewer_w: f32,
     viewer_h: f32,
     last_page_w: f32,
+    /// Pixels still to scroll (positive = down); eased out a little every frame.
+    pending_scroll: f32,
+    last_frame: Option<std::time::Instant>,
     focus: FocusHandle,
     _task: Option<Task<()>>,
 }
@@ -164,11 +172,14 @@ impl ReaderPage {
             touched: false,
             header_visible: true,
             bookmarks_open: false,
+            bookmarks_scroll: ScrollHandle::new(),
             refreshing: false,
             zoom,
             viewer_w: f32::from(size.width),
             viewer_h: f32::from(size.height),
             last_page_w: 0.0,
+            pending_scroll: 0.0,
+            last_frame: None,
             focus,
             _task: None,
         };
@@ -255,7 +266,36 @@ impl ReaderPage {
         }));
     }
 
+    /// Queue `dy` pixels (positive = down) to be scrolled with easing instead of in one jump.
+    fn scroll_smooth(&mut self, dy: f32, cx: &mut Context<Self>) {
+        let cap = self.viewer_h * 4.0;
+        self.pending_scroll = (self.pending_scroll + dy).clamp(-cap, cap);
+        cx.notify();
+    }
+
+    /// Apply this frame's share of the pending scroll and ask for another frame while any is left.
+    fn step_scroll(&mut self, list: &ListState, window: &mut Window) {
+        if self.pending_scroll == 0.0 {
+            self.last_frame = None;
+            return;
+        }
+        let now = std::time::Instant::now();
+        let dt = self.last_frame.map_or(1.0 / 60.0, |t| (now - t).as_secs_f32()).min(0.05);
+        self.last_frame = Some(now);
+        let step = if self.pending_scroll.abs() < 0.5 {
+            self.pending_scroll
+        } else {
+            self.pending_scroll * (1.0 - (-dt / SCROLL_TAU).exp())
+        };
+        self.pending_scroll -= step;
+        list.scroll_by(px(step));
+        if self.pending_scroll != 0.0 {
+            window.request_animation_frame();
+        }
+    }
+
     fn go_to_page(&mut self, page: u32, cx: &mut Context<Self>) {
+        self.pending_scroll = 0.0;
         if let Some(list) = &self.list {
             let page = page.clamp(1, self.total.max(1));
             list.scroll_to(ListOffset { item_ix: page as usize - 1, offset_in_item: px(0.0) });
@@ -321,25 +361,21 @@ impl ReaderPage {
             return;
         }
         let page_px = self.viewer_h * 0.9;
-        let scroll = |list: &Option<ListState>, dy: f32| {
-            if let Some(l) = list {
-                l.scroll_by(px(dy));
-            }
-        };
         match key {
             "escape" if self.bookmarks_open => {
                 self.bookmarks_open = false;
                 cx.notify();
             }
             "escape" => cx.emit(GoBack),
-            "pagedown" => scroll(&self.list, page_px),
-            "space" if m.shift => scroll(&self.list, -page_px),
-            "space" => scroll(&self.list, page_px),
-            "pageup" => scroll(&self.list, -page_px),
-            "down" => scroll(&self.list, 80.0),
-            "up" => scroll(&self.list, -80.0),
+            "pagedown" => self.scroll_smooth(page_px, cx),
+            "space" if m.shift => self.scroll_smooth(-page_px, cx),
+            "space" => self.scroll_smooth(page_px, cx),
+            "pageup" => self.scroll_smooth(-page_px, cx),
+            "down" => self.scroll_smooth(80.0, cx),
+            "up" => self.scroll_smooth(-80.0, cx),
             "home" => self.go_to_page(1, cx),
             "end" => {
+                self.pending_scroll = 0.0;
                 if let Some(l) = &self.list {
                     l.scroll_to_end();
                 }
@@ -439,6 +475,8 @@ impl ReaderPage {
             .top_0()
             .left_0()
             .right_0()
+            // The viewer underneath toggles the header on click; keep clicks here from reaching it.
+            .block_mouse_except_scroll()
             .bg(rgba(0x313238f0))
             .border_b_1()
             .border_color(theme::border_subtle())
@@ -454,23 +492,48 @@ impl ReaderPage {
     }
 
     fn bookmark_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        // Thumb geometry from the tracked scroll handle (all zero until the first layout).
+        let view_h = f32::from(self.bookmarks_scroll.bounds().size.height);
+        let max = f32::from(self.bookmarks_scroll.max_offset().y);
+        let thumb = (view_h > 0.0 && max > 0.5).then(|| {
+            let thumb_h = (view_h * view_h / (view_h + max)).max(24.0);
+            let scrolled = (-f32::from(self.bookmarks_scroll.offset().y) / max).clamp(0.0, 1.0);
+            div()
+                .absolute()
+                .right(px(2.0))
+                .top(px(scrolled * (view_h - thumb_h)))
+                .w(px(4.0))
+                .h(px(thumb_h))
+                .rounded(px(2.0))
+                .bg(rgba(0xffffff40))
+        });
         div()
+            // Hide the menu from the viewer underneath, so wheel events over it don't scroll the reader.
+            .occlude()
             .absolute()
             .top(px(TOOLBAR_HEIGHT + 4.0))
             .left(px(110.0))
             .min_w(px(220.0))
-            .max_h(px(360.0))
-            .flex()
-            .flex_col()
-            .p(px(4.0))
             .rounded(px(8.0))
             .bg(theme::bg_modal())
             .border_1()
             .border_color(gpui::rgba(0xffffff29))
-            .children(self.bookmarks.iter().map(|b| {
+            .child(
+                div()
+                    .id("reader-bookmark-menu")
+                    .track_scroll(&self.bookmarks_scroll)
+                    // Repaint so the thumb follows the wheel.
+                    .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
+                    .max_h(px(360.0))
+                    .overflow_y_scroll()
+                    .flex()
+                    .flex_col()
+                    .p(px(4.0))
+                    .children(self.bookmarks.iter().map(|b| {
                 let page = b.page;
                 div()
                     .id(("bookmark", page as usize))
+                    .flex_none()
                     .px(px(10.0))
                     .py(px(7.0))
                     .rounded(px(6.0))
@@ -480,7 +543,9 @@ impl ReaderPage {
                     .hover(|s| s.bg(theme::hover()))
                     .on_click(cx.listener(move |this, _, _, cx| this.go_to_page(page, cx)))
                     .child(format!("{} · p.{}", b.label, page))
-            }))
+                    })),
+            )
+            .children(thumb)
     }
 
     fn state_panel(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -594,6 +659,7 @@ impl Render for ReaderPage {
                 self.last_page_w = page_w;
                 list_state.remeasure();
             }
+            self.step_scroll(&list_state, window);
 
             let top = list_state.logical_scroll_top();
             let total = self.total as usize;
@@ -639,12 +705,24 @@ impl Render for ReaderPage {
                             |_, _, _| (),
                             move |_, _, window, _| {
                                 window.on_mouse_event(move |ev: &ScrollWheelEvent, phase, _, cx| {
-                                    if phase == DispatchPhase::Capture && ev.modifiers.secondary() {
+                                    if phase != DispatchPhase::Capture {
+                                        return;
+                                    }
+                                    // Let the bookmarks menu scroll itself.
+                                    if me.read(cx).bookmarks_open {
+                                        return;
+                                    }
+                                    if ev.modifiers.secondary() {
                                         let dy = f32::from(ev.delta.pixel_delta(px(20.0)).y);
                                         if dy != 0.0 {
                                             let step = if dy > 0.0 { ZOOM_STEP } else { -ZOOM_STEP };
                                             me.update(cx, |t, cx| t.zoom_by(step, cx));
                                         }
+                                        cx.stop_propagation();
+                                    } else if let ScrollDelta::Lines(lines) = ev.delta {
+                                        // Notched wheels jump; ease them. Touchpads (pixel deltas)
+                                        // are already smooth and go straight to the list.
+                                        me.update(cx, |t, cx| t.scroll_smooth(-lines.y * WHEEL_LINE_PX, cx));
                                         cx.stop_propagation();
                                     }
                                 });
