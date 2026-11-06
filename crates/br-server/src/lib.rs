@@ -1,5 +1,6 @@
 //! Axum app exposing `br-core`.
 
+pub mod comic_file;
 pub mod error;
 pub mod http_cache;
 pub mod library;
@@ -73,6 +74,7 @@ pub fn app(state: AppState) -> Router {
             "/api/library/identify/all",
             post(library::start_identify_library).get(library::identify_library_status),
         )
+        .route("/api/library/{uid}/file", get(comic_file::get))
         .route("/api/library/{uid}/identify", get(library::identify))
         .route(
             "/api/library/{uid}/identify/reset",
