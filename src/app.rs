@@ -2,9 +2,9 @@
 //! the global overlays (toasts, confirm dialog, app loader).
 
 use gpui::{
-    AnyView, App, AppContext as _, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, ParentElement, Render, Styled, Subscription, Window, actions, deferred, div,
-    prelude::*, px,
+    AnimationExt as _, AnyView, App, AppContext as _, Context, Entity, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, ParentElement, Render, Styled, Subscription, Window, actions,
+    deferred, div, prelude::*, px,
 };
 
 use crate::api::ApiClient;
@@ -17,6 +17,7 @@ use crate::ui::app_loader::app_loader;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::confirm::{self, ConfirmHost, ConfirmOptions};
 use crate::ui::modals::{self, ModalHost};
+use crate::ui::motion;
 use crate::ui::pages::downloads::DownloadsPage;
 use crate::ui::pages::library::LibraryPage;
 use crate::ui::pages::lists::{ListPage, Source};
@@ -75,6 +76,8 @@ pub struct AppRoot {
     _subs: Vec<Subscription>,
     /// The startup sequence (§5.4) is still running: show the AppLoader.
     loading: bool,
+    loader_leaving: bool,
+    page_gen: u64,
     /// Dev aid: `BETTERRACK_OPEN` (see [`dev_route`]) opens a page once startup finishes.
     pending_route: Option<Route>,
     dev_identify_opened: Option<bool>,
@@ -129,6 +132,8 @@ impl AppRoot {
             _page_subs: Vec::new(),
             _subs: subs,
             loading: true,
+            loader_leaving: false,
+            page_gen: 0,
             pending_route: dev_route(),
             dev_identify_opened: None,
             focus,
@@ -291,7 +296,17 @@ impl AppRoot {
 
             this.update(cx, |this, cx| {
                 this.loading = false;
+                this.loader_leaving = true;
                 cx.notify();
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(motion::BASE).await;
+                    this.update(cx, |this, cx| {
+                        this.loader_leaving = false;
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .detach();
             })
             .ok();
         })
@@ -366,6 +381,7 @@ impl AppRoot {
                 .update(cx, |s, cx| s.flush_pending(cx).detach());
         }
         self._page_subs.clear();
+        self.page_gen += 1;
         self.page = match route {
             Route::Reader { uid } => {
                 let page = cx.new(|cx| ReaderPage::new(uid, self.stores.clone(), window, cx));
@@ -637,7 +653,20 @@ impl Render for AppRoot {
                     .when(layout && sidebar_open && sidebar_pinned, |s| {
                         s.child(self.sidebar.clone())
                     })
-                    .child(content)
+                    .child(
+                        div()
+                            .id(("page", self.page_gen))
+                            .flex()
+                            .flex_1()
+                            .min_w_0()
+                            .min_h_0()
+                            .child(content)
+                            .with_animation(
+                                ("page-in", self.page_gen),
+                                motion::once(motion::FAST),
+                                |el, t| el.opacity(t),
+                            ),
+                    )
                     .when(layout && sidebar_open && !sidebar_pinned, |s| {
                         s.child(deferred(
                             div()
@@ -646,11 +675,39 @@ impl Render for AppRoot {
                                 .left_0()
                                 .size_full()
                                 .flex()
-                                .child(self.sidebar.clone())
-                                .child(div().flex_1().h_full().occlude().on_mouse_down(
-                                    gpui::MouseButton::Left,
-                                    cx.listener(|this, _, _, cx| this.close_sidebar_overlay(cx)),
-                                )),
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .h_full()
+                                        .child(self.sidebar.clone())
+                                        .with_animation(
+                                            "sidebar-slide",
+                                            motion::once(motion::BASE),
+                                            |el, t| {
+                                                el.ml(px(
+                                                    -f32::from(theme::sidebar_width()) * (1.0 - t)
+                                                ))
+                                            },
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .h_full()
+                                        .bg(gpui::rgba(0x00000066))
+                                        .occlude()
+                                        .on_mouse_down(
+                                            gpui::MouseButton::Left,
+                                            cx.listener(|this, _, _, cx| {
+                                                this.close_sidebar_overlay(cx)
+                                            }),
+                                        )
+                                        .with_animation(
+                                            "sidebar-backdrop",
+                                            motion::once(motion::SLOW),
+                                            |el, t| el.opacity(t),
+                                        ),
+                                ),
                         ))
                     }),
             )
@@ -658,7 +715,18 @@ impl Render for AppRoot {
             .child(self.modals.clone())
             .child(self.confirm.clone())
             .when(self.loading && !failed, |s| {
-                s.child(app_loader(loader_message))
+                s.child(app_loader(loader_message.clone()))
+            })
+            .when(!self.loading && self.loader_leaving, |s| {
+                s.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .child(app_loader(loader_message))
+                        .with_animation("loader-out", motion::once(motion::BASE), |el, t| {
+                            el.opacity(1.0 - t)
+                        }),
+                )
             })
     }
 }

@@ -6,6 +6,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use gpui::{Context, Image, ImageFormat};
 use tokio::sync::Semaphore;
@@ -15,6 +16,9 @@ use crate::runtime;
 
 const MAX_CACHED: usize = 400;
 const MAX_CONCURRENT: usize = 6;
+const THUMB_MAX_EDGE: u32 = 440;
+const FRESH_FOR: Duration = Duration::from_millis(400);
+const NOTIFY_EVERY: Duration = Duration::from_millis(32);
 
 fn permits() -> &'static Arc<Semaphore> {
     static S: OnceLock<Arc<Semaphore>> = OnceLock::new();
@@ -35,6 +39,8 @@ pub struct Thumbnails {
     entries: HashMap<String, Thumb>,
     /// Oldest first; only `Ready` entries are evicted.
     order: VecDeque<String>,
+    fresh: HashMap<String, Instant>,
+    notify_pending: bool,
 }
 
 /// Keys are either server uids or absolute image URLs.
@@ -67,7 +73,48 @@ pub(crate) fn sniff(bytes: &[u8]) -> Option<ImageFormat> {
     }
 }
 
+fn downscale(bytes: &[u8]) -> Option<Vec<u8>> {
+    let img = image::load_from_memory(bytes).ok()?;
+    if img.width() <= THUMB_MAX_EDGE && img.height() <= THUMB_MAX_EDGE {
+        return None;
+    }
+    let small = img.resize(
+        THUMB_MAX_EDGE,
+        THUMB_MAX_EDGE,
+        image::imageops::FilterType::Triangle,
+    );
+    let mut out = Vec::new();
+    small
+        .to_rgb8()
+        .write_to(
+            &mut std::io::Cursor::new(&mut out),
+            image::ImageFormat::Jpeg,
+        )
+        .ok()?;
+    Some(out)
+}
+
 impl Thumbnails {
+    pub fn is_fresh(&self, uid: &str) -> bool {
+        self.fresh.get(uid).is_some_and(|t| t.elapsed() < FRESH_FOR)
+    }
+
+    fn notify_soon(&mut self, cx: &mut Context<Self>) {
+        if self.notify_pending {
+            return;
+        }
+        self.notify_pending = true;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(NOTIFY_EVERY).await;
+            this.update(cx, |s, cx| {
+                s.notify_pending = false;
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     pub fn get(&self, uid: &str) -> Option<&Thumb> {
         self.entries.get(uid)
     }
@@ -112,7 +159,21 @@ impl Thumbnails {
                 }
             })
             .await;
-            let thumb = match bytes.and_then(|b| sniff(&b).map(|f| (f, b))) {
+            let decoded = match bytes.and_then(|b| sniff(&b).map(|f| (f, b))) {
+                Some((format, bytes)) => {
+                    runtime::run(async move {
+                        tokio::task::spawn_blocking(move || match downscale(&bytes) {
+                            Some(small) => (ImageFormat::Jpeg, small),
+                            None => (format, bytes),
+                        })
+                        .await
+                        .ok()
+                    })
+                    .await
+                }
+                None => None,
+            };
+            let thumb = match decoded {
                 Some((format, bytes)) => Thumb::Ready(Arc::new(Image::from_bytes(format, bytes))),
                 None => {
                     tracing::debug!("no usable image for {uid}");
@@ -122,6 +183,8 @@ impl Thumbnails {
             this.update(cx, |s, cx| {
                 if matches!(thumb, Thumb::Ready(_)) {
                     s.order.push_back(uid.clone());
+                    s.fresh.retain(|_, t| t.elapsed() < FRESH_FOR);
+                    s.fresh.insert(uid.clone(), Instant::now());
                     while s.order.len() > MAX_CACHED {
                         if let Some(old) = s.order.pop_front() {
                             s.entries.remove(&old);
@@ -129,7 +192,7 @@ impl Thumbnails {
                     }
                 }
                 s.entries.insert(uid, thumb);
-                cx.notify();
+                s.notify_soon(cx);
             })
             .ok();
         })

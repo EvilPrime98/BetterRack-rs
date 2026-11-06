@@ -9,10 +9,10 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
-    App, AppContext as _, Context, Entity, FocusHandle, Focusable, Global, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, StyledImage as _, Subscription, UniformListScrollHandle, Window, actions, div, img,
-    prelude::*, px, rgb, uniform_list,
+    AnimationExt as _, App, AppContext as _, Context, Entity, FocusHandle, Focusable, Global,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, StyledImage as _, Subscription, UniformListScrollHandle,
+    Window, actions, div, img, prelude::*, px, rgb, uniform_list,
 };
 
 use crate::model::{DEFAULT_IMAGE_SIZE, LibraryGroup, MetaSource, StoreLink, WikiComic, json_text};
@@ -26,7 +26,7 @@ use crate::ui::components::checkbox::checkbox;
 use crate::ui::components::text_input::{TextInput, TextInputEvent};
 use crate::ui::confirm::{self, ConfirmOptions};
 use crate::ui::icons::{Icon, icon};
-use crate::ui::theme;
+use crate::ui::{motion, theme};
 
 actions!(modals, [CloseModal]);
 
@@ -172,6 +172,8 @@ enum Modal {
 
 pub struct ModalHost {
     modal: Option<Modal>,
+    leaving: Option<Modal>,
+    leave_token: u64,
     /// Focus the modal's text input on the next render (needs a `Window`).
     needs_focus: bool,
     /// Discards a directory list that arrives after its modal was closed or replaced.
@@ -190,6 +192,8 @@ pub fn init(cx: &mut App) -> Entity<ModalHost> {
     cx.bind_keys([gpui::KeyBinding::new("escape", CloseModal, Some("Modal"))]);
     let host = cx.new(|cx| ModalHost {
         modal: None,
+        leaving: None,
+        leave_token: 0,
         needs_focus: false,
         dir_request: 0,
         ident_request: 0,
@@ -536,22 +540,40 @@ impl ModalHost {
     }
 
     fn close(&mut self, cx: &mut Context<Self>) {
-        let modal = self.modal.take();
+        let mut modal = self.modal.take();
         self.ident_request += 1;
         self._subs.clear();
         cx.notify();
         // A dismissed picker answers `None` so the flow waiting on it can end. Deferred, so the
         // callback may open another modal.
-        match modal {
-            Some(Modal::LinkPicker {
-                on_done: Some(done),
-                ..
-            }) => cx.defer(move |cx| done(None, cx)),
-            Some(Modal::DownloadDir {
-                on_done: Some(done),
-                ..
-            }) => cx.defer(move |cx| done(None, cx)),
+        match &mut modal {
+            Some(Modal::LinkPicker { on_done, .. }) => {
+                if let Some(done) = on_done.take() {
+                    cx.defer(move |cx| done(None, cx));
+                }
+            }
+            Some(Modal::DownloadDir { on_done, .. }) => {
+                if let Some(done) = on_done.take() {
+                    cx.defer(move |cx| done(None, cx));
+                }
+            }
             _ => {}
+        }
+        if modal.is_some() {
+            self.leaving = modal;
+            self.leave_token += 1;
+            let token = self.leave_token;
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(motion::FAST).await;
+                this.update(cx, |h, cx| {
+                    if h.leave_token == token {
+                        h.leaving = None;
+                        cx.notify();
+                    }
+                })
+                .ok();
+            })
+            .detach();
         }
     }
 
@@ -744,7 +766,8 @@ impl Focusable for ModalHost {
 
 impl Render for ModalHost {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(modal) = &self.modal else {
+        let leaving = self.modal.is_none();
+        let Some(modal) = self.modal.as_ref().or(self.leaving.as_ref()) else {
             return div().into_any_element();
         };
         if self.needs_focus {
@@ -1328,6 +1351,11 @@ impl Render for ModalHost {
                     // Clicks inside must not reach the dismissing backdrop.
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(body),
+            )
+            .with_animation(
+                if leaving { "modal-out" } else { "modal-fade" },
+                motion::once(motion::FAST),
+                move |el, t| el.opacity(if leaving { 1.0 - t } else { t }),
             )
             .into_any_element()
     }

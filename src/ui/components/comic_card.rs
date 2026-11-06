@@ -4,7 +4,6 @@
 //! Note: the "board"/"bag" overlay that marks read comics is reduced to
 //! a light cover outline.
 
-use std::f32::consts::TAU;
 use std::time::Duration;
 
 use gpui::{
@@ -20,6 +19,7 @@ use crate::state::identify::CardInfo;
 use crate::state::thumbnails::Thumb;
 use crate::ui::confirm::{self, ConfirmOptions};
 use crate::ui::icons::{Icon, icon};
+use crate::ui::motion;
 use crate::ui::theme;
 
 /// Cover aspect ratio is 50:77.
@@ -196,6 +196,7 @@ fn cover(
     show_badge_always: bool,
     is_read: bool,
     group: &SharedString,
+    fresh: bool,
 ) -> impl IntoElement {
     let h = w * COVER_RATIO;
     let frame = div()
@@ -206,7 +207,16 @@ fn cover(
         .bg(rgb(0x232222));
     let frame = match thumb {
         Some(Thumb::Ready(image)) => {
-            frame.child(img(image).size_full().object_fit(ObjectFit::Cover))
+            let image = img(image).size_full().object_fit(ObjectFit::Cover);
+            if fresh {
+                frame.child(image.with_animation(
+                    SharedString::from(format!("thumb-in-{}", item.uid)),
+                    motion::once(motion::BASE),
+                    |el, t| el.opacity(t),
+                ))
+            } else {
+                frame.child(image)
+            }
         }
         Some(Thumb::Missing) => frame
             .flex()
@@ -235,22 +245,14 @@ fn cover(
                         ))
                         .with_animation(
                             SharedString::from(format!("thumb-sweep-{}", item.uid)),
-                            Animation::new(Duration::from_millis(1400))
+                            Animation::new(Duration::from_millis(1800))
                                 .repeat()
                                 .with_easing(ease_in_out),
                             move |el, t| el.left(px(-band_w + t * (w + band_w))),
                         ),
                 )
                 .child(
-                    icon(Icon::BookOpen, px((w * 0.2).clamp(18.0, 32.0)))
-                        .text_color(rgb(0x5c5c5c))
-                        .with_animation(
-                            SharedString::from(format!("thumb-glyph-{}", item.uid)),
-                            Animation::new(Duration::from_millis(1400))
-                                .repeat()
-                                .with_easing(ease_in_out),
-                            |el, t| el.opacity(0.35 + 0.65 * (0.5 - 0.5 * (t * TAU).cos())),
-                        ),
+                    icon(Icon::BookOpen, px((w * 0.2).clamp(18.0, 32.0))).text_color(rgb(0x5c5c5c)),
                 )
         }
     };
@@ -333,6 +335,7 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
     cache: crate::model::ComicCache,
     env: &CardEnv,
     col_w: f32,
+    fresh: bool,
     cx: &mut Context<V>,
 ) -> AnyElement {
     let uid = item.uid.clone();
@@ -522,6 +525,7 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
                                 true,
                                 is_read,
                                 &group,
+                                fresh,
                             )),
                     )
                     .child(read_bar(read_per)),
@@ -568,7 +572,9 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
                         .id(SharedString::from(format!("cover-{uid}")))
                         .cursor_pointer()
                         .on_click(open_cover)
-                        .child(cover(item, info, thumb, inner_w, false, is_read, &group)),
+                        .child(cover(
+                            item, info, thumb, inner_w, false, is_read, &group, fresh,
+                        )),
                 )
                 .child(read_bar(read_per))
                 .child(div().w_full().mt(px(2.0)).child(title_el))
