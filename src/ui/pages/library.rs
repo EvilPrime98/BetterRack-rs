@@ -8,8 +8,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    Context, EventEmitter, InteractiveElement, IntoElement, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Window, div, prelude::*, px, rgb,
+    AnimationExt as _, Context, EventEmitter, InteractiveElement, IntoElement, ParentElement,
+    Render, StatefulInteractiveElement, Styled, Window, div, prelude::*, px, rgb,
 };
 
 use crate::model::{FilterOption, LibraryEntry};
@@ -210,15 +210,23 @@ impl Render for LibraryPage {
             note(msg).into_any_element()
         } else {
             let avail = available_width(window, sidebar_docked);
-            items_grid(
-                base.clone(),
-                visible.clone(),
-                kind,
-                &self.stores,
-                &self.scroll,
-                avail,
-                cx,
-            )
+            div()
+                .size_full()
+                .child(items_grid(
+                    base.clone(),
+                    visible.clone(),
+                    kind,
+                    &self.stores,
+                    &self.scroll,
+                    avail,
+                    cx,
+                ))
+                .with_animation(
+                    "library-grid-in",
+                    crate::ui::motion::once(crate::ui::motion::BASE),
+                    |el, t| el.opacity(t),
+                )
+                .into_any_element()
         };
 
         div()

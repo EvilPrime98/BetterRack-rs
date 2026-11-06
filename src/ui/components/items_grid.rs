@@ -50,13 +50,17 @@ pub fn available_width(window: &Window, sidebar_visible: bool) -> f32 {
 pub struct GridScroll {
     state: ListState,
     shape: Rc<Cell<u64>>,
+    hash_cache: Rc<Cell<Option<(HashKey, u64)>>>,
 }
+
+type HashKey = (usize, usize, usize, usize, usize, u32, bool);
 
 impl GridScroll {
     pub fn new() -> Self {
         Self {
             state: ListState::new(0, ListAlignment::Top, px(600.0)),
             shape: Rc::new(Cell::new(0)),
+            hash_cache: Rc::new(Cell::new(None)),
         }
     }
 
@@ -100,10 +104,27 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
     };
     let row_h = move |has_comics: bool| card_height(kind, col_w, has_comics) + gap_y;
 
-    let mut hasher = DefaultHasher::new();
-    (rows, cols, col_w.to_bits(), kind == ComicsType::Detail).hash(&mut hasher);
-    (0..rows).for_each(|row| row_has_comics(row).hash(&mut hasher));
-    scroll.sync(rows, hasher.finish());
+    let key: HashKey = (
+        Rc::as_ptr(&visible) as usize,
+        visible.len(),
+        Rc::as_ptr(&items) as usize,
+        items.len(),
+        cols,
+        col_w.to_bits(),
+        kind == ComicsType::Detail,
+    );
+    let shape = match scroll.hash_cache.get() {
+        Some((k, h)) if k == key => h,
+        _ => {
+            let mut hasher = DefaultHasher::new();
+            (rows, cols, col_w.to_bits(), kind == ComicsType::Detail).hash(&mut hasher);
+            (0..rows).for_each(|row| row_has_comics(row).hash(&mut hasher));
+            let h = hasher.finish();
+            scroll.hash_cache.set(Some((key, h)));
+            h
+        }
+    };
+    scroll.sync(rows, shape);
 
     let stores = stores.clone();
     list(
@@ -132,7 +153,8 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
                     .get(&item.uid)
                     .cloned()
                     .unwrap_or_default();
-                comic_card(item, &info, thumb, cache, &env, col_w, cx)
+                let fresh = stores.thumbs.read(cx).is_fresh(&item.uid);
+                comic_card(item, &info, thumb, cache, &env, col_w, fresh, cx)
             });
             gpui::div()
                 .flex()
