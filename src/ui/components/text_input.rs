@@ -3,13 +3,18 @@
 //! and Enter/Escape.
 //! Known gaps: no IME composition, no mouse-drag selection, caret is char-based (not grapheme-based).
 
+use std::{cell::Cell, rc::Rc, time::Duration};
+
 use gpui::{
-    App, ClipboardItem, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyDownEvent, MouseButton, ParentElement, Render, SharedString, Styled, Window,
-    div, prelude::*, px,
+    Animation, AnimationExt, AnyElement, App, Bounds, ClipboardItem, Context, EventEmitter,
+    FocusHandle, Focusable, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
+    MouseDownEvent, ParentElement, Pixels, Render, SharedString, Styled, TextRun, Window, canvas,
+    div, pulsating_between, px,
 };
 
 use crate::ui::theme;
+
+const CLICK_BIAS: Pixels = px(10.0);
 
 pub enum TextInputEvent {
     Changed,
@@ -25,6 +30,7 @@ pub struct TextInput {
     anchor: Option<usize>,
     placeholder: SharedString,
     focus: FocusHandle,
+    text_bounds: Rc<Cell<Bounds<Pixels>>>,
 }
 
 impl EventEmitter<TextInputEvent> for TextInput {}
@@ -37,6 +43,7 @@ impl TextInput {
             anchor: None,
             placeholder: placeholder.into(),
             focus: cx.focus_handle(),
+            text_bounds: Rc::default(),
         }
     }
 
@@ -55,6 +62,12 @@ impl TextInput {
         self.value = value.into();
         self.caret = self.len();
         self.anchor = None;
+        cx.notify();
+    }
+
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        self.anchor = Some(0);
+        self.caret = self.len();
         cx.notify();
     }
 
@@ -114,6 +127,32 @@ impl TextInput {
             self.anchor = None;
         }
         self.caret = to;
+    }
+
+    fn index_at(&self, x: Pixels, window: &Window) -> usize {
+        if self.value.is_empty() {
+            return 0;
+        }
+        let style = window.text_style();
+        let run = TextRun {
+            len: self.value.len(),
+            font: style.font(),
+            color: style.color,
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+            letter_spacing: None,
+        };
+        let line = window.text_system().shape_line(
+            SharedString::from(self.value.clone()),
+            px(13.0),
+            &[run],
+            None,
+        );
+        let byte = line
+            .closest_index_for_x(x - self.text_bounds.get().origin.x - CLICK_BIAS)
+            .min(self.value.len());
+        self.value[..byte].chars().count()
     }
 
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -196,6 +235,30 @@ impl TextInput {
     }
 }
 
+fn caret_bar(focused: bool) -> AnyElement {
+    let slot = div().relative().w(px(0.0)).h(px(15.0));
+    if !focused {
+        return slot.into_any_element();
+    }
+    slot.child(
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .w(px(1.0))
+            .h_full()
+            .bg(theme::accent())
+            .with_animation(
+                "caret-pulse",
+                Animation::new(Duration::from_millis(1100))
+                    .repeat()
+                    .with_easing(pulsating_between(0.1, 1.0)),
+                |bar, opacity| bar.opacity(opacity),
+            ),
+    )
+    .into_any_element()
+}
+
 impl Focusable for TextInput {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus.clone()
@@ -205,49 +268,67 @@ impl Focusable for TextInput {
 impl Render for TextInput {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focused = self.focus.is_focused(window);
-        let caret = div().w(px(1.0)).h(px(15.0)).bg(if focused {
-            theme::accent()
-        } else {
-            gpui::rgba(0x00000000)
-        });
+        let clear = gpui::rgba(0x00000000);
+        let overlay = |before: String, selected: Option<String>, caret_first: bool| {
+            let mut row = div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .h_full()
+                .flex()
+                .items_center()
+                .whitespace_nowrap()
+                .text_color(clear)
+                .child(div().child(before));
+            if let Some(sel) = selected {
+                let sel = div().bg(theme::accent_soft()).child(sel);
+                row = if caret_first {
+                    row.child(caret_bar(focused)).child(sel)
+                } else {
+                    row.child(sel).child(caret_bar(focused))
+                };
+            } else {
+                row = row.child(caret_bar(focused));
+            }
+            row
+        };
 
         let content = if self.value.is_empty() {
-            div().flex().items_center().child(caret).child(
-                div()
-                    .text_color(gpui::rgb(0x8a8a8a))
-                    .child(self.placeholder.clone()),
-            )
-        } else if let Some((from, to)) = self.selection() {
-            let (b_from, b_to) = (self.byte_index(from), self.byte_index(to));
-            let selected = div()
-                .bg(theme::accent_soft())
-                .child(self.value[b_from..b_to].to_string());
-            // The caret sits at whichever end of the selection it was moved to.
-            let (before, after) = (
-                self.value[..b_from].to_string(),
-                self.value[b_to..].to_string(),
-            );
-            let at_start = self.caret == from;
             div()
+                .relative()
                 .flex()
                 .items_center()
-                .child(div().child(before))
-                .when(at_start, |s| {
-                    s.child(div().w(px(1.0)).h(px(15.0)).bg(theme::accent()))
-                })
-                .child(selected)
-                .when(!at_start, |s| {
-                    s.child(div().w(px(1.0)).h(px(15.0)).bg(theme::accent()))
-                })
-                .child(div().child(after))
+                .child(overlay(String::new(), None, true))
+                .child(
+                    div()
+                        .whitespace_nowrap()
+                        .text_color(gpui::rgb(0x8a8a8a))
+                        .child(self.placeholder.clone()),
+                )
         } else {
-            let (before, after) = self.value.split_at(self.byte_index(self.caret));
+            let (before, selected) = match self.selection() {
+                Some((from, to)) => {
+                    let (b_from, b_to) = (self.byte_index(from), self.byte_index(to));
+                    (
+                        self.value[..b_from].to_string(),
+                        Some(self.value[b_from..b_to].to_string()),
+                    )
+                }
+                None => (self.value[..self.byte_index(self.caret)].to_string(), None),
+            };
+            let caret_first = self.selection().is_some_and(|(from, _)| self.caret == from);
             div()
+                .relative()
                 .flex()
                 .items_center()
-                .child(div().child(before.to_string()))
-                .child(caret)
-                .child(div().child(after.to_string()))
+                .child(div().whitespace_nowrap().child(self.value.clone()))
+                .child(overlay(before, selected, caret_first))
+                .child({
+                    let bounds = self.text_bounds.clone();
+                    canvas(move |b, _, _| bounds.set(b), |_, _, _, _| {})
+                        .absolute()
+                        .size_full()
+                })
         };
 
         div()
@@ -257,10 +338,10 @@ impl Render for TextInput {
             .on_key_down(cx.listener(|this, e, window, cx| this.on_key(e, window, cx)))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|this, _, window, cx| {
+                cx.listener(|this, e: &MouseDownEvent, window, cx| {
                     window.focus(&this.focus, cx);
                     this.anchor = None;
-                    this.caret = this.len();
+                    this.caret = this.index_at(e.position.x, window);
                     cx.notify();
                 }),
             )

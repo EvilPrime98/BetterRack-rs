@@ -22,7 +22,9 @@ use crate::runtime;
 use crate::state::Stores;
 use crate::state::reader_images::{PageImages, PageImg};
 use crate::ui::components::button::{ButtonVariant, button};
+use crate::ui::components::text_input::{TextInput, TextInputEvent};
 use crate::ui::icons::{Icon, icon};
+use crate::ui::pages::settings::HoverTip;
 use crate::ui::shell::window_controls::window_controls;
 use crate::ui::theme;
 
@@ -59,6 +61,11 @@ pub fn preload_range(total: u32, saved: u32) -> Option<std::ops::RangeInclusive<
     }
     let saved = saved.clamp(1, total);
     Some(saved.saturating_sub(PRELOAD_WINDOW).max(1)..=(saved + PRELOAD_WINDOW).min(total))
+}
+
+pub fn parse_page_input(text: &str, total: u32) -> Option<u32> {
+    let n: u64 = text.trim().parse().ok()?;
+    Some(n.clamp(1, total.max(1) as u64) as u32)
 }
 
 /// `(readPer, read)` for being on `page` of `total`: `readPer = round2(page / total * 100)`.
@@ -132,6 +139,7 @@ pub struct ReaderPage {
     pending_scroll: f32,
     last_frame: Option<std::time::Instant>,
     focus: FocusHandle,
+    page_input: gpui::Entity<TextInput>,
     _task: Option<Task<()>>,
 }
 
@@ -157,6 +165,38 @@ impl ReaderPage {
 
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
+        let page_input = cx.new(|cx| TextInput::new("", cx).with_value("1"));
+        cx.subscribe_in(
+            &page_input,
+            window,
+            |this, input, ev: &TextInputEvent, window, cx| match ev {
+                TextInputEvent::Changed => {
+                    let text = input.read(cx).value();
+                    let digits: String = text.chars().filter(char::is_ascii_digit).collect();
+                    if digits != text {
+                        input.update(cx, |i, cx| i.set_value(digits, cx));
+                    }
+                }
+                TextInputEvent::Submit => {
+                    let text = input.read(cx).value().to_string();
+                    if let Some(page) = parse_page_input(&text, this.total) {
+                        this.go_to_page(page, cx);
+                    }
+                    window.focus(&this.focus, cx);
+                    this.sync_page_input(true, window, cx);
+                }
+                TextInputEvent::Cancel => {
+                    window.focus(&this.focus, cx);
+                    this.sync_page_input(true, window, cx);
+                }
+            },
+        )
+        .detach();
+        let input_focus = page_input.read(cx).focus_handle(cx);
+        cx.on_focus(&input_focus, window, |this, _, cx| {
+            this.page_input.update(cx, |i, cx| i.select_all(cx));
+        })
+        .detach();
         let zoom = stores.prefs.read(cx).prefs.zoom;
         let size = window.viewport_size();
         let mut this = Self {
@@ -181,6 +221,7 @@ impl ReaderPage {
             pending_scroll: 0.0,
             last_frame: None,
             focus,
+            page_input,
             _task: None,
         };
         this.load(cx);
@@ -233,6 +274,17 @@ impl ReaderPage {
             this.update(cx, |t, cx| t.apply_pages(total, saved, bookmarks, cx))
                 .ok();
         }));
+    }
+
+    fn sync_page_input(&mut self, force: bool, window: &Window, cx: &mut Context<Self>) {
+        let focused = self.page_input.read(cx).focus_handle(cx).is_focused(window);
+        if focused && !force {
+            return;
+        }
+        let want = self.current.to_string();
+        if self.page_input.read(cx).value() != want {
+            self.page_input.update(cx, |i, cx| i.set_value(want, cx));
+        }
     }
 
     /// Install a fresh page list and scroll to `page`.
@@ -459,6 +511,14 @@ fn tool_button(id: &'static str) -> gpui::Stateful<gpui::Div> {
 impl ReaderPage {
     fn toolbar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let spinning = self.refreshing;
+        let title: gpui::SharedString = self
+            .stores
+            .library
+            .read(cx)
+            .find_entry(&self.uid)
+            .map(|e| e.name.clone())
+            .unwrap_or_default()
+            .into();
         div()
             .flex()
             .items_center()
@@ -483,20 +543,51 @@ impl ReaderPage {
                         .child("Bookmarks"),
                 )
             })
-            // Drag region between the controls and the window controls.
             .child(
                 div()
+                    .id("reader-title")
                     .flex_1()
+                    .min_w_0()
                     .h_full()
-                    .window_control_area(WindowControlArea::Drag),
+                    .flex()
+                    .items_center()
+                    .px(px(8.0))
+                    .window_control_area(WindowControlArea::Drag)
+                    .when(!title.is_empty(), |s| {
+                        let tip = title.clone();
+                        s.tooltip(move |_, cx| cx.new(|_| HoverTip(tip.clone())).into())
+                    })
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(13.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme::text())
+                            .child(title.clone()),
+                    ),
             )
             .child(
                 div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(6.0))
+                    .px(px(8.0))
                     .text_size(px(13.0))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(theme::text())
-                    .px(px(8.0))
-                    .child(format!("{} / {}", self.current, self.total)),
+                    .child(
+                        div()
+                            .w(px(44.0))
+                            .h(px(28.0))
+                            .px(px(6.0))
+                            .rounded(px(6.0))
+                            .border_1()
+                            .border_color(theme::border_subtle())
+                            .child(self.page_input.clone()),
+                    )
+                    .child(format!("/ {}", self.total)),
             )
             .child(
                 tool_button("reader-refresh")
@@ -859,6 +950,7 @@ impl Render for ReaderPage {
             );
         }
 
+        self.sync_page_input(false, window, cx);
         let next = (self.total > 0 && self.current == self.total)
             .then(|| self.next_entry(cx))
             .flatten();
@@ -914,6 +1006,16 @@ mod tests {
         assert_eq!(preload_range(10, 10), Some(8..=10));
         assert_eq!(preload_range(2, 99), Some(1..=2));
         assert_eq!(preload_range(1, 0), Some(1..=1));
+    }
+
+    #[test]
+    fn page_input_is_clamped() {
+        assert_eq!(parse_page_input("5", 10), Some(5));
+        assert_eq!(parse_page_input(" 7 ", 10), Some(7));
+        assert_eq!(parse_page_input("0", 10), Some(1));
+        assert_eq!(parse_page_input("99", 10), Some(10));
+        assert_eq!(parse_page_input("", 10), None);
+        assert_eq!(parse_page_input("abc", 10), None);
     }
 
     #[test]

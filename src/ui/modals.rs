@@ -11,8 +11,8 @@ use std::time::Duration;
 use gpui::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, Global, InteractiveElement,
     IntoElement, MouseButton, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, StyledImage as _, Subscription, Window, actions, div, img, prelude::*, px, rgb,
-    uniform_list,
+    Styled, StyledImage as _, Subscription, UniformListScrollHandle, Window, actions, div, img,
+    prelude::*, px, rgb, uniform_list,
 };
 
 use crate::model::{DEFAULT_IMAGE_SIZE, LibraryGroup, MetaSource, StoreLink, WikiComic, json_text};
@@ -178,6 +178,7 @@ pub struct ModalHost {
     dir_request: u64,
     /// Same idea for identify searches (also the debounce token).
     ident_request: u64,
+    dir_scroll: UniformListScrollHandle,
     focus: FocusHandle,
     _subs: Vec<Subscription>,
 }
@@ -192,6 +193,7 @@ pub fn init(cx: &mut App) -> Entity<ModalHost> {
         needs_focus: false,
         dir_request: 0,
         ident_request: 0,
+        dir_scroll: UniformListScrollHandle::new(),
         focus: cx.focus_handle(),
         _subs: Vec::new(),
     });
@@ -1092,7 +1094,26 @@ impl Render for ModalHost {
                             .collect()
                     }),
                 )
+                .track_scroll(&self.dir_scroll)
                 .h(px(ITEM_H * shown.len().min(8) as f32));
+
+                let view_h = ITEM_H * shown.len().min(8) as f32;
+                let content_h = ITEM_H * shown.len() as f32;
+                let thumb = (content_h > view_h).then(|| {
+                    let scrolled = -f32::from(self.dir_scroll.0.borrow().base_handle.offset().y);
+                    let thumb_h = (view_h * view_h / content_h).max(24.0);
+                    let top =
+                        (scrolled / (content_h - view_h)).clamp(0.0, 1.0) * (view_h - thumb_h);
+                    div()
+                        .absolute()
+                        .right(px(2.0))
+                        .top(px(top))
+                        .w(px(4.0))
+                        .h(px(thumb_h))
+                        .rounded_full()
+                        .bg(theme::scrollbar_thumb())
+                });
+                let list = div().relative().child(list).children(thumb);
 
                 self.frame("Download to:", cx)
                     .w(px(460.0))
