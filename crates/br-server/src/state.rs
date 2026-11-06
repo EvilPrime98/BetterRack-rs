@@ -99,13 +99,16 @@ impl AppState {
         ));
         let pack = Arc::new(PackExtractor::new(archives.clone()));
         let pd_hostname = pd_host.split(':').next().unwrap_or(&pd_host).to_string();
-        let downloader = Arc::new(Downloader::new(
-            client,
-            rotating,
-            Some(pack),
-            net.download_retry,
-            &pd_hostname,
-        ));
+        let downloader = Arc::new(
+            Downloader::new(
+                client,
+                rotating,
+                Some(pack),
+                net.download_retry,
+                &pd_hostname,
+            )
+            .with_prefs(prefs.clone()),
+        );
         let jobs = Arc::new(jobs);
         let library = Arc::new(library);
         let downloads = Arc::new(DownloadService::new(

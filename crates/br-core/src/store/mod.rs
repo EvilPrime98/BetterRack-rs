@@ -572,6 +572,15 @@ impl StoreApi {
         Ok(to_objects(&entries))
     }
 
+    pub async fn get_post_page_url(&self, post_id: i64) -> Result<Option<String>> {
+        let url = format!("{}/posts/{post_id}?_fields=link", self.api_url()?);
+        Ok(self
+            .get_json(&url)
+            .await?
+            .and_then(|p| p["link"].as_str().map(str::to_string))
+            .filter(|l| !l.is_empty()))
+    }
+
     /// The direct link for `uuid` (from the cache of [`StoreApi::get_download_links`]); if the
     /// cache entry is gone, the post is parsed again and its first link is used.
     pub async fn get_download_link_from_post(

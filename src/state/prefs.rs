@@ -17,6 +17,7 @@ pub struct Prefs {
     pub structure: LibraryStructure,
     pub sidebar_compact: bool,
     pub sidebar_collapsed: bool,
+    pub sidebar_pinned: bool,
 }
 
 impl Default for Prefs {
@@ -29,6 +30,7 @@ impl Default for Prefs {
             structure: LibraryStructure::Folders,
             sidebar_compact: false,
             sidebar_collapsed: false,
+            sidebar_pinned: true,
         }
     }
 }
@@ -38,6 +40,10 @@ fn path() -> Option<PathBuf> {
 }
 
 impl Prefs {
+    pub fn sidebar_docked(&self) -> bool {
+        self.sidebar_pinned && !self.sidebar_collapsed
+    }
+
     pub fn load() -> Self {
         path()
             .and_then(|p| std::fs::read_to_string(p).ok())

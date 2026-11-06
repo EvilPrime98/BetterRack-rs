@@ -82,7 +82,7 @@ pub fn detail_for(progress: Option<&StoreProgressEvent>) -> String {
             format!("Extracting {done} / {total}")
         }
         Some(StoreProgressEvent::Done { filename }) => filename.clone(),
-        Some(StoreProgressEvent::Error { message }) => message.clone(),
+        Some(StoreProgressEvent::Error { message, .. }) => message.clone(),
     }
 }
 

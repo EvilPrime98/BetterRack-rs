@@ -114,6 +114,7 @@ pub struct AppSettings {
     pub download_dir: String,
     pub wiki_search: bool,
     pub rescan_on_startup: bool,
+    pub rotating_fetch: bool,
 }
 
 /// `PUT /api/settings` body: a partial that must NOT contain `outputDirs`.
@@ -128,6 +129,8 @@ pub struct SettingsUpdate {
     pub wiki_search: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rescan_on_startup: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotating_fetch: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -408,7 +411,11 @@ pub enum StoreProgressEvent {
     #[serde(rename_all = "camelCase")]
     Done { filename: String },
     #[serde(rename_all = "camelCase")]
-    Error { message: String },
+    Error {
+        message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        page_url: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -524,6 +531,22 @@ mod tests {
         .unwrap();
         assert_eq!(jobs.len(), 2);
         assert!(jobs[0].progress.is_none() && jobs[1].progress.is_none());
+    }
+
+    #[test]
+    fn error_progress_carries_page_url() {
+        let e: StoreProgressEvent =
+            serde_json::from_str(r#"{"type":"error","message":"m","pageUrl":"https://x.test/c"}"#)
+                .unwrap();
+        assert!(
+            matches!(e, StoreProgressEvent::Error { page_url: Some(u), .. } if u == "https://x.test/c")
+        );
+        let e: StoreProgressEvent =
+            serde_json::from_str(r#"{"type":"error","message":"m"}"#).unwrap();
+        assert!(matches!(
+            e,
+            StoreProgressEvent::Error { page_url: None, .. }
+        ));
     }
 
     #[test]

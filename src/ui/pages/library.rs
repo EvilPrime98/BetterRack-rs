@@ -84,12 +84,12 @@ impl Render for LibraryPage {
         let base = self.base_items(cx);
         let scroll = self.scroll.clone();
         self.smooth.step(window, |dy| scroll.scroll_by(dy));
-        let (read_filter, kind, sidebar_collapsed, sort) = {
+        let (read_filter, kind, sidebar_docked, sort) = {
             let p = self.stores.prefs.read(cx);
             (
                 p.read_filter,
                 p.prefs.comic_type,
-                p.prefs.sidebar_collapsed,
+                p.prefs.sidebar_docked(),
                 p.prefs.filter,
             )
         };
@@ -209,7 +209,7 @@ impl Render for LibraryPage {
             };
             note(msg).into_any_element()
         } else {
-            let avail = available_width(window, !sidebar_collapsed);
+            let avail = available_width(window, sidebar_docked);
             items_grid(
                 base.clone(),
                 visible.clone(),

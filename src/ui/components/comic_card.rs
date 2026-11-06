@@ -4,12 +4,13 @@
 //! Note: the "board"/"bag" overlay that marks read comics is reduced to
 //! a light cover outline.
 
+use std::f32::consts::TAU;
 use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, Context, EventEmitter, InteractiveElement,
     IntoElement, ObjectFit, ParentElement, SharedString, StatefulInteractiveElement, Styled,
-    StyledImage as _, div, img, px, rgb, rgba,
+    StyledImage as _, div, ease_in_out, img, linear_color_stop, linear_gradient, px, rgb, rgba,
 };
 
 use crate::model::{ComicsType, LibraryEntry, MetaSource, json_text};
@@ -213,19 +214,45 @@ fn cover(
             .justify_center()
             .text_color(rgb(0x5c5c5c))
             .child(icon(Icon::BookOpen, px(36.0)).text_color(rgb(0x5c5c5c))),
-        // Loading / not requested yet: a pulsing ring while the thumbnail is generated.
-        _ => frame.flex().items_center().justify_center().child(
-            div()
-                .size(px((w * 0.2).clamp(18.0, 32.0)))
-                .rounded_full()
-                .border_2()
-                .border_color(theme::accent())
-                .with_animation(
-                    SharedString::from(format!("thumb-loader-{}", item.uid)),
-                    Animation::new(Duration::from_millis(900)).repeat(),
-                    |el, t| el.opacity(0.25 + 0.75 * (t * std::f32::consts::TAU).sin().abs()),
-                ),
-        ),
+        _ => {
+            let band_w = w * 0.7;
+            let edge = rgba(0xffffff00);
+            let peak = rgba(0xffffff12);
+            frame
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .h_full()
+                        .w(px(band_w))
+                        .bg(linear_gradient(
+                            90.0,
+                            linear_color_stop(edge, 0.0),
+                            linear_color_stop(peak, 0.5),
+                        ))
+                        .with_animation(
+                            SharedString::from(format!("thumb-sweep-{}", item.uid)),
+                            Animation::new(Duration::from_millis(1400))
+                                .repeat()
+                                .with_easing(ease_in_out),
+                            move |el, t| el.left(px(-band_w + t * (w + band_w))),
+                        ),
+                )
+                .child(
+                    icon(Icon::BookOpen, px((w * 0.2).clamp(18.0, 32.0)))
+                        .text_color(rgb(0x5c5c5c))
+                        .with_animation(
+                            SharedString::from(format!("thumb-glyph-{}", item.uid)),
+                            Animation::new(Duration::from_millis(1400))
+                                .repeat()
+                                .with_easing(ease_in_out),
+                            |el, t| el.opacity(0.35 + 0.65 * (0.5 - 0.5 * (t * TAU).cos())),
+                        ),
+                )
+        }
     };
     let frame = if is_read {
         frame.border_1().border_color(rgba(0xffffff40))
@@ -357,6 +384,15 @@ pub fn comic_card<V: EventEmitter<Navigate> + 'static>(
             {
                 let (stores, uid) = (stores.clone(), uid.clone());
                 move |cx| refresh_comic(&stores, &uid, cx)
+            },
+        ))
+        .child(action_button(
+            format!("download-{uid}").into(),
+            Icon::Download,
+            false,
+            {
+                let (stores, uid, name) = (stores.clone(), uid.clone(), item.name.clone());
+                move |cx| download_comic(&stores, &uid, &name, cx)
             },
         ))
         .child(action_button(
@@ -573,6 +609,33 @@ pub(crate) fn refresh_comic(stores: &Stores, uid: &str, cx: &mut App) {
                     .identify
                     .update(cx, |s, cx| s.set_identified(&uid, comic, meta, cx));
             }
+        });
+    })
+    .detach();
+}
+
+fn download_comic(stores: &Stores, uid: &str, name: &str, cx: &mut App) {
+    let Some(client) = stores.thumbs.read(cx).client.clone() else {
+        return;
+    };
+    let (uid, name) = (uid.to_string(), name.to_string());
+    cx.spawn(async move |cx| {
+        let outcome = crate::runtime::run(async move {
+            let Some(handle) = rfd::AsyncFileDialog::new()
+                .set_file_name(&name)
+                .save_file()
+                .await
+            else {
+                return None;
+            };
+            let dest = handle.path().to_path_buf();
+            Some(client.download_comic(&uid, &dest).await.map(|()| dest))
+        })
+        .await;
+        cx.update(|cx| match outcome {
+            Some(Ok(dest)) => crate::ui::toast::success(cx, format!("Saved {}", dest.display())),
+            Some(Err(e)) => crate::ui::toast::error(cx, e.to_string()),
+            None => {}
         });
     })
     .detach();

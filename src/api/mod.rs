@@ -279,6 +279,27 @@ impl ApiClient {
         self.done(rb).await
     }
 
+    pub async fn download_comic(&self, uid: &str, dest: &std::path::Path) -> ApiResult<()> {
+        use tokio::io::AsyncWriteExt;
+        let mut resp = self
+            .check(self.get(&["api", "library", uid, "file"]))
+            .await?;
+        let io = |e: std::io::Error| ApiError::Decode(e.to_string());
+        let mut file = tokio::fs::File::create(dest).await.map_err(io)?;
+        let result: ApiResult<()> = async {
+            while let Some(chunk) = resp.chunk().await? {
+                file.write_all(&chunk).await.map_err(io)?;
+            }
+            file.flush().await.map_err(io)
+        }
+        .await;
+        if result.is_err() {
+            drop(file);
+            let _ = tokio::fs::remove_file(dest).await;
+        }
+        result
+    }
+
     pub async fn move_file(
         &self,
         file_uid: &str,
