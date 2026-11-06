@@ -994,6 +994,7 @@
         "C:\\br-test-lib"
       ],
       "rescanOnStartup": true,
+      "rotatingFetch": false,
       "wikiSearch": false
     },
     "status": 200

@@ -2,7 +2,7 @@
 //! cancel and list jobs, run the [`Downloader`] for each and keep the [`JobStore`] and the library
 //! index in step.
 
-use crate::download::{DownloadRequest, Downloader, ProgressCb, ProgressEvent};
+use crate::download::{CLOUDFLARE_MESSAGE, DownloadRequest, Downloader, ProgressCb, ProgressEvent};
 use crate::jobs::{Job, JobRequest, JobState, JobStore};
 use crate::library::Library;
 use crate::store::StoreApi;
@@ -237,6 +237,23 @@ impl DownloadService {
                     return;
                 }
                 let state = event_state(&event);
+                if let ProgressEvent::Error {
+                    message,
+                    page_url: None,
+                } = &event
+                    && message == CLOUDFLARE_MESSAGE
+                    && let Some(comic_id) = svc.jobs.get(&job_id).map(|j| j.request.comic_id)
+                {
+                    let (svc, job_id, message) = (svc.clone(), job_id.clone(), message.clone());
+                    tokio::spawn(async move {
+                        let page_url = svc.store.get_post_page_url(comic_id).await.ok().flatten();
+                        let value = ProgressEvent::Error { message, page_url }.to_value();
+                        if let Err(e) = svc.jobs.update(&job_id, JobState::Error, Some(value)) {
+                            tracing::error!(err = %e, "could not update the download job");
+                        }
+                    });
+                    return;
+                }
                 let value = event.to_value();
                 if state == JobState::Done {
                     // The job turns `done` only once the library knows the new file.

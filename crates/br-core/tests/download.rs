@@ -269,7 +269,7 @@ async fn does_not_retry_a_cloudflare_challenge_page() {
     let errors: Vec<_> = events
         .iter()
         .filter_map(|e| {
-            if let ProgressEvent::Error { message } = e {
+            if let ProgressEvent::Error { message, .. } = e {
                 Some(message)
             } else {
                 None
@@ -525,4 +525,43 @@ async fn progress_reports_percent_and_megabytes_as_text() {
     assert!(percent == 50 || percent == 100);
     assert_eq!((received.as_str(), total.as_str()), ("0.0", "0.0"));
     assert!(matches!(events.first(), Some(ProgressEvent::Preparing { title }) if title == "P"));
+}
+
+#[tokio::test]
+async fn rotating_fetch_goes_through_a_configured_proxy() {
+    let hits = Arc::new(AtomicUsize::new(0));
+    let seen = hits.clone();
+    let proxy = serve(Router::new().fallback(move || {
+        let seen = seen.clone();
+        async move {
+            seen.fetch_add(1, Ordering::SeqCst);
+            "via proxy"
+        }
+    }))
+    .await;
+
+    let rotating = RotatingFetch::new(reqwest::Client::new())
+        .with_timing(0, 0, 0)
+        .with_proxies(&[proxy])
+        .unwrap();
+    let res = rotating
+        .fetch("http://origin.invalid/file", &[], None)
+        .await
+        .unwrap();
+    assert_eq!(res.text().await.unwrap(), "via proxy");
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn rotating_fetch_without_proxies_goes_direct() {
+    let origin = serve(Router::new().route("/f", get(|| async { "direct" }))).await;
+    let rotating = RotatingFetch::new(reqwest::Client::new())
+        .with_timing(0, 0, 0)
+        .with_proxies(&[])
+        .unwrap();
+    let res = rotating
+        .fetch(&format!("{origin}/f"), &[], None)
+        .await
+        .unwrap();
+    assert_eq!(res.text().await.unwrap(), "direct");
 }

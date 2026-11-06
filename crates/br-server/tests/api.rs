@@ -70,7 +70,7 @@ async fn settings_round_trip_and_output_dirs_are_protected() {
     let (_, v) = json_call(&h, "GET", "/api/settings", None).await;
     assert_eq!(
         v,
-        json!({"outputDirs": [], "apiUrl": "", "downloadDir": "", "wikiSearch": false, "rescanOnStartup": false})
+        json!({"outputDirs": [], "apiUrl": "", "downloadDir": "", "wikiSearch": false, "rescanOnStartup": false, "rotatingFetch": false})
     );
 
     let (s, v) = json_call(

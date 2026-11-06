@@ -72,6 +72,8 @@ pub enum ProgressEvent {
     },
     Error {
         message: String,
+        #[serde(rename = "pageUrl", skip_serializing_if = "Option::is_none")]
+        page_url: Option<String>,
     },
 }
 
@@ -143,6 +145,7 @@ pub struct Downloader {
     pack: Option<Arc<PackExtractor>>,
     retry: RetryOpts,
     pixeldrain_host: String,
+    prefs: Option<Arc<crate::settings::Preferences>>,
 }
 
 /// JS `Number.prototype.toFixed(1)` of `bytes` expressed in MiB (round half up on exact ties).
@@ -228,6 +231,8 @@ enum Body {
     Stream(reqwest::Response),
 }
 
+pub const CLOUDFLARE_MESSAGE: &str = "Cloudflare challenge detected. Open the comic in a browser or use a browser-side download path.";
+
 fn is_cloudflare_challenge(text: &str) -> bool {
     let lower = text.to_lowercase();
     CLOUDFLARE_CHALLENGE_MARKERS
@@ -249,7 +254,20 @@ impl Downloader {
             pack,
             retry,
             pixeldrain_host: pixeldrain_host.to_string(),
+            prefs: None,
         }
+    }
+
+    pub fn with_prefs(mut self, prefs: Arc<crate::settings::Preferences>) -> Self {
+        self.prefs = Some(prefs);
+        self
+    }
+
+    fn rotate_all(&self) -> bool {
+        self.prefs
+            .as_ref()
+            .and_then(|p| p.get_app_settings().ok())
+            .is_some_and(|s| s.rotating_fetch)
     }
 
     fn is_pixeldrain_url(&self, url: &str) -> bool {
@@ -266,7 +284,7 @@ impl Downloader {
         url: &str,
         cancel: &CancellationToken,
     ) -> Result<reqwest::Response, DlError> {
-        if self.is_pixeldrain_url(url) {
+        if self.is_pixeldrain_url(url) || self.rotate_all() {
             return Ok(self
                 .rotating
                 .fetch(
@@ -334,6 +352,7 @@ impl Downloader {
             Err(e) => {
                 on_progress(ProgressEvent::Error {
                     message: e.message(),
+                    page_url: None,
                 });
                 None
             }
@@ -461,9 +480,8 @@ impl Downloader {
                     () = req.cancel.cancelled() => return Err(DlError::Aborted),
                 };
                 if is_cloudflare_challenge(&String::from_utf8_lossy(&bytes)) {
-                    let msg = "Cloudflare challenge detected. Open the comic in a browser or use a browser-side download path.";
-                    tracing::error!("{msg}");
-                    return Err(DlError::Fatal(msg.to_string()));
+                    tracing::error!("{CLOUDFLARE_MESSAGE}");
+                    return Err(DlError::Fatal(CLOUDFLARE_MESSAGE.to_string()));
                 }
                 Body::Prefetched(bytes.to_vec())
             } else {

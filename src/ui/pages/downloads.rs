@@ -7,7 +7,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, Task, Window, div, prelude::*, px, relative, rgb, rgba,
 };
 
-use crate::model::{JobState, JobStatus};
+use crate::model::{JobState, JobStatus, StoreProgressEvent};
 use crate::state::Stores;
 use crate::state::downloads::{can_stop, detail_for, percent_for, state_label};
 use crate::ui::components::items_grid::PAGE_PAD_X;
@@ -179,6 +179,20 @@ fn danger_button(
     }
 }
 
+fn page_url(job: &JobStatus) -> Option<String> {
+    match &job.progress {
+        Some(StoreProgressEvent::Error {
+            page_url: Some(url),
+            ..
+        }) if job.state == JobState::Error
+            && (url.starts_with("https://") || url.starts_with("http://")) =>
+        {
+            Some(url.clone())
+        }
+        _ => None,
+    }
+}
+
 fn job_row(
     job: &JobStatus,
     retrying: bool,
@@ -266,6 +280,30 @@ fn job_row(
                 on_retry,
             )))
         })
+        .children(page_url(job).map(|url| {
+            div().flex().child(
+                div()
+                    .id(SharedString::from(format!("open-page-{}", job.job_id)))
+                    .flex()
+                    .items_center()
+                    .px(px(10.0))
+                    .py(px(5.0))
+                    .rounded(px(6.0))
+                    .border_1()
+                    .border_color(theme::border_subtle())
+                    .text_size(px(11.0))
+                    .font_weight(gpui::FontWeight::BOLD)
+                    .text_color(theme::accent())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::hover()))
+                    .on_click(move |_, _, _| {
+                        if let Err(e) = open::that(&url) {
+                            tracing::warn!(err = %e, "could not open the comic page");
+                        }
+                    })
+                    .child("OPEN COMIC PAGE"),
+            )
+        }))
         .when(can_stop(job), |s| {
             s.child(div().flex().child(danger_button(
                 format!("stop-{}", job.job_id).into(),

@@ -26,8 +26,10 @@ use crate::ui::{theme, toast};
 
 const WIKI_SEARCH_TIP: &str = "Comics are always identified from ComicInfo.xml. When enabled, comics without it are looked up on the wiki.";
 
+const ROTATING_FETCH_TIP: &str = "Send every download through the rotating fetch (changing identity per attempt). When off, only PixelDrain hosts use it.";
+
 /// Popup shown while hovering an option.
-struct HoverTip(SharedString);
+pub(crate) struct HoverTip(pub(crate) SharedString);
 
 impl Render for HoverTip {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
@@ -52,6 +54,7 @@ pub struct SettingsPage {
     folder_path: Entity<TextInput>,
     wiki_search: bool,
     rescan_on_startup: bool,
+    rotating_fetch: bool,
     settings_error: String,
     folder_error: String,
     /// True while a native folder dialog is open; blocks re-triggering Browse.
@@ -86,6 +89,7 @@ impl SettingsPage {
             folder_path,
             wiki_search: s.wiki_search,
             rescan_on_startup: s.rescan_on_startup,
+            rotating_fetch: s.rotating_fetch,
             settings_error: String::new(),
             folder_error: String::new(),
             picker_open: false,
@@ -101,6 +105,7 @@ impl SettingsPage {
             .update(cx, |i, cx| i.set_value(s.download_dir.clone(), cx));
         self.wiki_search = s.wiki_search;
         self.rescan_on_startup = s.rescan_on_startup;
+        self.rotating_fetch = s.rotating_fetch;
         cx.notify();
     }
 
@@ -111,6 +116,7 @@ impl SettingsPage {
             download_dir: Some(self.download_dir.read(cx).value().to_string()),
             wiki_search: Some(self.wiki_search),
             rescan_on_startup: Some(self.rescan_on_startup),
+            rotating_fetch: Some(self.rotating_fetch),
         };
         let task = self
             .stores
@@ -358,6 +364,18 @@ impl Render for SettingsPage {
                             }),
                         ))
                     }),
+            )
+            .child(
+                div()
+                    .id("rotating-fetch-tip")
+                    .self_start()
+                    .tooltip(|_, cx| cx.new(|_| HoverTip(ROTATING_FETCH_TIP.into())).into())
+                    .child(checkbox(
+                        "rotating-fetch",
+                        "Rotate identity",
+                        self.rotating_fetch,
+                        cx.listener_toggle(|this, on| this.rotating_fetch = on),
+                    )),
             );
 
         let store = Self::section("Store configuration")
