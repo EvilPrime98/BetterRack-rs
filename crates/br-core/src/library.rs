@@ -16,7 +16,7 @@ use crate::directories::natural_cmp;
 use crate::series::series_of;
 use crate::settings::Preferences;
 use crate::sync::{Semaphore, SingleFlight};
-use crate::uid::{resolve_windows, uid_from_path};
+use crate::uid::{resolve_in, uid_from_path};
 use crate::wiki::WikiLookup;
 use crate::{CoreError, Result};
 use serde_json::{Map, Number, Value, json};
@@ -139,7 +139,7 @@ fn walk(dir: &Path, out: &mut Vec<(String, bool, std::path::PathBuf)>) {
 pub fn scan(roots: &[String], cwd: &str) -> Vec<LibraryEntry> {
     let mut found: Vec<(LibraryEntry, String)> = Vec::new(); // (entry, parent path)
     for (library_index, root) in roots.iter().enumerate() {
-        let root = resolve_windows(root, cwd);
+        let root = resolve_in(root, cwd);
         if !Path::new(&root).is_dir() {
             tracing::error!(lib_path = %root, "skipping unreachable library folder");
             continue;
@@ -147,13 +147,13 @@ pub fn scan(roots: &[String], cwd: &str) -> Vec<LibraryEntry> {
         let mut raw = Vec::new();
         walk(Path::new(&root), &mut raw);
         for (name, did, path) in raw {
-            let abs = resolve_windows(&path.to_string_lossy(), cwd);
+            let abs = resolve_in(&path.to_string_lossy(), cwd);
             let Ok(meta) = std::fs::metadata(&path) else {
                 continue;
             };
             let parent = path
                 .parent()
-                .map(|p| resolve_windows(&p.to_string_lossy(), cwd))
+                .map(|p| resolve_in(&p.to_string_lossy(), cwd))
                 .unwrap_or_default();
             found.push((
                 LibraryEntry {
@@ -326,7 +326,7 @@ impl Library {
             .get_app_settings()?
             .output_dirs
             .iter()
-            .map(|p| resolve_windows(p, &self.cwd))
+            .map(|p| resolve_in(p, &self.cwd))
             .collect();
         let prefs: HashMap<String, _> = self
             .prefs
@@ -859,7 +859,7 @@ impl Library {
                 }
             },
         };
-        std::fs::create_dir_all(resolve_windows(name, &base))?;
+        std::fs::create_dir_all(resolve_in(name, &base))?;
         Ok(())
     }
 
@@ -882,11 +882,11 @@ impl Library {
             target.path
         };
         let name = basename(&file.path);
-        let new_path = resolve_windows(&name, &target_path);
+        let new_path = resolve_in(&name, &target_path);
 
         if file.did {
-            let source = resolve_windows(&file.path, &self.cwd);
-            let target = resolve_windows(&target_path, &self.cwd);
+            let source = resolve_in(&file.path, &self.cwd);
+            let target = resolve_in(&target_path, &self.cwd);
             let source_parent = Path::new(&source)
                 .parent()
                 .map(|p| p.to_string_lossy().into_owned())
@@ -990,7 +990,7 @@ mod tests {
 
     impl Fixture {
         fn path(&self, rel: &str) -> String {
-            resolve_windows(
+            resolve_in(
                 &self.root.path().join(rel).to_string_lossy(),
                 &self.root.path().to_string_lossy(),
             )

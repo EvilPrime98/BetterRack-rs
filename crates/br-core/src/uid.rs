@@ -80,20 +80,16 @@ pub fn resolve_windows(input: &str, cwd: &str) -> String {
     }
 }
 
-/// Resolve a filesystem path the way the uid derivation expects on this platform.
-pub fn resolve(path: &Path) -> String {
+pub fn resolve_in(input: &str, cwd: &str) -> String {
     #[cfg(windows)]
     {
-        let cwd = std::env::current_dir()
-            .map(|p| p.display().to_string())
-            .unwrap_or_default();
-        resolve_windows(&path.to_string_lossy(), &cwd)
+        resolve_windows(input, cwd)
     }
     #[cfg(not(windows))]
     {
         use std::path::Component;
         let mut out = std::path::PathBuf::new();
-        for c in path.components() {
+        for c in Path::new(cwd).join(input).components() {
             match c {
                 Component::ParentDir => {
                     out.pop();
@@ -106,9 +102,25 @@ pub fn resolve(path: &Path) -> String {
     }
 }
 
+/// Resolve a filesystem path the way the uid derivation expects on this platform.
+pub fn resolve(path: &Path) -> String {
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    resolve_in(&path.to_string_lossy(), &cwd)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(windows))]
+    #[test]
+    fn resolve_in_uses_posix_rules() {
+        assert_eq!(resolve_in("/DATA/Comics", "/home/u"), "/DATA/Comics");
+        assert_eq!(resolve_in("/DATA/Comics/", "/home/u"), "/DATA/Comics");
+        assert_eq!(resolve_in("a/../b", "/home/u"), "/home/u/b");
+    }
 
     #[test]
     fn uid_is_uuid_shaped_and_stable() {

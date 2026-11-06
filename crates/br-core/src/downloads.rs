@@ -6,7 +6,7 @@ use crate::download::{CLOUDFLARE_MESSAGE, DownloadRequest, Downloader, ProgressC
 use crate::jobs::{Job, JobRequest, JobState, JobStore};
 use crate::library::Library;
 use crate::store::StoreApi;
-use crate::uid::resolve_windows;
+use crate::uid::resolve_in;
 use crate::{CoreError, Result};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -110,7 +110,7 @@ impl DownloadService {
 
     /// `fsModel.getFullPath(outputDir || '/')`.
     pub fn full_path(&self, output_dir: Option<&str>) -> String {
-        resolve_windows(
+        resolve_in(
             output_dir.filter(|d| !d.is_empty()).unwrap_or("/"),
             &self.cwd,
         )

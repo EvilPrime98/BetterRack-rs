@@ -49,7 +49,7 @@ fn library_paths(s: &AppState) -> br_core::Result<Vec<String>> {
         .get_app_settings()?
         .output_dirs
         .iter()
-        .map(|p| br_core::uid::resolve_windows(p, &cwd))
+        .map(|p| br_core::uid::resolve_in(p, &cwd))
         .collect())
 }
 
@@ -66,7 +66,7 @@ pub async fn add_library_folder(
     let scan_state = s.clone();
     let result = blocking(move || {
         let cwd = s.config.data_dir.to_string_lossy().into_owned();
-        let resolved = br_core::uid::resolve_windows(&path, &cwd);
+        let resolved = br_core::uid::resolve_in(&path, &cwd);
         let mut paths = library_paths(&s)?;
         if !paths.contains(&resolved) {
             if !std::path::Path::new(&resolved).is_dir() {
@@ -92,7 +92,7 @@ pub async fn remove_library_folder(
     let scan_state = s.clone();
     let settings = blocking(move || {
         let cwd = s.config.data_dir.to_string_lossy().into_owned();
-        let resolved = br_core::uid::resolve_windows(&path, &cwd);
+        let resolved = br_core::uid::resolve_in(&path, &cwd);
         let paths = library_paths(&s)?
             .into_iter()
             .filter(|p| *p != resolved)
