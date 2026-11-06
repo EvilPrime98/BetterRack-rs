@@ -17,6 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stderr)
         .init();
 
+    let bind_ip = config.validated_bind_ip()?;
     let (port, data_dir, auth) = (
         config.port,
         config.data_dir.clone(),
@@ -29,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Scan in the background. Library requests wait for it; the scan is registered before the port opens.
     state.spawn_rescan();
 
-    let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).await?;
+    let listener = tokio::net::TcpListener::bind(SocketAddr::new(bind_ip, port)).await?;
     let bound = listener.local_addr()?.port();
     println!("BR_SERVER_LISTENING {bound}");
     tracing::info!(data_dir = %data_dir.display(), auth, "br-server up");
