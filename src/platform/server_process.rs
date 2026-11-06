@@ -101,6 +101,7 @@ pub fn start_in_process() -> Result<ApiClient, String> {
         });
     let config = br_core::config::Config {
         port: 0,
+        bind_addr: br_core::config::DEFAULT_BIND_ADDR.into(),
         api_key: None,
         log_level: "info".into(),
         seven_zip_path,
