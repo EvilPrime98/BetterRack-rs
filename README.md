@@ -38,6 +38,25 @@ cargo run --release
 
 CBR/RAR/7z archives are extracted with [7-Zip](https://www.7-zip.org). Release packages bundle it; when running from source it falls back to `7z` on your `PATH`, or to the binary named by `SEVEN_ZIP_PATH`.
 
+### Run headless (server only)
+
+`br-server` is a standalone HTTP backend with no GUI dependency, so building it skips the GUI libraries. It needs Rust 1.85 or newer and 7-Zip on the host.
+
+```bash
+BR_BIND_ADDR=0.0.0.0 BR_API_KEY=change-me cargo run --release -p br-server
+```
+
+| Variable | Purpose |
+|---|---|
+| `PORT` | Port to listen on. Default `3000`; `0` lets the OS pick. |
+| `BR_BIND_ADDR` | Host or IP to listen on (no port). Default `127.0.0.1`. |
+| `BR_API_KEY` | Required for `/api/*` and `/read/*` (header `x-br-api-key` or `?key=`). |
+| `BR_DATA_DIR` | Base directory for the SQLite data. Defaults to the working directory. |
+| `LOG_LEVEL` | Tracing filter. Default `info`. |
+| `SEVEN_ZIP_PATH` | Path to the 7-Zip executable if it is not on `PATH`. |
+
+A non-loopback `BR_BIND_ADDR` (such as `0.0.0.0` or `::`) without `BR_API_KEY` makes the server refuse to start, and so does an invalid address. The server does not do TLS; put a reverse proxy in front of it.
+
 ### Build distributables
 
 ```bash
