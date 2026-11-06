@@ -12,7 +12,7 @@ use gpui::{
     Render, StatefulInteractiveElement, Styled, Window, div, prelude::*, px, rgb,
 };
 
-use crate::model::{FilterOption, LibraryEntry};
+use crate::model::{FilterOption, LibraryEntry, ReadFilter};
 use crate::route::{GoBack, Navigate};
 use crate::state::Stores;
 use crate::state::library::apply_sort;
@@ -29,12 +29,19 @@ struct Memo {
     items: Rc<Vec<LibraryEntry>>,
 }
 
+struct VisibleMemo {
+    base: Rc<Vec<LibraryEntry>>,
+    read_filter: ReadFilter,
+    indices: Rc<Vec<usize>>,
+}
+
 pub struct LibraryPage {
     uid: Option<String>,
     stores: Stores,
     scroll: GridScroll,
     smooth: SmoothScroll,
     memo: Option<Memo>,
+    visible_memo: Option<VisibleMemo>,
 }
 
 impl EventEmitter<Navigate> for LibraryPage {}
@@ -43,7 +50,11 @@ impl EventEmitter<GoBack> for LibraryPage {}
 impl LibraryPage {
     pub fn new(uid: Option<String>, stores: Stores, cx: &mut Context<Self>) -> Self {
         cx.observe(&stores.library, |_, _, cx| cx.notify()).detach();
-        cx.observe(&stores.comics, |_, _, cx| cx.notify()).detach();
+        cx.observe(&stores.comics, |this, _, cx| {
+            this.visible_memo = None;
+            cx.notify();
+        })
+        .detach();
         cx.observe(&stores.thumbs, |_, _, cx| cx.notify()).detach();
         cx.observe(&stores.identify, |_, _, cx| cx.notify())
             .detach();
@@ -55,7 +66,35 @@ impl LibraryPage {
             scroll: GridScroll::new(),
             smooth: SmoothScroll::default(),
             memo: None,
+            visible_memo: None,
         }
+    }
+
+    fn visible_items(
+        &mut self,
+        base: &Rc<Vec<LibraryEntry>>,
+        read_filter: ReadFilter,
+        cx: &gpui::App,
+    ) -> Rc<Vec<usize>> {
+        if let Some(m) = &self.visible_memo {
+            if Rc::ptr_eq(&m.base, base) && m.read_filter == read_filter {
+                return m.indices.clone();
+            }
+        }
+        let comics = self.stores.comics.read(cx);
+        let indices = Rc::new(
+            base.iter()
+                .enumerate()
+                .filter(|(_, i)| i.did || read_filter.matches(comics.read_per(&i.uid)))
+                .map(|(ix, _)| ix)
+                .collect::<Vec<_>>(),
+        );
+        self.visible_memo = Some(VisibleMemo {
+            base: base.clone(),
+            read_filter,
+            indices: indices.clone(),
+        });
+        indices
     }
 
     /// Sorted page items, recomputed only when the library, folder or sort changes.
@@ -95,16 +134,7 @@ impl Render for LibraryPage {
         };
 
         // Folders always show; comics only when they pass the read filter.
-        let visible: Rc<Vec<usize>> = {
-            let comics = self.stores.comics.read(cx);
-            Rc::new(
-                base.iter()
-                    .enumerate()
-                    .filter(|(_, i)| i.did || read_filter.matches(comics.read_per(&i.uid)))
-                    .map(|(ix, _)| ix)
-                    .collect(),
-            )
-        };
+        let visible = self.visible_items(&base, read_filter, cx);
 
         let (loading, title) = {
             let lib = self.stores.library.read(cx);
