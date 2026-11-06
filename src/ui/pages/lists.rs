@@ -224,9 +224,9 @@ impl ListPage {
 impl Render for ListPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let items = self.items(cx);
-        let (read_filter, kind, sidebar_collapsed) = {
+        let (read_filter, kind, sidebar_docked) = {
             let p = self.stores.prefs.read(cx);
-            (p.read_filter, p.prefs.comic_type, p.prefs.sidebar_collapsed)
+            (p.read_filter, p.prefs.comic_type, p.prefs.sidebar_docked())
         };
         let reading_only = matches!(self.source, Source::Reading);
         let visible: Rc<Vec<usize>> = {
@@ -393,7 +393,7 @@ impl Render for ListPage {
             Load::Failed(msg) => note(msg.clone()).into_any_element(),
             Load::Ready if visible.is_empty() => note(empty_text).into_any_element(),
             Load::Ready => {
-                let avail = available_width(window, !sidebar_collapsed);
+                let avail = available_width(window, sidebar_docked);
                 items_grid(
                     items.clone(),
                     visible.clone(),

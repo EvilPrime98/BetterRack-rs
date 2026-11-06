@@ -105,7 +105,7 @@ impl StorePage {
 impl Render for StorePage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let configured = self.is_configured(cx);
-        let sidebar_collapsed = self.stores.prefs.read(cx).prefs.sidebar_collapsed;
+        let sidebar_docked = self.stores.prefs.read(cx).prefs.sidebar_docked();
         let (results, scroll, loading, loading_more, more_failed, error) = {
             let s = self.stores.store.read(cx);
             (
@@ -177,7 +177,7 @@ impl Render for StorePage {
                 .child(text)
                 .into_any_element()
         } else {
-            let (cols, col_w) = geometry(available_width(window, !sidebar_collapsed));
+            let (cols, col_w) = geometry(available_width(window, sidebar_docked));
             let row_h = card_height(col_w) + GAP_Y;
             let rows = results.len().div_ceil(cols);
             let stores = self.stores.clone();

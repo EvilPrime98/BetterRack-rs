@@ -3,7 +3,8 @@
 
 use gpui::{
     AnyView, App, AppContext as _, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, ParentElement, Render, Styled, Subscription, Window, actions, div, prelude::*, px,
+    IntoElement, ParentElement, Render, Styled, Subscription, Window, actions, deferred, div,
+    prelude::*, px,
 };
 
 use crate::api::ApiClient;
@@ -97,6 +98,9 @@ impl AppRoot {
         let sidebar = cx.new(|cx| Sidebar::new(stores.clone(), cx));
         let mut subs = vec![
             cx.subscribe_in(&sidebar, window, |this, _, ev: &Navigate, window, cx| {
+                if !this.stores.prefs.read(cx).prefs.sidebar_pinned {
+                    this.close_sidebar_overlay(cx);
+                }
                 this.navigate(ev.0.clone(), window, cx)
             }),
             // The loader message follows the identify-all progress.
@@ -437,6 +441,12 @@ impl AppRoot {
         });
     }
 
+    fn close_sidebar_overlay(&mut self, cx: &mut Context<Self>) {
+        self.stores
+            .prefs
+            .update(cx, |p, cx| p.update(cx, |p| p.sidebar_collapsed = true));
+    }
+
     fn placeholder(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let status = match &self.server_status {
             ServerStatus::Starting => "Starting server…".to_string(),
@@ -571,7 +581,10 @@ impl Render for AppRoot {
             }
         }
         let layout = self.history.current().uses_layout();
-        let sidebar_collapsed = self.stores.prefs.read(cx).prefs.sidebar_collapsed;
+        let (sidebar_open, sidebar_pinned) = {
+            let p = &self.stores.prefs.read(cx).prefs;
+            (!p.sidebar_collapsed, p.sidebar_pinned)
+        };
         let failed = matches!(self.server_status, ServerStatus::Failed(_));
 
         let loader_message = match self.stores.library.read(cx).identify_progress {
@@ -620,10 +633,26 @@ impl Render for AppRoot {
                     .flex()
                     .flex_1()
                     .min_h_0()
-                    .when(layout && !sidebar_collapsed, |s| {
+                    .relative()
+                    .when(layout && sidebar_open && sidebar_pinned, |s| {
                         s.child(self.sidebar.clone())
                     })
-                    .child(content),
+                    .child(content)
+                    .when(layout && sidebar_open && !sidebar_pinned, |s| {
+                        s.child(deferred(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .size_full()
+                                .flex()
+                                .child(self.sidebar.clone())
+                                .child(div().flex_1().h_full().occlude().on_mouse_down(
+                                    gpui::MouseButton::Left,
+                                    cx.listener(|this, _, _, cx| this.close_sidebar_overlay(cx)),
+                                )),
+                        ))
+                    }),
             )
             .child(self.toasts.clone())
             .child(self.modals.clone())
