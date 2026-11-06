@@ -679,6 +679,7 @@ impl Render for AppRoot {
                                     div()
                                         .flex_none()
                                         .h_full()
+                                        .occlude()
                                         .child(self.sidebar.clone())
                                         .with_animation(
                                             "sidebar-slide",

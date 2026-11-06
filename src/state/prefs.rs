@@ -71,6 +71,7 @@ pub struct PrefsStore {
     pub read_filter: ReadFilter,
     /// Id of the header dropdown that is open, if any (one at a time).
     pub open_menu: Option<&'static str>,
+    pub card_menu: Option<String>,
 }
 
 impl PrefsStore {
@@ -79,6 +80,7 @@ impl PrefsStore {
             prefs: Prefs::load(),
             read_filter: ReadFilter::All,
             open_menu: None,
+            card_menu: None,
         }
     }
 
@@ -103,6 +105,15 @@ impl PrefsStore {
             self.open_menu = Some(id);
         } else if self.open_menu == Some(id) {
             self.open_menu = None;
+        }
+        cx.notify();
+    }
+
+    pub fn set_card_menu(&mut self, uid: &str, open: bool, cx: &mut gpui::Context<Self>) {
+        if open {
+            self.card_menu = Some(uid.to_string());
+        } else if self.card_menu.as_deref() == Some(uid) {
+            self.card_menu = None;
         }
         cx.notify();
     }
