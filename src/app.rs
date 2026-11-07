@@ -668,48 +668,50 @@ impl Render for AppRoot {
                             ),
                     )
                     .when(layout && sidebar_open && !sidebar_pinned, |s| {
-                        s.child(deferred(
-                            div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .size_full()
-                                .flex()
-                                .child(
-                                    div()
-                                        .flex_none()
-                                        .h_full()
-                                        .occlude()
-                                        .child(self.sidebar.clone())
-                                        .with_animation(
-                                            "sidebar-slide",
-                                            motion::once(motion::BASE),
-                                            |el, t| {
-                                                el.ml(px(
-                                                    -f32::from(theme::sidebar_width()) * (1.0 - t)
-                                                ))
-                                            },
-                                        ),
-                                )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .h_full()
-                                        .bg(gpui::rgba(0x00000066))
-                                        .occlude()
-                                        .on_mouse_down(
-                                            gpui::MouseButton::Left,
-                                            cx.listener(|this, _, _, cx| {
-                                                this.close_sidebar_overlay(cx)
-                                            }),
-                                        )
-                                        .with_animation(
-                                            "sidebar-backdrop",
-                                            motion::once(motion::SLOW),
-                                            |el, t| el.opacity(t),
-                                        ),
-                                ),
-                        ))
+                        s.child(
+                            deferred(
+                                div()
+                                    .absolute()
+                                    .top_0()
+                                    .left_0()
+                                    .size_full()
+                                    .flex()
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .h_full()
+                                            .occlude()
+                                            .child(self.sidebar.clone())
+                                            .with_animation(
+                                                "sidebar-slide",
+                                                motion::once(motion::BASE),
+                                                |el, t| {
+                                                    el.ml(px(-f32::from(theme::sidebar_width())
+                                                        * (1.0 - t)))
+                                                },
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .h_full()
+                                            .bg(gpui::rgba(0x00000066))
+                                            .occlude()
+                                            .on_mouse_down(
+                                                gpui::MouseButton::Left,
+                                                cx.listener(|this, _, _, cx| {
+                                                    this.close_sidebar_overlay(cx)
+                                                }),
+                                            )
+                                            .with_animation(
+                                                "sidebar-backdrop",
+                                                motion::once(motion::SLOW),
+                                                |el, t| el.opacity(t),
+                                            ),
+                                    ),
+                            )
+                            .with_priority(10),
+                        )
                     }),
             )
             .child(self.toasts.clone())
