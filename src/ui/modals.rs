@@ -20,6 +20,7 @@ use crate::platform::server_config;
 use crate::runtime;
 use crate::state::Stores;
 use crate::state::directories::filter_dirs;
+use crate::state::epoch::{Epoch, Ticket};
 use crate::state::thumbnails::Thumb;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::checkbox::checkbox;
@@ -165,9 +166,15 @@ enum Modal {
         url: Entity<TextInput>,
         key: Entity<TextInput>,
         remote: bool,
-        error: String,
-        busy: bool,
+        form: ServerForm,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ServerForm {
+    Idle,
+    Busy,
+    Failed(String),
 }
 
 pub struct ModalHost {
@@ -177,9 +184,9 @@ pub struct ModalHost {
     /// Focus the modal's text input on the next render (needs a `Window`).
     needs_focus: bool,
     /// Discards a directory list that arrives after its modal was closed or replaced.
-    dir_request: u64,
+    dir_request: Epoch,
     /// Same idea for identify searches (also the debounce token).
-    ident_request: u64,
+    ident_request: Epoch,
     dir_scroll: UniformListScrollHandle,
     focus: FocusHandle,
     _subs: Vec<Subscription>,
@@ -195,8 +202,8 @@ pub fn init(cx: &mut App) -> Entity<ModalHost> {
         leaving: None,
         leave_token: 0,
         needs_focus: false,
-        dir_request: 0,
-        ident_request: 0,
+        dir_request: Epoch::default(),
+        ident_request: Epoch::default(),
         dir_scroll: UniformListScrollHandle::new(),
         focus: cx.focus_handle(),
         _subs: Vec::new(),
@@ -284,8 +291,7 @@ pub fn open_server(cx: &mut App, _mandatory: bool) {
             url,
             key,
             remote: config.remote,
-            error: String::new(),
-            busy: false,
+            form: ServerForm::Idle,
         });
         h.needs_focus = true;
         cx.notify();
@@ -343,8 +349,7 @@ pub fn open_download_dir(cx: &mut App, on_done: impl FnOnce(Option<String>, &mut
             on_done: Some(Box::new(on_done)),
         });
         h.needs_focus = true;
-        h.dir_request += 1;
-        let request = h.dir_request;
+        let request = h.dir_request.next();
         cx.spawn(async move |this, cx| {
             let result = refresh.await;
             this.update(cx, |h, cx| h.set_dirs(request, result, cx))
@@ -402,8 +407,7 @@ impl ModalHost {
             return;
         };
         let query = input.read(cx).value().trim().to_string();
-        self.ident_request += 1;
-        let request = self.ident_request;
+        let request = self.ident_request.next();
         if query.is_empty() {
             *results = Suggestions::Idle;
             cx.notify();
@@ -421,7 +425,7 @@ impl ModalHost {
                 .await;
             let current = this
                 .update(cx, |h, cx| {
-                    if h.ident_request != request {
+                    if !h.ident_request.is_current(request) {
                         return false;
                     }
                     if let Some(Modal::Identify { results, .. }) = &mut h.modal {
@@ -448,11 +452,11 @@ impl ModalHost {
 
     fn set_suggestions(
         &mut self,
-        request: u64,
+        request: Ticket,
         found: Result<Vec<WikiComic>, String>,
         cx: &mut Context<Self>,
     ) {
-        if request != self.ident_request {
+        if !self.ident_request.is_current(request) {
             return;
         }
         let Some(Modal::Identify { results, .. }) = &mut self.modal else {
@@ -541,7 +545,7 @@ impl ModalHost {
 
     fn close(&mut self, cx: &mut Context<Self>) {
         let mut modal = self.modal.take();
-        self.ident_request += 1;
+        self.ident_request.next();
         self._subs.clear();
         cx.notify();
         // A dismissed picker answers `None` so the flow waiting on it can end. Deferred, so the
@@ -579,11 +583,11 @@ impl ModalHost {
 
     fn set_dirs(
         &mut self,
-        request: u64,
+        request: Ticket,
         result: Result<Vec<String>, String>,
         cx: &mut Context<Self>,
     ) {
-        if request != self.dir_request {
+        if !self.dir_request.is_current(request) {
             return;
         }
         let Some(Modal::DownloadDir { dirs, .. }) = &mut self.modal else {
@@ -645,13 +649,12 @@ impl ModalHost {
             url,
             key,
             remote,
-            error,
-            busy,
+            form,
         }) = &mut self.modal
         else {
             return;
         };
-        if *busy {
+        if *form == ServerForm::Busy {
             return;
         }
         if !*remote {
@@ -664,12 +667,11 @@ impl ModalHost {
             key.read(cx).value().trim().to_string(),
         );
         if url.is_empty() {
-            *error = "Enter the server address.".into();
+            *form = ServerForm::Failed("Enter the server address.".into());
             cx.notify();
             return;
         }
-        error.clear();
-        *busy = true;
+        *form = ServerForm::Busy;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let check = {
@@ -692,9 +694,8 @@ impl ModalHost {
                     cx.defer(|cx| crate::app::relaunch(cx));
                 }
                 Err(message) => {
-                    if let Some(Modal::Server { error, busy, .. }) = &mut this.modal {
-                        *error = message;
-                        *busy = false;
+                    if let Some(Modal::Server { form, .. }) = &mut this.modal {
+                        *form = ServerForm::Failed(message);
                     }
                     cx.notify();
                 }
@@ -801,8 +802,7 @@ impl Render for ModalHost {
                 url,
                 key,
                 remote,
-                error,
-                busy,
+                form,
             } => {
                 let this = cx.entity();
                 self.frame("Connect to your server", cx)
@@ -831,7 +831,10 @@ impl Render for ModalHost {
                         div()
                             .text_size(px(12.0))
                             .text_color(theme::error())
-                            .child(error.clone()),
+                            .child(match form {
+                                ServerForm::Failed(message) => message.clone(),
+                                _ => String::new(),
+                            }),
                     )
                     .child(
                         div()
@@ -846,7 +849,11 @@ impl Render for ModalHost {
                             ))
                             .child(button(
                                 "srv-connect",
-                                if *busy { "Connecting…" } else { "Connect" },
+                                if *form == ServerForm::Busy {
+                                    "Connecting…"
+                                } else {
+                                    "Connect"
+                                },
                                 ButtonVariant::Classic,
                                 cx.listener(|this, _, _, cx| this.submit_server(cx)),
                             )),

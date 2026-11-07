@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::model::{JobState, JobStatus, StoreProgressEvent};
 use crate::state::Stores;
-use crate::state::downloads::{can_stop, detail_for, percent_for, state_label};
+use crate::state::downloads::{Pending, can_stop, detail_for, percent_for, state_label};
 use crate::ui::components::items_grid::PAGE_PAD_X;
 use crate::ui::confirm::{self, ConfirmOptions};
 use crate::ui::pages::common::{header_bar, note, summary};
@@ -64,15 +64,9 @@ impl DownloadsPage {
 
 impl Render for DownloadsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (jobs, error, loaded, retrying, stopping) = {
+        let (jobs, error, loaded) = {
             let d = self.stores.downloads.read(cx);
-            (
-                d.jobs.clone(),
-                d.error.clone(),
-                d.loaded,
-                d.retrying.clone(),
-                d.stopping.clone(),
-            )
+            (d.jobs.clone(), d.error.clone(), d.loaded)
         };
 
         let body = if jobs.is_empty() {
@@ -88,10 +82,11 @@ impl Render for DownloadsPage {
             let rows = jobs.iter().map(|job| {
                 let retry_id = job.job_id.clone();
                 let stop_job = job.clone();
+                let pending = self.stores.downloads.read(cx).pending(&job.job_id);
                 job_row(
                     job,
-                    retrying.contains(&job.job_id),
-                    stopping.contains(&job.job_id),
+                    pending == Some(Pending::Retrying),
+                    pending == Some(Pending::Stopping),
                     cx.listener(move |this, _, _, cx| {
                         this.stores
                             .downloads

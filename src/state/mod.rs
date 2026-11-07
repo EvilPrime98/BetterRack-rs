@@ -3,6 +3,7 @@
 pub mod comic_cache;
 pub mod directories;
 pub mod downloads;
+pub mod epoch;
 pub mod identify;
 pub mod library;
 pub mod prefs;

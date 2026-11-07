@@ -42,10 +42,33 @@ pub fn bind_keys(cx: &mut App) {
     ]);
 }
 
-pub enum ServerStatus {
-    Starting,
-    Ready,
+enum Boot {
+    StartingServer,
     Failed(String),
+    LoadingData,
+    Identifying,
+    LoaderLeaving,
+    Running,
+}
+
+impl Boot {
+    fn loader_up(&self) -> bool {
+        matches!(
+            self,
+            Boot::StartingServer | Boot::Failed(_) | Boot::LoadingData | Boot::Identifying
+        )
+    }
+
+    fn failed(&self) -> bool {
+        matches!(self, Boot::Failed(_))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Close {
+    Idle,
+    Checking,
+    Confirmed,
 }
 
 /// What the content area shows. Pages arrive phase by phase; the rest render a placeholder.
@@ -61,8 +84,8 @@ enum Page {
 
 pub struct AppRoot {
     history: History,
-    pub server_status: ServerStatus,
-    /// `Some` once the server is up. Pages clone this and call it through [`runtime::run`].
+    boot: Boot,
+    /// `Some` once the server is up, set on the `StartingServer -> LoadingData` transition. Pages clone this and call it through [`runtime::run`].
     pub client: Option<ApiClient>,
     /// Keeps the sidecar alive; dropping it kills the child.
     _server: Option<ServerProcess>,
@@ -74,17 +97,12 @@ pub struct AppRoot {
     page: Page,
     _page_subs: Vec<Subscription>,
     _subs: Vec<Subscription>,
-    /// The startup sequence (§5.4) is still running: show the AppLoader.
-    loading: bool,
-    loader_leaving: bool,
     page_gen: u64,
     /// Dev aid: `BETTERRACK_OPEN` (see [`dev_route`]) opens a page once startup finishes.
     pending_route: Option<Route>,
     dev_identify_opened: Option<bool>,
     focus: FocusHandle,
-    /// The close guard has been answered: the next close request goes through.
-    close_confirmed: bool,
-    close_check_pending: bool,
+    close: Close,
 }
 
 impl AppRoot {
@@ -120,7 +138,7 @@ impl AppRoot {
 
         let mut this = Self {
             history: History::default(),
-            server_status: ServerStatus::Starting,
+            boot: Boot::StartingServer,
             client: None,
             _server: None,
             stores,
@@ -131,14 +149,11 @@ impl AppRoot {
             page: Page::Placeholder,
             _page_subs: Vec::new(),
             _subs: subs,
-            loading: true,
-            loader_leaving: false,
             page_gen: 0,
             pending_route: dev_route(),
             dev_identify_opened: None,
             focus,
-            close_confirmed: false,
-            close_check_pending: false,
+            close: Close::Idle,
         };
         // Closing cancels running downloads: ask first (`on_window_should_close` is synchronous, so
         // the check runs in the background and the window closes itself once it is answered).
@@ -185,14 +200,14 @@ impl AppRoot {
                     tracing::info!("server ready at {}", client.base_url());
                     this._server = Some(server);
                     this.client = Some(client.clone());
-                    this.server_status = ServerStatus::Ready;
+                    this.boot = Boot::LoadingData;
                     this.begin_startup(client, cx);
                     this.check_for_updates(cx);
                     cx.notify();
                 }
                 Err(msg) => {
                     tracing::error!("server startup failed: {msg}");
-                    this.server_status = ServerStatus::Failed(msg);
+                    this.boot = Boot::Failed(msg);
                     cx.notify();
                 }
             })
@@ -291,17 +306,20 @@ impl AppRoot {
                 // Long-running: the loader stays up and shows "Identifying library X/Y".
                 let identify =
                     cx.update(|cx| stores.library.update(cx, |s, cx| s.identify_library(cx)));
+                this.update(cx, |this, _| this.boot = Boot::Identifying)
+                    .ok();
                 identify.await;
             }
 
             this.update(cx, |this, cx| {
-                this.loading = false;
-                this.loader_leaving = true;
+                this.boot = Boot::LoaderLeaving;
                 cx.notify();
                 cx.spawn(async move |this, cx| {
                     cx.background_executor().timer(motion::BASE).await;
                     this.update(cx, |this, cx| {
-                        this.loader_leaving = false;
+                        if matches!(this.boot, Boot::LoaderLeaving) {
+                            this.boot = Boot::Running;
+                        }
                         cx.notify();
                     })
                     .ok();
@@ -316,22 +334,20 @@ impl AppRoot {
     /// Close-guard decision for a close request: `true` lets the window close now. Otherwise a
     /// background check decides, and closes the window itself if it is allowed.
     pub fn guard_close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if self.close_confirmed {
-            return true;
+        match self.close {
+            Close::Confirmed => return true,
+            Close::Checking => return false,
+            Close::Idle => {}
         }
         let Some(client) = self.client.clone() else {
             return true;
         };
-        if self.close_check_pending {
-            return false;
-        }
-        self.close_check_pending = true;
+        self.close = Close::Checking;
         let handle = window.window_handle();
         cx.spawn(async move |this, cx| {
             let close = close_guard::confirm_close(client, cx).await;
             this.update(cx, |this, _| {
-                this.close_check_pending = false;
-                this.close_confirmed = close;
+                this.close = if close { Close::Confirmed } else { Close::Idle };
             })
             .ok();
             if close {
@@ -464,17 +480,17 @@ impl AppRoot {
     }
 
     fn placeholder(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let status = match &self.server_status {
-            ServerStatus::Starting => "Starting server…".to_string(),
-            ServerStatus::Ready => "Not ported yet".to_string(),
-            ServerStatus::Failed(msg) => {
+        let status = match &self.boot {
+            Boot::StartingServer => "Starting server…".to_string(),
+            Boot::Failed(msg) => {
                 format!(
                     "Server failed to start:\n{msg}\n\nFull logs: {}",
                     logging::log_dir().display()
                 )
             }
+            _ => "Not ported yet".to_string(),
         };
-        let failed = matches!(self.server_status, ServerStatus::Failed(_));
+        let failed = self.boot.failed();
         let remote = server_config::current().remote;
         div()
             .flex()
@@ -583,7 +599,7 @@ impl Focusable for AppRoot {
 
 impl Render for AppRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !self.loading {
+        if !self.boot.loader_up() {
             if let Some(route) = self.pending_route.take() {
                 self.navigate(route, window, cx);
             }
@@ -601,14 +617,12 @@ impl Render for AppRoot {
             let p = &self.stores.prefs.read(cx).prefs;
             (!p.sidebar_collapsed, p.sidebar_pinned)
         };
-        let failed = matches!(self.server_status, ServerStatus::Failed(_));
+        let failed = self.boot.failed();
 
-        let loader_message = match self.stores.library.read(cx).identify_progress {
+        let loader_message = match self.stores.library.read(cx).identify_progress() {
             Some((done, total)) if total > 0 => format!("Identifying library {done}/{total}"),
             Some(_) => "Identifying library…".to_string(),
-            None if matches!(self.server_status, ServerStatus::Starting) => {
-                "Starting server…".to_string()
-            }
+            None if matches!(self.boot, Boot::StartingServer) => "Starting server…".to_string(),
             None => "Loading your library…".to_string(),
         };
 
@@ -717,10 +731,10 @@ impl Render for AppRoot {
             .child(self.toasts.clone())
             .child(self.modals.clone())
             .child(self.confirm.clone())
-            .when(self.loading && !failed, |s| {
+            .when(self.boot.loader_up() && !failed, |s| {
                 s.child(app_loader(loader_message.clone()))
             })
-            .when(!self.loading && self.loader_leaving, |s| {
+            .when(matches!(self.boot, Boot::LoaderLeaving), |s| {
                 s.child(
                     div()
                         .absolute()

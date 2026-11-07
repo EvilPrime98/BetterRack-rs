@@ -227,9 +227,9 @@ impl Render for Sidebar {
             let lib = self.stores.library.read(cx);
             (
                 lib.structure,
-                lib.refreshing || lib.identify_progress.is_some(),
-                lib.identify_progress,
-                lib.loading,
+                lib.refreshing() || lib.identify_progress().is_some(),
+                lib.identify_progress(),
+                lib.loading(),
             )
         };
 
