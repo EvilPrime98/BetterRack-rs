@@ -552,7 +552,7 @@ impl Render for Sidebar {
                                             }),
                                         ),
                                 )
-                                .with_priority(1),
+                                .with_priority(11),
                             )
                             .child(
                                 deferred(
@@ -627,7 +627,7 @@ impl Render for Sidebar {
                                             ),
                                         ),
                                 )
-                                .with_priority(2),
+                                .with_priority(12),
                             )
                         }),
                 ),
