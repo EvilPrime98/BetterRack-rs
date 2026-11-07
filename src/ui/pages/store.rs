@@ -95,10 +95,10 @@ impl Render for StorePage {
             (
                 s.results.clone(),
                 s.scroll.clone(),
-                s.loading,
-                s.loading_more,
-                s.more_failed,
-                s.error.clone(),
+                s.is_loading(),
+                s.loading_more(),
+                s.more_failed(),
+                s.error().unwrap_or_default().to_string(),
             )
         };
 

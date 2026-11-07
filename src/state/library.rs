@@ -18,34 +18,72 @@ use crate::ui::toast;
 const STALE_TIME: Duration = Duration::from_secs(60 * 5);
 
 #[derive(Default)]
+struct Slot {
+    data: Option<(Vec<LibraryGroup>, Instant)>,
+    in_flight: Option<u64>,
+}
+
+impl Slot {
+    fn fresh(&self) -> Option<&Vec<LibraryGroup>> {
+        self.data
+            .as_ref()
+            .filter(|(_, at)| at.elapsed() < STALE_TIME)
+            .map(|(groups, _)| groups)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+enum Identify {
+    #[default]
+    Idle,
+    Starting,
+    Running {
+        done: u32,
+        total: u32,
+    },
+}
+
+#[derive(Default)]
 pub struct LibraryStore {
     pub client: Option<ApiClient>,
     pub groups: Vec<LibraryGroup>,
     pub structure: LibraryStructure,
     pub search_query: String,
-    /// `Some((done, total))` while the identify-all job runs (`total == 0` until known).
-    pub identify_progress: Option<(u32, u32)>,
     /// Broadcast for views that keep their own snapshot (Recent/Reading): each delete bumps the
     /// counter so repeated deletes of the same uid stay distinct.
     pub last_deleted: Option<(u64, String)>,
-    /// A rescan started from the sidebar button is running.
-    pub refreshing: bool,
-    pub loading: bool,
     /// Bumped whenever `groups`, `structure` or `search_query` change, so views can memoize.
     pub revision: u64,
-    cache: HashMap<LibraryStructure, (Vec<LibraryGroup>, Instant)>,
-    /// structure → generation the in-flight request belongs to.
-    in_flight: HashMap<LibraryStructure, u64>,
+    cache: HashMap<LibraryStructure, Slot>,
     generation: u64,
     delete_count: u64,
-    identify_polling: bool,
+    /// A rescan started from the sidebar button is running.
+    rescanning: bool,
+    identify: Identify,
 }
 
 impl LibraryStore {
+    pub fn loading(&self) -> bool {
+        self.cache.values().any(|s| s.in_flight.is_some())
+    }
+
+    pub fn refreshing(&self) -> bool {
+        self.rescanning
+    }
+
+    pub fn identify_progress(&self) -> Option<(u32, u32)> {
+        match self.identify {
+            Identify::Running { done, total } => Some((done, total)),
+            _ => None,
+        }
+    }
+
     fn invalidate(&mut self) {
         // Folders were created/moved/removed: the download-folder list is stale too.
         crate::state::directories::invalidate();
-        self.cache.clear();
+        for slot in self.cache.values_mut() {
+            slot.data = None;
+        }
         // An older in-flight response must not repopulate the cache we just emptied.
         self.generation += 1;
     }
@@ -62,7 +100,7 @@ impl LibraryStore {
         }
         self.structure = structure;
         self.revision += 1;
-        if let Some((groups, _)) = self.cache.get(&structure) {
+        if let Some((groups, _)) = self.cache.get(&structure).and_then(|s| s.data.as_ref()) {
             self.groups = groups.clone();
         }
         cx.notify();
@@ -91,9 +129,10 @@ impl LibraryStore {
         let plan = this
             .update(cx, |s, cx| {
                 let structure = s.structure;
-                if let Some((groups, at)) = s.cache.get(&structure) {
-                    if at.elapsed() < STALE_TIME && !s.in_flight.contains_key(&structure) {
-                        let groups = groups.clone();
+                let generation = s.generation;
+                let slot = s.cache.entry(structure).or_default();
+                if slot.in_flight.is_none() {
+                    if let Some(groups) = slot.fresh().cloned() {
                         if s.groups != groups {
                             s.groups = groups;
                             s.revision += 1;
@@ -102,16 +141,15 @@ impl LibraryStore {
                         return Plan::Done;
                     }
                 }
-                if s.in_flight.get(&structure) == Some(&s.generation) {
+                if slot.in_flight == Some(generation) {
                     return Plan::Done;
                 }
                 let Some(client) = s.client.clone() else {
                     return Plan::Done;
                 };
-                s.in_flight.insert(structure, s.generation);
-                s.loading = true;
+                s.cache.entry(structure).or_default().in_flight = Some(generation);
                 cx.notify();
-                Plan::Fetch(client, structure, s.generation)
+                Plan::Fetch(client, structure, generation)
             })
             .map_err(|e| e.to_string())?;
         let Plan::Fetch(client, structure, generation) = plan else {
@@ -121,13 +159,13 @@ impl LibraryStore {
         let by_series = structure == LibraryStructure::Series;
         let result = runtime::run(async move { client.library_all(by_series).await }).await;
         this.update(cx, |s, cx| {
-            if s.in_flight.get(&structure) == Some(&generation) {
-                s.in_flight.remove(&structure);
+            let slot = s.cache.entry(structure).or_default();
+            if slot.in_flight == Some(generation) {
+                slot.in_flight = None;
             }
-            s.loading = !s.in_flight.is_empty();
             if let Ok(groups) = &result {
                 if generation == s.generation {
-                    s.cache.insert(structure, (groups.clone(), Instant::now()));
+                    slot.data = Some((groups.clone(), Instant::now()));
                     if s.structure == structure {
                         s.groups = groups.clone();
                         s.revision += 1;
@@ -283,7 +321,10 @@ impl LibraryStore {
 
     async fn rescan(this: &WeakEntity<Self>, cx: &mut AsyncApp) -> bool {
         let Ok(Some(client)) = this.update(cx, |s, cx| {
-            s.refreshing = true;
+            if s.rescanning {
+                return None;
+            }
+            s.rescanning = true;
             cx.notify();
             s.client.clone()
         }) else {
@@ -298,7 +339,7 @@ impl LibraryStore {
             Err(e) => Err(e.to_string()),
         };
         this.update(cx, |s, cx| {
-            s.refreshing = false;
+            s.rescanning = false;
             cx.notify();
         })
         .ok();
@@ -349,18 +390,17 @@ impl LibraryStore {
 
     /// Start the identify-all job and poll it every second until it ends.
     pub fn identify_library(&mut self, cx: &mut Context<Self>) -> Task<()> {
-        if self.identify_polling {
+        if self.identify != Identify::Idle {
             return Task::ready(());
         }
         let Some(client) = self.client.clone() else {
             return Task::ready(());
         };
-        self.identify_polling = true;
+        self.identify = Identify::Starting;
         cx.spawn(async move |this, cx| {
             let outcome = Self::poll_identify(&this, cx, client).await;
             this.update(cx, |s, cx| {
-                s.identify_polling = false;
-                s.identify_progress = None;
+                s.identify = Identify::Idle;
                 cx.notify();
             })
             .ok();
@@ -409,7 +449,10 @@ impl LibraryStore {
                 _ => (0, 0),
             };
             this.update(cx, |s, cx| {
-                s.identify_progress = Some(progress);
+                s.identify = Identify::Running {
+                    done: progress.0,
+                    total: progress.1,
+                };
                 cx.notify();
             })
             .map_err(|e| e.to_string())?;

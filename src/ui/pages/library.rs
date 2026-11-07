@@ -138,7 +138,7 @@ impl Render for LibraryPage {
 
         let (loading, title) = {
             let lib = self.stores.library.read(cx);
-            (lib.loading, lib.title_for(self.uid.as_deref()))
+            (lib.loading(), lib.title_for(self.uid.as_deref()))
         };
         let count = visible.len();
 

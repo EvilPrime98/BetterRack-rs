@@ -110,7 +110,55 @@ pub fn most_visible(
 enum Load {
     Loading,
     Error(String),
-    Ready,
+    Ready(Loaded),
+}
+
+struct Loaded {
+    list: ListState,
+    total: u32,
+    bookmarks: Vec<Bookmark>,
+    /// Page the reader opened on. Progress is only written once the reader has moved off it, so
+    /// only opening a comic (e.g. one marked read) never rewrites its progress.
+    initial: u32,
+    touched: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Scroll {
+    Idle,
+    Easing {
+        /// Pixels still to scroll (positive = down); eased out a little every frame.
+        pending: f32,
+        last_frame: Option<std::time::Instant>,
+    },
+}
+
+impl Scroll {
+    fn pending(self) -> f32 {
+        match self {
+            Scroll::Idle => 0.0,
+            Scroll::Easing { pending, .. } => pending,
+        }
+    }
+
+    fn last_frame(self) -> Option<std::time::Instant> {
+        match self {
+            Scroll::Idle => None,
+            Scroll::Easing { last_frame, .. } => last_frame,
+        }
+    }
+
+    fn push(self, dy: f32, cap: f32) -> Scroll {
+        let pending = (self.pending() + dy).clamp(-cap, cap);
+        if pending == 0.0 {
+            Scroll::Idle
+        } else {
+            Scroll::Easing {
+                pending,
+                last_frame: self.last_frame(),
+            }
+        }
+    }
 }
 
 pub struct ReaderPage {
@@ -118,15 +166,8 @@ pub struct ReaderPage {
     stores: Stores,
     images: gpui::Entity<PageImages>,
     load: Load,
-    total: u32,
-    bookmarks: Vec<Bookmark>,
-    list: Option<ListState>,
     /// 1-based page currently most visible.
     current: u32,
-    /// Page the reader opened on. Progress is only written once the reader has moved off it, so
-    /// only opening a comic (e.g. one marked read) never rewrites its progress.
-    initial: u32,
-    touched: bool,
     header_visible: bool,
     bookmarks_open: bool,
     bookmarks_scroll: ScrollHandle,
@@ -135,9 +176,7 @@ pub struct ReaderPage {
     viewer_w: f32,
     viewer_h: f32,
     last_page_w: f32,
-    /// Pixels still to scroll (positive = down); eased out a little every frame.
-    pending_scroll: f32,
-    last_frame: Option<std::time::Instant>,
+    scroll: Scroll,
     focus: FocusHandle,
     page_input: gpui::Entity<TextInput>,
     _task: Option<Task<()>>,
@@ -153,7 +192,7 @@ impl ReaderPage {
         cx.observe(&images, |this, images, cx| {
             // A page's real size is known: its list item must be measured again.
             let sized = images.update(cx, |s, _| s.take_newly_sized());
-            if let Some(list) = &this.list {
+            if let Some(list) = this.list() {
                 for p in sized {
                     list.remeasure_items(p as usize - 1..p as usize);
                 }
@@ -179,7 +218,7 @@ impl ReaderPage {
                 }
                 TextInputEvent::Submit => {
                     let text = input.read(cx).value().to_string();
-                    if let Some(page) = parse_page_input(&text, this.total) {
+                    if let Some(page) = parse_page_input(&text, this.total()) {
                         this.go_to_page(page, cx);
                     }
                     window.focus(&this.focus, cx);
@@ -204,12 +243,7 @@ impl ReaderPage {
             stores,
             images,
             load: Load::Loading,
-            total: 0,
-            bookmarks: Vec::new(),
-            list: None,
             current: 1,
-            initial: 1,
-            touched: false,
             header_visible: true,
             bookmarks_open: false,
             bookmarks_scroll: ScrollHandle::new(),
@@ -218,14 +252,34 @@ impl ReaderPage {
             viewer_w: f32::from(size.width),
             viewer_h: f32::from(size.height),
             last_page_w: 0.0,
-            pending_scroll: 0.0,
-            last_frame: None,
+            scroll: Scroll::Idle,
             focus,
             page_input,
             _task: None,
         };
         this.load(cx);
         this
+    }
+
+    fn list(&self) -> Option<&ListState> {
+        match &self.load {
+            Load::Ready(l) => Some(&l.list),
+            _ => None,
+        }
+    }
+
+    fn total(&self) -> u32 {
+        match &self.load {
+            Load::Ready(l) => l.total,
+            _ => 0,
+        }
+    }
+
+    fn bookmarks(&self) -> &[Bookmark] {
+        match &self.load {
+            Load::Ready(l) => &l.bookmarks,
+            _ => &[],
+        }
     }
 
     /// `useComicPages.loadPages`: wait for the comic cache, list pages, warm the pages around the
@@ -300,13 +354,14 @@ impl ReaderPage {
             item_ix: page as usize - 1,
             offset_in_item: px(0.0),
         });
-        self.list = Some(list);
-        self.total = total;
+        self.load = Load::Ready(Loaded {
+            list,
+            total,
+            bookmarks,
+            initial: page,
+            touched: false,
+        });
         self.current = page;
-        self.initial = page;
-        self.touched = false;
-        self.bookmarks = bookmarks;
-        self.load = Load::Ready;
         self.refreshing = false;
         self.last_page_w = 0.0;
         cx.notify();
@@ -345,38 +400,45 @@ impl ReaderPage {
     /// Queue `dy` pixels (positive = down) to be scrolled with easing instead of in one jump.
     fn scroll_smooth(&mut self, dy: f32, cx: &mut Context<Self>) {
         let cap = self.viewer_h * 4.0;
-        self.pending_scroll = (self.pending_scroll + dy).clamp(-cap, cap);
+        self.scroll = self.scroll.push(dy, cap);
         cx.notify();
     }
 
     /// Apply this frame's share of the pending scroll and ask for another frame while any is left.
     fn step_scroll(&mut self, list: &ListState, window: &mut Window) {
-        if self.pending_scroll == 0.0 {
-            self.last_frame = None;
+        let Scroll::Easing {
+            pending,
+            last_frame,
+        } = self.scroll
+        else {
             return;
-        }
+        };
         let now = std::time::Instant::now();
-        let dt = self
-            .last_frame
+        let dt = last_frame
             .map_or(1.0 / 60.0, |t| (now - t).as_secs_f32())
             .min(0.05);
-        self.last_frame = Some(now);
-        let step = if self.pending_scroll.abs() < 0.5 {
-            self.pending_scroll
+        let step = if pending.abs() < 0.5 {
+            pending
         } else {
-            self.pending_scroll * (1.0 - (-dt / SCROLL_TAU).exp())
+            pending * (1.0 - (-dt / SCROLL_TAU).exp())
         };
-        self.pending_scroll -= step;
+        let pending = pending - step;
         list.scroll_by(px(step));
-        if self.pending_scroll != 0.0 {
+        self.scroll = if pending != 0.0 {
             window.request_animation_frame();
-        }
+            Scroll::Easing {
+                pending,
+                last_frame: Some(now),
+            }
+        } else {
+            Scroll::Idle
+        };
     }
 
     fn go_to_page(&mut self, page: u32, cx: &mut Context<Self>) {
-        self.pending_scroll = 0.0;
-        if let Some(list) = &self.list {
-            let page = page.clamp(1, self.total.max(1));
+        self.scroll = Scroll::Idle;
+        if let Some(list) = self.list() {
+            let page = page.clamp(1, self.total().max(1));
             list.scroll_to(ListOffset {
                 item_ix: page as usize - 1,
                 offset_in_item: px(0.0),
@@ -405,11 +467,14 @@ impl ReaderPage {
 
     /// `useReaderProgress`: every page change is written through the debounced comic cache.
     fn on_page_changed(&mut self, cx: &mut Context<Self>) {
-        if !self.touched && self.current == self.initial {
+        let Load::Ready(loaded) = &mut self.load else {
+            return;
+        };
+        if !loaded.touched && self.current == loaded.initial {
             return;
         }
-        self.touched = true;
-        let (page, total) = (self.current, self.total);
+        loaded.touched = true;
+        let (page, total) = (self.current, loaded.total);
         let (per, read) = progress(page, total);
         let uid = self.uid.clone();
         self.stores.comics.update(cx, |s, cx| {
@@ -459,8 +524,8 @@ impl ReaderPage {
             "up" => self.scroll_smooth(-80.0, cx),
             "home" => self.go_to_page(1, cx),
             "end" => {
-                self.pending_scroll = 0.0;
-                if let Some(l) = &self.list {
+                self.scroll = Scroll::Idle;
+                if let Some(l) = self.list() {
                     l.scroll_to_end();
                 }
             }
@@ -532,7 +597,7 @@ impl ReaderPage {
                     .child(icon(Icon::ArrowLeft, px(16.0)).text_color(theme::text()))
                     .child("Library"),
             )
-            .when(!self.bookmarks.is_empty(), |s| {
+            .when(!self.bookmarks().is_empty(), |s| {
                 s.child(
                     tool_button("reader-bookmarks")
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -587,7 +652,7 @@ impl ReaderPage {
                             .border_color(theme::border_subtle())
                             .child(self.page_input.clone()),
                     )
-                    .child(format!("/ {}", self.total)),
+                    .child(format!("/ {}", self.total())),
             )
             .child(
                 tool_button("reader-refresh")
@@ -599,10 +664,11 @@ impl ReaderPage {
     }
 
     fn header(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let frac = if self.total == 0 {
+        let total = self.total();
+        let frac = if total == 0 {
             0.0
         } else {
-            self.current as f32 / self.total as f32
+            self.current as f32 / total as f32
         };
         div()
             .absolute()
@@ -663,7 +729,7 @@ impl ReaderPage {
                     .flex()
                     .flex_col()
                     .p(px(4.0))
-                    .children(self.bookmarks.iter().map(|b| {
+                    .children(self.bookmarks().iter().map(|b| {
                         let page = b.page;
                         div()
                             .id(("bookmark", page as usize))
@@ -684,7 +750,7 @@ impl ReaderPage {
 
     fn state_panel(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let body = match &self.load {
-            Load::Ready => return None,
+            Load::Ready(_) => return None,
             Load::Loading => div()
                 .child("Loading pages…")
                 .text_color(theme::text_muted())
@@ -852,7 +918,11 @@ impl Render for ReaderPage {
         let page_w = page_width(zoom, self.viewer_w);
 
         let mut viewer = None;
-        if let (Load::Ready, Some(list_state)) = (&self.load, self.list.clone()) {
+        let ready = match &self.load {
+            Load::Ready(l) => Some((l.list.clone(), l.total)),
+            _ => None,
+        };
+        if let Some((list_state, total_pages)) = ready {
             if (page_w - self.last_page_w).abs() > 0.5 {
                 self.last_page_w = page_w;
                 list_state.remeasure();
@@ -860,7 +930,7 @@ impl Render for ReaderPage {
             self.step_scroll(&list_state, window);
 
             let top = list_state.logical_scroll_top();
-            let total = self.total as usize;
+            let total = total_pages as usize;
             let current_ix = {
                 let store = self.images.read(cx);
                 most_visible(
@@ -886,7 +956,7 @@ impl Render for ReaderPage {
             let visible = (self.viewer_h / (page_w * DEFAULT_ASPECT)).ceil() as u32 + 1;
             let (lo, hi) = (
                 first.saturating_sub(1).max(1),
-                (first + visible + 2).min(self.total),
+                (first + visible + 2).min(total_pages),
             );
             self.images.update(cx, |s, cx| s.want(lo..=hi, first, cx));
 
@@ -951,7 +1021,7 @@ impl Render for ReaderPage {
         }
 
         self.sync_page_input(false, window, cx);
-        let next = (self.total > 0 && self.current == self.total)
+        let next = (self.total() > 0 && self.current == self.total())
             .then(|| self.next_entry(cx))
             .flatten();
 
@@ -970,7 +1040,7 @@ impl Render for ReaderPage {
             .children(viewer)
             .children(self.state_panel(cx))
             .when(
-                self.header_visible || !matches!(self.load, Load::Ready),
+                self.header_visible || !matches!(self.load, Load::Ready(_)),
                 |s| s.child(self.header(window, cx)),
             )
             .children(next.map(|n| self.next_button(n, cx)))
