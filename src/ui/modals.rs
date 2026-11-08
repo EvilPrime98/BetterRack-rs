@@ -235,6 +235,29 @@ pub fn open_new_folder(cx: &mut App, parent: Option<String>) {
     });
 }
 
+pub fn open_mark_folder_read(cx: &mut App, uids: Vec<String>) {
+    let message = format!(
+        "{} comic{} in this folder will be marked as read, replacing any reading progress.",
+        uids.len(),
+        if uids.len() == 1 { "" } else { "s" }
+    );
+    confirm::ask(
+        cx,
+        ConfirmOptions::new("Mark entire folder as read?", message)
+            .labels("Mark as read", "Cancel"),
+        move |answer, _, cx| {
+            if answer != Some(true) {
+                return;
+            }
+            if let Some(stores) = cx.try_global::<Stores>().cloned() {
+                stores
+                    .comics
+                    .update(cx, |s, cx| s.set_read_many(&uids, true, cx));
+            }
+        },
+    );
+}
+
 /// `openMoveFileModal(uid, name)`.
 pub fn open_move_file(cx: &mut App, uid: String) {
     let Some(host) = host(cx) else { return };

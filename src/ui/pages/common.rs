@@ -1,5 +1,7 @@
 //! Pieces shared by the library-style pages: header bar, back button, cycle buttons, empty notes.
 
+use std::rc::Rc;
+
 use gpui::{
     App, ClickEvent, InteractiveElement, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window, div, px, rgb,
@@ -7,7 +9,7 @@ use gpui::{
 
 use crate::model::{ComicsType, ReadFilter};
 use crate::state::prefs::PrefsStore;
-use crate::ui::components::dropdown::dropdown;
+use crate::ui::components::dropdown::{MenuItem, dropdown, menu};
 use crate::ui::components::items_grid::PAGE_PAD_X;
 use crate::ui::icons::{Icon, icon};
 use crate::ui::theme;
@@ -123,6 +125,33 @@ pub fn prefs_dropdown<V: Copy + PartialEq + 'static>(
         align_right,
         move |open, cx| for_open.update(cx, |p, cx| p.set_menu_open(id, open, cx)),
         move |v, cx| for_select.update(cx, |p, cx| apply(p, v, cx)),
+    )
+}
+
+pub fn actions_menu(
+    id: &'static str,
+    label: &'static str,
+    items: Vec<(&'static str, bool, Rc<dyn Fn(&mut App)>)>,
+    prefs: &gpui::Entity<PrefsStore>,
+    cx: &App,
+) -> impl IntoElement {
+    let open = prefs.read(cx).open_menu == Some(id);
+    let prefs = prefs.clone();
+    menu(
+        id,
+        label.into(),
+        items
+            .into_iter()
+            .map(|(label, enabled, on_click)| MenuItem {
+                label: label.into(),
+                selected: false,
+                enabled,
+                on_click,
+            })
+            .collect(),
+        open,
+        true,
+        move |open, cx| prefs.update(cx, |p, cx| p.set_menu_open(id, open, cx)),
     )
 }
 
