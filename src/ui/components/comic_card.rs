@@ -2,6 +2,7 @@
 //! Built as a plain function so the virtualized grid can call it for visible rows only.
 //!
 
+use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
@@ -25,7 +26,7 @@ use crate::ui::theme;
 pub const COVER_RATIO: f32 = 77.0 / 50.0;
 pub const COVER_MAX_CARD_W: f32 = 220.0;
 pub const DETAIL_COVER_W: f32 = 180.0;
-const PAD_COVER: f32 = 10.0;
+pub const PAD_COVER: f32 = 10.0;
 const PAD_DETAIL: f32 = 14.0;
 
 /// Pixel height of one grid row's card for the given layout/column width (the grid needs uniform
@@ -80,7 +81,7 @@ fn title_text(item: &LibraryEntry, info: &CardInfo, kind: ComicsType) -> String 
     if out.is_empty() { file_name() } else { out }
 }
 
-fn read_bar(percent: f32) -> impl IntoElement {
+pub(crate) fn read_bar(percent: f32) -> impl IntoElement {
     let pct = percent.clamp(0.0, 100.0);
     div().w_full().h(px(4.0)).children((pct > 0.0).then(|| {
         div()
@@ -101,7 +102,7 @@ fn read_bar(percent: f32) -> impl IntoElement {
     }))
 }
 
-fn swallow_mouse_down(_: &gpui::MouseDownEvent, _: &mut gpui::Window, cx: &mut App) {
+pub(crate) fn swallow_mouse_down(_: &gpui::MouseDownEvent, _: &mut gpui::Window, cx: &mut App) {
     cx.stop_propagation();
 }
 
@@ -130,6 +131,29 @@ fn star_fill(size: f32, halves: u32) -> gpui::Div {
 const STAR_GAP: f32 = 2.0;
 
 fn rating(uid: &str, current: f32, size: f32, stores: &Stores) -> impl IntoElement {
+    let stores = stores.clone();
+    let owner = uid.to_string();
+    rating_with(
+        uid,
+        current,
+        size,
+        Rc::new(move |value, cx| {
+            stores.comics.update(cx, |s, cx| {
+                s.set_rating(&owner, value, cx);
+                if value > 0.0 {
+                    s.set_read(&owner, true, cx);
+                }
+            });
+        }),
+    )
+}
+
+pub(crate) fn rating_with(
+    uid: &str,
+    current: f32,
+    size: f32,
+    on_set: Rc<dyn Fn(f32, &mut App)>,
+) -> impl IntoElement {
     let pitch = size + STAR_GAP;
     let row_group = SharedString::from(format!("rating-{uid}"));
     let current_halves = (current * 2.0).round().clamp(0.0, 10.0) as u32;
@@ -152,7 +176,7 @@ fn rating(uid: &str, current: f32, size: f32, stores: &Stores) -> impl IntoEleme
             .flex()
             .children((1..=10u32).map(|halves| {
                 let value = halves as f32 / 2.0;
-                let stores = stores.clone();
+                let on_set = on_set.clone();
                 let uid = uid.to_string();
                 div()
                     .id(SharedString::from(format!("star-{uid}-{halves}")))
@@ -174,18 +198,13 @@ fn rating(uid: &str, current: f32, size: f32, stores: &Stores) -> impl IntoEleme
                     .on_click(move |_, _, cx| {
                         // Clicking the current rating clears it.
                         let value = if current == value { 0.0 } else { value };
-                        stores.comics.update(cx, |s, cx| {
-                            s.set_rating(&uid, value, cx);
-                            if value > 0.0 {
-                                s.set_read(&uid, true, cx);
-                            }
-                        });
+                        on_set(value, cx);
                     })
             })),
     )
 }
 
-fn action_button(
+pub(crate) fn action_button(
     id: SharedString,
     glyph: Icon,
     hint_active: bool,
@@ -525,13 +544,13 @@ fn cover_overlay(
         )
 }
 
-fn set_card_menu(stores: &Stores, uid: &str, open: bool, cx: &mut App) {
+pub(crate) fn set_card_menu(stores: &Stores, uid: &str, open: bool, cx: &mut App) {
     stores
         .prefs
         .update(cx, |p, cx| p.set_card_menu(uid, open, cx));
 }
 
-fn menu_item(
+pub(crate) fn menu_item(
     id: SharedString,
     glyph: Icon,
     label: &'static str,
@@ -572,6 +591,61 @@ fn cover_menu(item: &LibraryEntry, stores: &Stores) -> impl IntoElement {
             f(cx);
         }
     };
+    menu_shell(
+        backdrop_close,
+        vec![
+            menu_item(
+                format!("refresh-{uid}").into(),
+                Icon::Refresh,
+                "Refresh",
+                false,
+                then_close(Box::new({
+                    let (stores, uid) = (stores.clone(), uid.clone());
+                    move |cx| refresh_comic(&stores, &uid, cx)
+                })),
+            )
+            .into_any_element(),
+            menu_item(
+                format!("download-{uid}").into(),
+                Icon::Download,
+                "Download",
+                false,
+                then_close(Box::new({
+                    let (stores, uid, name) = (stores.clone(), uid.clone(), name.clone());
+                    move |cx| download_comic(&stores, &uid, &name, cx)
+                })),
+            )
+            .into_any_element(),
+            menu_item(
+                format!("move-{uid}").into(),
+                Icon::Folder,
+                "Move",
+                false,
+                then_close(Box::new({
+                    let uid = uid.clone();
+                    move |cx| crate::ui::modals::open_move_file(cx, uid.clone())
+                })),
+            )
+            .into_any_element(),
+            menu_item(
+                format!("delete-{uid}").into(),
+                Icon::Trash,
+                "Delete",
+                true,
+                then_close(Box::new({
+                    let (stores, uid, name) = (stores.clone(), uid.clone(), name.clone());
+                    move |cx| confirm_delete(&stores, &uid, &name, cx)
+                })),
+            )
+            .into_any_element(),
+        ],
+    )
+}
+
+pub(crate) fn menu_shell(
+    close_on_backdrop: Rc<dyn Fn(&mut App)>,
+    items: Vec<AnyElement>,
+) -> impl IntoElement {
     div()
         .absolute()
         .top_0()
@@ -586,7 +660,7 @@ fn cover_menu(item: &LibraryEntry, stores: &Stores) -> impl IntoElement {
                     .w(px(8000.0))
                     .h(px(8000.0))
                     .occlude()
-                    .on_mouse_down(MouseButton::Left, move |_, _, cx| backdrop_close(cx)),
+                    .on_mouse_down(MouseButton::Left, move |_, _, cx| close_on_backdrop(cx)),
             )
             .with_priority(1),
         )
@@ -606,46 +680,7 @@ fn cover_menu(item: &LibraryEntry, stores: &Stores) -> impl IntoElement {
                     .border_color(rgba(0xffffff24))
                     .bg(theme::bg_panel())
                     .shadow_lg()
-                    .child(menu_item(
-                        format!("refresh-{uid}").into(),
-                        Icon::Refresh,
-                        "Refresh",
-                        false,
-                        then_close(Box::new({
-                            let (stores, uid) = (stores.clone(), uid.clone());
-                            move |cx| refresh_comic(&stores, &uid, cx)
-                        })),
-                    ))
-                    .child(menu_item(
-                        format!("download-{uid}").into(),
-                        Icon::Download,
-                        "Download",
-                        false,
-                        then_close(Box::new({
-                            let (stores, uid, name) = (stores.clone(), uid.clone(), name.clone());
-                            move |cx| download_comic(&stores, &uid, &name, cx)
-                        })),
-                    ))
-                    .child(menu_item(
-                        format!("move-{uid}").into(),
-                        Icon::Folder,
-                        "Move",
-                        false,
-                        then_close(Box::new({
-                            let uid = uid.clone();
-                            move |cx| crate::ui::modals::open_move_file(cx, uid.clone())
-                        })),
-                    ))
-                    .child(menu_item(
-                        format!("delete-{uid}").into(),
-                        Icon::Trash,
-                        "Delete",
-                        true,
-                        then_close(Box::new({
-                            let (stores, uid, name) = (stores.clone(), uid.clone(), name.clone());
-                            move |cx| confirm_delete(&stores, &uid, &name, cx)
-                        })),
-                    )),
+                    .children(items),
             )
             .with_priority(2),
         )

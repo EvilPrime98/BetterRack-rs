@@ -140,7 +140,8 @@ enum Modal {
         input: Entity<TextInput>,
     },
     MoveFile {
-        uid: String,
+        title: &'static str,
+        on_pick: Rc<dyn Fn(Option<String>, &mut App)>,
         all: Rc<Vec<Destination>>,
         search: Entity<TextInput>,
         subfolders: bool,
@@ -260,11 +261,28 @@ pub fn open_mark_folder_read(cx: &mut App, uids: Vec<String>) {
 
 /// `openMoveFileModal(uid, name)`.
 pub fn open_move_file(cx: &mut App, uid: String) {
+    let moving = uid.clone();
+    open_pick_folder(cx, "Move to:", &uid, move |target, cx| {
+        if let Some(stores) = cx.try_global::<Stores>().cloned() {
+            let uid = moving.clone();
+            stores
+                .library
+                .update(cx, |s, cx| s.move_file(uid, target, cx));
+        }
+    });
+}
+
+pub fn open_pick_folder(
+    cx: &mut App,
+    title: &'static str,
+    exclude: &str,
+    on_pick: impl Fn(Option<String>, &mut App) + 'static,
+) {
     let Some(host) = host(cx) else { return };
     let Some(stores) = cx.try_global::<Stores>().cloned() else {
         return;
     };
-    let all = Rc::new(move_destinations(&stores.library.read(cx).groups, &uid));
+    let all = Rc::new(move_destinations(&stores.library.read(cx).groups, exclude));
     host.update(cx, |h, cx| {
         h.close(cx);
         let search = cx.new(|cx| TextInput::new("Search folders...", cx));
@@ -276,7 +294,8 @@ pub fn open_move_file(cx: &mut App, uid: String) {
             }),
         ];
         h.modal = Some(Modal::MoveFile {
-            uid,
+            title,
+            on_pick: Rc::new(on_pick),
             all,
             search,
             subfolders: true,
@@ -728,13 +747,13 @@ impl ModalHost {
         .detach();
     }
 
-    fn move_to(&mut self, uid: String, target: Option<String>, cx: &mut Context<Self>) {
+    fn pick_folder(&mut self, target: Option<String>, cx: &mut Context<Self>) {
+        let Some(Modal::MoveFile { on_pick, .. }) = &self.modal else {
+            return;
+        };
+        let on_pick = on_pick.clone();
         self.close(cx);
-        if let Some(stores) = cx.try_global::<Stores>().cloned() {
-            stores
-                .library
-                .update(cx, |s, cx| s.move_file(uid, target, cx));
-        }
+        cx.defer(move |cx| on_pick(target, cx));
     }
 
     fn frame(&self, title: &'static str, cx: &mut Context<Self>) -> gpui::Div {
@@ -906,10 +925,11 @@ impl Render for ModalHost {
                 )
                 .into_any_element(),
             Modal::MoveFile {
-                uid,
+                title,
                 all,
                 search,
                 subfolders,
+                ..
             } => {
                 let query = search.read(cx).value().to_string();
                 let shown: Rc<Vec<Destination>> = Rc::new(
@@ -929,7 +949,6 @@ impl Render for ModalHost {
                 });
                 // Row 0 is "Library root" when it matches, then the folders.
                 let total = shown.len() + usize::from(show_root);
-                let moving = uid.clone();
                 let rows = shown.clone();
 
                 let list = uniform_list(
@@ -948,7 +967,6 @@ impl Render for ModalHost {
                                     let d = &rows[ix - usize::from(show_root)];
                                     (Some(d.uid.clone()), d.path.clone().into(), rgb(0xc7c7c7))
                                 };
-                                let moving = moving.clone();
                                 div()
                                     .id(SharedString::from(format!("move-target-{ix}")))
                                     .w_full()
@@ -963,7 +981,7 @@ impl Render for ModalHost {
                                     .text_color(rgb(0xe6e6e6))
                                     .hover(|s| s.bg(gpui::rgba(0xffffff0f)))
                                     .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.move_to(moving.clone(), target.clone(), cx)
+                                        this.pick_folder(target.clone(), cx)
                                     }))
                                     .child(icon(Icon::Folder, px(14.0)).text_color(glyph_color))
                                     .child(div().min_w_0().truncate().child(label))
@@ -973,7 +991,7 @@ impl Render for ModalHost {
                 )
                 .h(px(ITEM_H * 8.0));
 
-                self.frame("Move to:", cx)
+                self.frame(title, cx)
                     .child(
                         div()
                             .flex()

@@ -13,9 +13,10 @@ use gpui::{
     px,
 };
 
-use crate::model::{ComicsType, LibraryEntry};
+use crate::model::{ComicsType, LibraryEntry, StoreBookmark};
 use crate::route::Navigate;
 use crate::state::Stores;
+use crate::ui::components::bookmark_card::{self, bookmark_card};
 use crate::ui::components::comic_card::{CardEnv, card_height, comic_card};
 use crate::ui::components::folder_card::folder_card;
 use crate::ui::theme;
@@ -53,7 +54,7 @@ pub struct GridScroll {
     hash_cache: Rc<Cell<Option<(HashKey, u64)>>>,
 }
 
-type HashKey = (usize, usize, usize, usize, usize, u32, bool);
+type HashKey = (usize, usize, usize, usize, usize, u32, bool, usize);
 
 impl GridScroll {
     pub fn new() -> Self {
@@ -85,10 +86,10 @@ impl Default for GridScroll {
     }
 }
 
-/// `items[visible[i]]` is the i-th card. The caller owns `scroll` so the position survives renders.
 pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
     items: Rc<Vec<LibraryEntry>>,
     visible: Rc<Vec<usize>>,
+    bookmarks: Rc<Vec<StoreBookmark>>,
     kind: ComicsType,
     stores: &Stores,
     scroll: &GridScroll,
@@ -96,13 +97,29 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
     cx: &mut Context<V>,
 ) -> AnyElement {
     let (cols, col_w, gap_x, gap_y) = geometry(kind, avail);
-    let rows = visible.len().div_ceil(cols);
-    let row_has_comics = |row: usize| {
-        let first = row * cols;
-        let last = (first + cols).min(visible.len());
-        visible[first..last].iter().any(|&ix| !items[ix].did)
+    let total = visible.len() + bookmarks.len();
+    let rows = total.div_ceil(cols);
+    let row_flags = {
+        let (items, visible, bookmarks) = (items.clone(), visible.clone(), bookmarks.clone());
+        move |row: usize| {
+            let first = row * cols;
+            let last = (first + cols).min(total);
+            let has_comics = (first..last.min(visible.len())).any(|i| !items[visible[i]].did);
+            (
+                has_comics,
+                last > visible.len().max(first) && !bookmarks.is_empty(),
+            )
+        }
     };
-    let row_h = move |has_comics: bool| card_height(kind, col_w, has_comics) + gap_y;
+    let row_h = move |(has_comics, has_bookmarks): (bool, bool)| {
+        let comic = card_height(kind, col_w, has_comics || has_bookmarks);
+        let h = if has_bookmarks {
+            comic.max(bookmark_card::card_height(col_w))
+        } else {
+            comic
+        };
+        h + gap_y
+    };
 
     let key: HashKey = (
         Rc::as_ptr(&visible) as usize,
@@ -112,13 +129,14 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
         cols,
         col_w.to_bits(),
         kind == ComicsType::Detail,
+        bookmarks.len(),
     );
     let shape = match scroll.hash_cache.get() {
         Some((k, h)) if k == key => h,
         _ => {
             let mut hasher = DefaultHasher::new();
             (rows, cols, col_w.to_bits(), kind == ComicsType::Detail).hash(&mut hasher);
-            (0..rows).for_each(|row| row_has_comics(row).hash(&mut hasher));
+            (0..rows).for_each(|row| row_flags(row).hash(&mut hasher));
             let h = hasher.finish();
             scroll.hash_cache.set(Some((key, h)));
             h
@@ -136,10 +154,21 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
                 kind,
             };
             let first = row * cols;
-            let last = (first + cols).min(visible.len());
-            let has_comics = visible[first..last].iter().any(|&ix| !items[ix].did);
-            let cells = visible[first..last].iter().map(|&ix| {
-                let item = &items[ix];
+            let last = (first + cols).min(total);
+            let flags = row_flags(row);
+            let cells = (first..last).map(|i| {
+                if i >= visible.len() {
+                    let b = &bookmarks[i - visible.len()];
+                    let thumb = match b.thumbnail_url.as_deref().filter(|u| !u.is_empty()) {
+                        Some(url) => {
+                            stores.thumbs.update(cx, |t, cx| t.ensure_external(url, cx));
+                            stores.thumbs.read(cx).get(url).cloned()
+                        }
+                        None => Some(crate::state::thumbnails::Thumb::Missing),
+                    };
+                    return bookmark_card(b, thumb, &stores, col_w, cx);
+                }
+                let item = &items[visible[i]];
                 if item.did {
                     return folder_card(item, kind, &stores, col_w, cx);
                 }
@@ -160,7 +189,7 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
                 .flex()
                 .items_start()
                 .gap(px(gap_x))
-                .h(px(row_h(has_comics)))
+                .h(px(row_h(flags)))
                 .pb(px(gap_y))
                 .children(cells)
                 .into_any_element()

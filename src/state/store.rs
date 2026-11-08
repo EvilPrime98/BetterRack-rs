@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui::{Context, UniformListScrollHandle};
+use gpui::{App, Context, UniformListScrollHandle};
 
 use crate::api::ApiClient;
 use crate::model::{STORE_PAGE_SIZE, StartDownload, StorePost, StoreStrat};
@@ -263,37 +263,75 @@ impl StoreState {
 
     /// The card's Download / Retry button: links → (link picker) → folder picker → job.
     pub fn download(&mut self, post: &StorePost, cx: &mut Context<Self>) {
+        self.run_download(post, None, None, cx);
+    }
+
+    pub fn download_into(
+        &mut self,
+        post: &StorePost,
+        dir: Option<String>,
+        on_started: impl FnOnce(Option<String>, &mut App) + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.run_download(post, dir, Some(Box::new(on_started)), cx);
+    }
+
+    fn run_download(
+        &mut self,
+        post: &StorePost,
+        dir: Option<String>,
+        on_started: Option<OnStarted>,
+        cx: &mut Context<Self>,
+    ) {
+        let started = |f: Option<OnStarted>, job: Option<String>, cx: &mut App| {
+            if let Some(f) = f {
+                f(job, cx);
+            }
+        };
         let Some(id) = post.id.filter(|id| *id != 0) else {
+            started(on_started, None, cx);
             return;
         };
         let Some(client) = self.client.clone() else {
+            started(on_started, None, cx);
             return;
         };
         let key = post_key(post);
         if self.card(&key) == CardState::LinksLoading {
+            started(on_started, None, cx);
             return;
         }
         self.set_card(&key, CardState::LinksLoading, cx);
         let title = post.title.clone();
 
         cx.spawn(async move |this, cx| {
-            let outcome = Self::download_flow(&client, id, &title, cx).await;
-            this.update(cx, |s, cx| match outcome {
-                Flow::Started => {
-                    s.set_card(&key, CardState::Idle, cx);
-                    toast::success(cx, "Download in progress");
-                }
-                Flow::Cancelled => s.set_card(&key, CardState::Idle, cx),
-                // "No links" is shown on the card only.
-                Flow::NoLinks => s.set_card(
-                    &key,
-                    CardState::Error("No download links found.".into()),
-                    cx,
-                ),
-                Flow::Failed(message) => {
-                    toast::error(cx, message.clone());
-                    s.set_card(&key, CardState::Error(message), cx);
-                }
+            let outcome = Self::download_flow(&client, id, &title, dir, cx).await;
+            this.update(cx, |s, cx| {
+                let job = match outcome {
+                    Flow::Started(job) => {
+                        s.set_card(&key, CardState::Idle, cx);
+                        toast::success(cx, "Download in progress");
+                        job
+                    }
+                    Flow::Cancelled => {
+                        s.set_card(&key, CardState::Idle, cx);
+                        None
+                    }
+                    Flow::NoLinks => {
+                        s.set_card(
+                            &key,
+                            CardState::Error("No download links found.".into()),
+                            cx,
+                        );
+                        None
+                    }
+                    Flow::Failed(message) => {
+                        toast::error(cx, message.clone());
+                        s.set_card(&key, CardState::Error(message), cx);
+                        None
+                    }
+                };
+                started(on_started, job, cx);
             })
             .ok();
         })
@@ -304,6 +342,7 @@ impl StoreState {
         client: &ApiClient,
         id: i64,
         title: &str,
+        dir: Option<String>,
         cx: &mut gpui::AsyncApp,
     ) -> Flow {
         let links = {
@@ -332,14 +371,20 @@ impl StoreState {
             }
         };
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        cx.update(|cx| {
-            modals::open_download_dir(cx, move |dir, _| {
-                let _ = tx.send(dir);
-            })
-        });
-        let Ok(Some(output_dir)) = rx.await else {
-            return Flow::Cancelled;
+        let output_dir = match dir {
+            Some(dir) => dir,
+            None => {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                cx.update(|cx| {
+                    modals::open_download_dir(cx, move |dir, _| {
+                        let _ = tx.send(dir);
+                    })
+                });
+                let Ok(Some(output_dir)) = rx.await else {
+                    return Flow::Cancelled;
+                };
+                output_dir
+            }
         };
 
         let req = StartDownload {
@@ -351,14 +396,16 @@ impl StoreState {
         };
         let client = client.clone();
         match runtime::run(async move { client.start_download(&req).await }).await {
-            Ok(_) => Flow::Started,
+            Ok(job) => Flow::Started(job),
             Err(e) => Flow::Failed(fallback(e.to_string(), "Download failed.")),
         }
     }
 }
 
+type OnStarted = Box<dyn FnOnce(Option<String>, &mut App)>;
+
 enum Flow {
-    Started,
+    Started(Option<String>),
     Cancelled,
     NoLinks,
     Failed(String),

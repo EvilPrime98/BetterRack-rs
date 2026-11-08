@@ -7,6 +7,7 @@ use crate::model::StorePost;
 use crate::state::Stores;
 use crate::state::store::{CardState, display_date, post_key};
 use crate::state::thumbnails::Thumb;
+use crate::ui::components::comic_card::action_button;
 use crate::ui::icons::{Icon, icon};
 use crate::ui::theme;
 
@@ -106,13 +107,26 @@ pub fn store_card<V: 'static>(
                     })
             })
     };
+    let bookmarked = stores.bookmarks.read(cx).contains(&key);
+    let bookmark = action_button(
+        format!("store-bm-{key}").into(),
+        Icon::Bookmark,
+        bookmarked,
+        {
+            let post = post.clone();
+            let stores = stores.clone();
+            move |cx| toggle_bookmark(&stores, &post, cx)
+        },
+    );
     let overlay = div()
         .absolute()
         .left_0()
         .right_0()
         .bottom_0()
         .flex()
+        .items_center()
         .justify_center()
+        .gap(px(6.0))
         .pt(px(28.0))
         .pb(px(8.0))
         .bg(linear_gradient(
@@ -120,7 +134,8 @@ pub fn store_card<V: 'static>(
             linear_color_stop(rgba(0x00000000), 0.0),
             linear_color_stop(rgba(0x000000d0), 1.0),
         ))
-        .child(action);
+        .child(action)
+        .child(bookmark);
     let overlay = if pinned {
         overlay
     } else {
@@ -175,6 +190,20 @@ pub fn store_card<V: 'static>(
                         .unwrap_or_default(),
                 ),
         )
+}
+
+fn toggle_bookmark(stores: &Stores, post: &StorePost, cx: &mut gpui::App) {
+    let key = post_key(post);
+    if stores.bookmarks.read(cx).contains(&key) {
+        stores.bookmarks.update(cx, |s, cx| s.remove(&key, cx));
+        return;
+    }
+    let (stores, post) = (stores.clone(), post.clone());
+    crate::ui::modals::open_pick_folder(cx, "Bookmark in:", "", move |folder, cx| {
+        stores
+            .bookmarks
+            .update(cx, |s, cx| s.add(&post, folder, cx));
+    });
 }
 
 #[cfg(test)]

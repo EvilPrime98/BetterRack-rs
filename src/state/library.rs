@@ -308,6 +308,10 @@ impl LibraryStore {
         );
     }
 
+    pub fn rescan_task(&mut self, cx: &mut Context<Self>) -> Task<bool> {
+        cx.spawn(async move |this, cx| Self::rescan(&this, cx).await)
+    }
+
     /// `refreshLibrary`: rescan, then refetch.
     pub fn refresh(&mut self, silent: bool, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {

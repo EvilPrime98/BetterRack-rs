@@ -12,7 +12,7 @@ use gpui::{
     Render, StatefulInteractiveElement, Styled, Window, div, prelude::*, px, rgb,
 };
 
-use crate::model::{FilterOption, LibraryEntry, ReadFilter};
+use crate::model::{FilterOption, LibraryEntry, ReadFilter, StoreBookmark};
 use crate::route::{GoBack, Navigate};
 use crate::state::Stores;
 use crate::state::library::apply_sort;
@@ -56,6 +56,8 @@ impl LibraryPage {
         })
         .detach();
         cx.observe(&stores.thumbs, |_, _, cx| cx.notify()).detach();
+        cx.observe(&stores.bookmarks, |_, _, cx| cx.notify())
+            .detach();
         cx.observe(&stores.identify, |_, _, cx| cx.notify())
             .detach();
         cx.observe(&stores.prefs, |_, _, cx| cx.notify()).detach();
@@ -95,6 +97,24 @@ impl LibraryPage {
             indices: indices.clone(),
         });
         indices
+    }
+
+    fn bookmarks_here(&self, read_filter: ReadFilter, cx: &gpui::App) -> Vec<StoreBookmark> {
+        let query = self
+            .stores
+            .library
+            .read(cx)
+            .search_query
+            .trim()
+            .to_lowercase();
+        self.stores
+            .bookmarks
+            .read(cx)
+            .in_folder(self.uid.as_deref())
+            .into_iter()
+            .filter(|b| read_filter.matches(if b.read { 100.0 } else { 0.0 }))
+            .filter(|b| query.is_empty() || b.title.to_lowercase().contains(&query))
+            .collect()
     }
 
     /// Sorted page items, recomputed only when the library, folder or sort changes.
@@ -140,7 +160,8 @@ impl Render for LibraryPage {
             let lib = self.stores.library.read(cx);
             (lib.loading(), lib.title_for(self.uid.as_deref()))
         };
-        let count = visible.len();
+        let bookmarks = Rc::new(self.bookmarks_here(read_filter, cx));
+        let count = visible.len() + bookmarks.len();
 
         let unread: Vec<String> = {
             let comics = self.stores.comics.read(cx);
@@ -252,7 +273,7 @@ impl Render for LibraryPage {
                     )),
             );
 
-        let body = if visible.is_empty() {
+        let body = if visible.is_empty() && bookmarks.is_empty() {
             let msg = if loading && base.is_empty() {
                 "Loading library…"
             } else {
@@ -266,6 +287,7 @@ impl Render for LibraryPage {
                 .child(items_grid(
                     base.clone(),
                     visible.clone(),
+                    bookmarks,
                     kind,
                     &self.stores,
                     &self.scroll,
