@@ -20,7 +20,7 @@ use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::items_grid::{GridScroll, PAGE_PAD_X, available_width, items_grid};
 use crate::ui::components::smooth_scroll::{SmoothScroll, wheel_capture};
 use crate::ui::icons::{Icon, icon};
-use crate::ui::pages::common::{note, prefs_dropdown, view_controls};
+use crate::ui::pages::common::{actions_menu, note, prefs_dropdown, view_controls};
 use crate::ui::text::capitalize_words;
 use crate::ui::theme;
 
@@ -142,6 +142,14 @@ impl Render for LibraryPage {
         };
         let count = visible.len();
 
+        let unread: Vec<String> = {
+            let comics = self.stores.comics.read(cx);
+            base.iter()
+                .filter(|i| !i.did && comics.read_per(&i.uid) < 100.0)
+                .map(|i| i.uid.clone())
+                .collect()
+        };
+
         let has_uid = self.uid.is_some();
         let header = div()
             .flex()
@@ -213,6 +221,19 @@ impl Render for LibraryPage {
                     .flex()
                     .items_center()
                     .gap(px(10.0))
+                    .child(actions_menu(
+                        "actions",
+                        "Actions",
+                        vec![(
+                            "Mark entire folder as read",
+                            !unread.is_empty(),
+                            Rc::new(move |cx: &mut gpui::App| {
+                                crate::ui::modals::open_mark_folder_read(cx, unread.clone())
+                            }) as Rc<dyn Fn(&mut gpui::App)>,
+                        )],
+                        &self.stores.prefs,
+                        cx,
+                    ))
                     .child(button(
                         "new-folder",
                         "New Folder",
