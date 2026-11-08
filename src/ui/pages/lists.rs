@@ -397,6 +397,7 @@ impl Render for ListPage {
                 items_grid(
                     items.clone(),
                     visible.clone(),
+                    Rc::new(Vec::new()),
                     kind,
                     &self.stores,
                     &self.scroll,

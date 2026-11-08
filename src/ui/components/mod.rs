@@ -1,3 +1,4 @@
+pub mod bookmark_card;
 pub mod button;
 pub mod checkbox;
 pub mod comic_card;

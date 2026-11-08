@@ -349,6 +349,46 @@ pub struct StorePost {
     pub upload_date: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct StoreBookmark {
+    pub key: String,
+    pub id: Option<i64>,
+    pub title: String,
+    pub thumbnail_url: Option<String>,
+    pub link: String,
+    pub upload_date: Option<String>,
+    pub folder: Option<String>,
+    pub rating: f32,
+    pub read: bool,
+}
+
+impl StoreBookmark {
+    pub fn new(key: String, post: &StorePost, folder: Option<String>) -> Self {
+        Self {
+            key,
+            id: post.id,
+            title: post.title.clone(),
+            thumbnail_url: post.thumbnail_url.clone(),
+            link: post.link.clone(),
+            upload_date: post.upload_date.clone(),
+            folder,
+            rating: 0.0,
+            read: false,
+        }
+    }
+
+    pub fn post(&self) -> StorePost {
+        StorePost {
+            id: self.id,
+            thumbnail_url: self.thumbnail_url.clone(),
+            title: self.title.clone(),
+            link: self.link.clone(),
+            upload_date: self.upload_date.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoreLink {
     pub uuid: String,

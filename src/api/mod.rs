@@ -531,9 +531,24 @@ impl ApiClient {
     }
 
     /// Queue a download job (the server de-dupes by comic id). The jobs list is polled for progress.
-    pub async fn start_download(&self, req: &StartDownload) -> ApiResult<()> {
-        self.done(self.request(Method::POST, &["api", "downloads"]).json(req))
-            .await
+    pub async fn start_download(&self, req: &StartDownload) -> ApiResult<Option<String>> {
+        let value: serde_json::Value = self
+            .json(self.request(Method::POST, &["api", "downloads"]).json(req))
+            .await?;
+        if value.get("error").and_then(|e| e.as_bool()) == Some(true) {
+            let message = value
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("request failed");
+            return Err(ApiError::Server {
+                status: 200,
+                message: message.to_string(),
+            });
+        }
+        Ok(value
+            .get("jobId")
+            .and_then(|j| j.as_str())
+            .map(str::to_owned))
     }
 
     pub async fn download_jobs(&self) -> ApiResult<Vec<JobStatus>> {

@@ -1,5 +1,6 @@
 //! App state: each store is an entity or a plain struct.
 
+pub mod bookmarks;
 pub mod comic_cache;
 pub mod directories;
 pub mod downloads;
@@ -20,6 +21,7 @@ use crate::api::ApiClient;
 #[derive(Clone)]
 pub struct Stores {
     pub library: Entity<library::LibraryStore>,
+    pub bookmarks: Entity<bookmarks::BookmarksStore>,
     pub comics: Entity<comic_cache::ComicCacheStore>,
     pub thumbs: Entity<thumbnails::Thumbnails>,
     pub identify: Entity<identify::IdentifyStore>,
@@ -36,6 +38,7 @@ impl Stores {
     pub fn new(cx: &mut App) -> Self {
         Self {
             library: cx.new(|_| library::LibraryStore::default()),
+            bookmarks: cx.new(|_| bookmarks::BookmarksStore::load()),
             comics: cx.new(|_| comic_cache::ComicCacheStore::default()),
             thumbs: cx.new(|_| thumbnails::Thumbnails::default()),
             identify: cx.new(|_| identify::IdentifyStore::default()),
