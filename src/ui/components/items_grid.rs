@@ -13,7 +13,7 @@ use gpui::{
     px,
 };
 
-use crate::model::{ComicsType, LibraryEntry, StoreBookmark};
+use crate::model::{ComicsType, FilterOption, LibraryEntry, StoreBookmark};
 use crate::route::Navigate;
 use crate::state::Stores;
 use crate::ui::components::bookmark_card::{self, bookmark_card};
@@ -86,9 +86,63 @@ impl Default for GridScroll {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GridCell {
+    Item(usize),
+    Bookmark(usize),
+}
+
+impl GridCell {
+    pub fn items(visible: &[usize]) -> Vec<GridCell> {
+        visible.iter().map(|&ix| GridCell::Item(ix)).collect()
+    }
+}
+
+pub fn merge_bookmarks(
+    items: &[LibraryEntry],
+    visible: &[usize],
+    bookmarks: &[StoreBookmark],
+    sort: FilterOption,
+) -> Vec<GridCell> {
+    let mut order: Vec<usize> = (0..bookmarks.len()).collect();
+    let title = |ix: usize| bookmarks[ix].title.replace('_', " ");
+    match sort {
+        FilterOption::Alphabetically => {
+            order.sort_by(|&a, &b| br_core::directories::natural_cmp(&title(a), &title(b)))
+        }
+        FilterOption::CreationDate => {
+            order.sort_by(|&a, &b| bookmarks[b].created_at.cmp(&bookmarks[a].created_at))
+        }
+        FilterOption::ReleaseDate => {}
+    }
+    let before = |b: usize, item: &LibraryEntry| match sort {
+        FilterOption::Alphabetically => {
+            !item.did
+                && br_core::directories::natural_cmp(&title(b), &item.name.replace('_', " "))
+                    .is_lt()
+        }
+        FilterOption::CreationDate => bookmarks[b].created_at > item.created_at,
+        FilterOption::ReleaseDate => false,
+    };
+    let mut out = Vec::with_capacity(visible.len() + bookmarks.len());
+    let mut pending = order.into_iter().peekable();
+    for &ix in visible {
+        while let Some(&b) = pending.peek() {
+            if !before(b, &items[ix]) {
+                break;
+            }
+            out.push(GridCell::Bookmark(b));
+            pending.next();
+        }
+        out.push(GridCell::Item(ix));
+    }
+    out.extend(pending.map(GridCell::Bookmark));
+    out
+}
+
 pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
     items: Rc<Vec<LibraryEntry>>,
-    visible: Rc<Vec<usize>>,
+    visible: Rc<Vec<GridCell>>,
     bookmarks: Rc<Vec<StoreBookmark>>,
     kind: ComicsType,
     stores: &Stores,
@@ -97,18 +151,19 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
     cx: &mut Context<V>,
 ) -> AnyElement {
     let (cols, col_w, gap_x, gap_y) = geometry(kind, avail);
-    let total = visible.len() + bookmarks.len();
+    let total = visible.len();
     let rows = total.div_ceil(cols);
     let row_flags = {
-        let (items, visible, bookmarks) = (items.clone(), visible.clone(), bookmarks.clone());
+        let (items, visible) = (items.clone(), visible.clone());
         move |row: usize| {
             let first = row * cols;
             let last = (first + cols).min(total);
-            let has_comics = (first..last.min(visible.len())).any(|i| !items[visible[i]].did);
-            (
-                has_comics,
-                last > visible.len().max(first) && !bookmarks.is_empty(),
-            )
+            let cells = &visible[first..last];
+            let has_comics = cells
+                .iter()
+                .any(|c| matches!(c, GridCell::Item(ix) if !items[*ix].did));
+            let has_bookmarks = cells.iter().any(|c| matches!(c, GridCell::Bookmark(_)));
+            (has_comics, has_bookmarks)
         }
     };
     let row_h = move |(has_comics, has_bookmarks): (bool, bool)| {
@@ -156,19 +211,22 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
             let first = row * cols;
             let last = (first + cols).min(total);
             let flags = row_flags(row);
-            let cells = (first..last).map(|i| {
-                if i >= visible.len() {
-                    let b = &bookmarks[i - visible.len()];
-                    let thumb = match b.thumbnail_url.as_deref().filter(|u| !u.is_empty()) {
-                        Some(url) => {
-                            stores.thumbs.update(cx, |t, cx| t.ensure_external(url, cx));
-                            stores.thumbs.read(cx).get(url).cloned()
-                        }
-                        None => Some(crate::state::thumbnails::Thumb::Missing),
-                    };
-                    return bookmark_card(b, thumb, &stores, col_w, cx);
-                }
-                let item = &items[visible[i]];
+            let cells = visible[first..last].iter().map(|cell| {
+                let ix = match *cell {
+                    GridCell::Bookmark(bx) => {
+                        let b = &bookmarks[bx];
+                        let thumb = match b.thumbnail_url.as_deref().filter(|u| !u.is_empty()) {
+                            Some(url) => {
+                                stores.thumbs.update(cx, |t, cx| t.ensure_external(url, cx));
+                                stores.thumbs.read(cx).get(url).cloned()
+                            }
+                            None => Some(crate::state::thumbnails::Thumb::Missing),
+                        };
+                        return bookmark_card(b, thumb, &stores, col_w, cx);
+                    }
+                    GridCell::Item(ix) => ix,
+                };
+                let item = &items[ix];
                 if item.did {
                     return folder_card(item, kind, &stores, col_w, cx);
                 }
@@ -197,4 +255,63 @@ pub fn items_grid<V: EventEmitter<Navigate> + 'static>(
     )
     .size_full()
     .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(uid: &str, did: bool, name: &str, created_at: i64) -> LibraryEntry {
+        serde_json::from_value(serde_json::json!({
+            "uid": uid, "did": did, "name": name, "createdAt": created_at
+        }))
+        .unwrap()
+    }
+
+    fn bookmark(key: &str, title: &str, created_at: i64) -> StoreBookmark {
+        StoreBookmark {
+            key: key.into(),
+            title: title.into(),
+            created_at,
+            ..Default::default()
+        }
+    }
+
+    fn keys(cells: &[GridCell], items: &[LibraryEntry], bm: &[StoreBookmark]) -> Vec<String> {
+        cells
+            .iter()
+            .map(|c| match c {
+                GridCell::Item(ix) => items[*ix].uid.clone(),
+                GridCell::Bookmark(ix) => bm[*ix].key.clone(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn alphabetical_bookmarks_follow_folders_and_sort_by_name() {
+        let items = [
+            entry("f", true, "Zeta", 0),
+            entry("a", false, "Alpha 1", 0),
+            entry("c", false, "Charlie 1", 0),
+        ];
+        let bm = [bookmark("late", "Zulu 9", 0), bookmark("mid", "Bravo 2", 0)];
+        let cells = merge_bookmarks(&items, &[0, 1, 2], &bm, FilterOption::Alphabetically);
+        assert_eq!(keys(&cells, &items, &bm), ["f", "a", "mid", "c", "late"]);
+    }
+
+    #[test]
+    fn creation_date_puts_newest_first() {
+        let items = [entry("new", false, "n", 30), entry("old", false, "o", 10)];
+        let bm = [bookmark("mid", "m", 20), bookmark("newest", "x", 40)];
+        let cells = merge_bookmarks(&items, &[0, 1], &bm, FilterOption::CreationDate);
+        assert_eq!(keys(&cells, &items, &bm), ["newest", "new", "mid", "old"]);
+    }
+
+    #[test]
+    fn release_date_puts_bookmarks_last() {
+        let items = [entry("a", false, "a", 0)];
+        let bm = [bookmark("b", "b", 0)];
+        let cells = merge_bookmarks(&items, &[0], &bm, FilterOption::ReleaseDate);
+        assert_eq!(keys(&cells, &items, &bm), ["a", "b"]);
+    }
 }

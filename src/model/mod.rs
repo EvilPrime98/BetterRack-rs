@@ -361,6 +361,7 @@ pub struct StoreBookmark {
     pub folder: Option<String>,
     pub rating: f32,
     pub read: bool,
+    pub created_at: i64,
 }
 
 impl StoreBookmark {
@@ -375,6 +376,9 @@ impl StoreBookmark {
             folder,
             rating: 0.0,
             read: false,
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis() as i64),
         }
     }
 
