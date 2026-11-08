@@ -17,7 +17,9 @@ use crate::route::{GoBack, Navigate};
 use crate::state::Stores;
 use crate::state::library::apply_sort;
 use crate::ui::components::button::{ButtonVariant, button};
-use crate::ui::components::items_grid::{GridScroll, PAGE_PAD_X, available_width, items_grid};
+use crate::ui::components::items_grid::{
+    GridScroll, PAGE_PAD_X, available_width, items_grid, merge_bookmarks,
+};
 use crate::ui::components::smooth_scroll::{SmoothScroll, wheel_capture};
 use crate::ui::icons::{Icon, icon};
 use crate::ui::pages::common::{actions_menu, note, prefs_dropdown, view_controls};
@@ -286,7 +288,7 @@ impl Render for LibraryPage {
                 .size_full()
                 .child(items_grid(
                     base.clone(),
-                    visible.clone(),
+                    Rc::new(merge_bookmarks(&base, &visible, &bookmarks, sort)),
                     bookmarks,
                     kind,
                     &self.stores,
