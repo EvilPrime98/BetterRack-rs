@@ -1,0 +1,144 @@
+.header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    height: var(--header-height);
+    background: var(--bg-chrome);
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.04) inset,
+        0 14px 28px -20px rgba(0, 0, 0, 0.7);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    -webkit-app-region: drag;
+}
+
+.header::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-soft) 50%, transparent);
+    pointer-events: none;
+}
+
+:root[data-platform='win32'] .header,
+:root[data-platform='linux'] .header {
+    padding-right: 0;
+}
+
+.windowControls {
+    align-self: stretch;
+    margin: -8px 0;
+}
+
+:root[data-platform='darwin'] .header {
+    padding-left: 80px;
+}
+
+.left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .text {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+
+        .title {
+            font-weight: 600;
+            font-size: 18px;
+            color: #fff;
+            letter-spacing: -0.2px;
+            line-height: 1.1;
+        }
+    }
+}
+
+.burger {
+    flex-shrink: 0;
+}
+
+@media (min-width: 801px) {
+    .burger {
+        max-width: 80px;
+        transition:
+            max-width 0.2s ease-in-out,
+            margin 0.2s ease-in-out,
+            opacity 0.2s ease-in-out,
+            transform 0.2s ease-in-out;
+    }
+
+    .burgerCollapsed {
+        max-width: 0;
+        margin-left: -10px;
+        opacity: 0;
+        transform: scale(0.6);
+        pointer-events: none;
+    }
+}
+
+.logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    border-radius: 9px;
+    transition: transform 150ms ease;
+}
+
+.logo:hover {
+    transform: translateY(-1px);
+}
+
+.logo:active {
+    transform: translateY(0) scale(0.96);
+}
+
+.logo:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.icons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.iconBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    transition:
+        background-color 150ms ease,
+        transform 100ms ease;
+    outline: none;
+}
+
+.iconBtn:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.iconBtn:active {
+    transform: scale(0.92);
+}
+
+.iconBtn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.noDrag {
+    -webkit-app-region: no-drag;
+}

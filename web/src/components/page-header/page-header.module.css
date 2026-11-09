@@ -1,0 +1,51 @@
+.pageHeader {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 20px 18px;
+    margin: 0 -20px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    position: sticky;
+    top: var(--header-height);
+    z-index: 2;
+    background-color: var(--bg-app);
+}
+
+.filtersRow {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    row-gap: 10px;
+}
+
+.left,
+.right {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.divider {
+    width: 1px;
+    height: 18px;
+    margin: 0 2px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.newFolderButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.left .sortDropdown {
+    width: 218px;
+}
+
+.backButton {
+    min-width: 20px;
+}

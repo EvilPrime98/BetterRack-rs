@@ -14,10 +14,12 @@ pub mod wiki;
 
 use axum::http::StatusCode;
 use axum::response::Response;
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{any, delete, get, patch, post};
 use axum::{Json, Router, middleware::from_fn_with_state};
 use state::AppState;
+use std::path::{Path, PathBuf};
 use tower_http::cors::CorsLayer;
+use tower_http::services::{ServeDir, ServeFile};
 
 async fn healthz() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "app": "betterrack", "version": env!("CARGO_PKG_VERSION") }))
@@ -27,8 +29,33 @@ async fn not_found() -> Response {
     error::text(StatusCode::NOT_FOUND, "Not Found")
 }
 
-pub fn app(state: AppState) -> Router {
+pub fn web_dir_from_env() -> Option<PathBuf> {
+    let dir = PathBuf::from(std::env::var_os("BR_WEB_DIR").filter(|v| !v.is_empty())?);
+    if dir.is_dir() {
+        Some(dir)
+    } else {
+        tracing::warn!(
+            "BR_WEB_DIR {} is not a directory; serving the API only",
+            dir.display()
+        );
+        None
+    }
+}
+
+fn web_service(dir: &Path) -> Router {
+    let files = ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html")));
     Router::new()
+        .route("/api/{*rest}", any(not_found))
+        .route("/read/{*rest}", any(not_found))
+        .fallback_service(files)
+}
+
+pub fn app(state: AppState) -> Router {
+    app_with_web(state, web_dir_from_env())
+}
+
+pub fn app_with_web(state: AppState, web_dir: Option<PathBuf>) -> Router {
+    let router = Router::new()
         .route("/healthz", get(healthz))
         .route(
             "/api/settings",
@@ -132,8 +159,12 @@ pub fn app(state: AppState) -> Router {
         .route("/read/{uuid}", get(reader::get))
         .route("/read/{uuid}/refresh", get(reader::refresh))
         .route("/read/{uuid}/bookmarks", get(reader::bookmarks))
-        .route("/read/{uuid}/pages/{page}", get(reader::page))
-        .fallback(not_found)
+        .route("/read/{uuid}/pages/{page}", get(reader::page));
+    let router = match web_dir {
+        Some(dir) => router.fallback_service(web_service(&dir)),
+        None => router.fallback(not_found),
+    };
+    router
         .layer(from_fn_with_state(state.clone(), middleware::api_key_auth))
         // Outermost, registered first so preflights never reach the key check.
         .layer(CorsLayer::permissive())

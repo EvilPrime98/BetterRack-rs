@@ -1,0 +1,83 @@
+.crButton {
+    display: inline-flex;
+    align-self: flex-start;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 6px 12px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    cursor: pointer;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        transform 160ms ease,
+        color 160ms ease;
+}
+
+.crButton svg {
+    flex-shrink: 0;
+}
+
+.crButton:active {
+    transform: scale(0.96);
+}
+
+.cyan {
+    color: #34c3d1;
+    background: rgba(52, 195, 209, 0.08);
+    border: 1px solid rgba(52, 195, 209, 0.3);
+}
+
+@media (hover: hover) {
+    .cyan:hover {
+        background: rgba(52, 195, 209, 0.16);
+        border-color: rgba(52, 195, 209, 0.55);
+    }
+}
+
+.cyan:focus-visible {
+    outline: 2px solid #34c3d1;
+    outline-offset: 2px;
+}
+
+.red {
+    color: #e85d5d;
+    background: rgba(232, 93, 93, 0.08);
+    border: 1px solid rgba(232, 93, 93, 0.3);
+}
+
+@media (hover: hover) {
+    .red:hover {
+        background: rgba(232, 93, 93, 0.16);
+        border-color: rgba(232, 93, 93, 0.55);
+    }
+}
+
+.red:focus-visible {
+    outline: 2px solid #e85d5d;
+    outline-offset: 2px;
+}
+
+.orange {
+    color: #e8955d;
+    background: rgba(232, 149, 93, 0.08);
+    border: 1px solid rgba(232, 149, 93, 0.3);
+}
+
+@media (hover: hover) {
+    .orange:hover {
+        background: rgba(232, 149, 93, 0.16);
+        border-color: rgba(232, 149, 93, 0.55);
+    }
+}
+
+.orange:focus-visible {
+    outline: 2px solid #e8955d;
+    outline-offset: 2px;
+}

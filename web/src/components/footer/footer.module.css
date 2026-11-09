@@ -1,0 +1,12 @@
+.footer {
+    flex-shrink: 0;
+    padding: 10px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    color: #8a8a8a;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
