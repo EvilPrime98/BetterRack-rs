@@ -113,7 +113,56 @@ pub fn start_in_process() -> Result<ApiClient, String> {
     let state =
         br_server::state::AppState::open_with_wiki(config, wiki).map_err(|e| e.to_string())?;
     state.spawn_rescan();
-    Ok(ApiClient::in_process(br_server::app(state)))
+    spawn_web_server(&state);
+    Ok(ApiClient::in_process(br_server::app_with_web(state, None)))
+}
+
+fn web_dir() -> Option<PathBuf> {
+    [
+        br_server::web_dir_from_env(),
+        app_dir().map(|d| d.join("web")),
+        Some(PathBuf::from("web/dist")),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|d| d.join("index.html").is_file())
+}
+
+fn spawn_web_server(state: &br_server::state::AppState) {
+    let Some(web_dir) = web_dir() else {
+        tracing::info!("web client not found (BR_WEB_DIR or web/ next to the app); not serving it");
+        return;
+    };
+    let web_config = br_core::config::Config::from_env().map(|env| br_core::config::Config {
+        api_key: env.api_key,
+        bind_addr: env.bind_addr,
+        port: env.port,
+        ..(*state.config).clone()
+    });
+    let config = match web_config {
+        Ok(c) => c,
+        Err(e) => return tracing::warn!("web server disabled: {e}"),
+    };
+    let ip = match config.validated_bind_ip() {
+        Ok(ip) => ip,
+        Err(e) => return tracing::warn!("web server disabled: {e}"),
+    };
+    let port = config.port;
+    let web_state = br_server::state::AppState {
+        config: Arc::new(config),
+        ..state.clone()
+    };
+    let router = br_server::app_with_web(web_state, Some(web_dir));
+    tokio::spawn(async move {
+        let listener = match tokio::net::TcpListener::bind((ip, port)).await {
+            Ok(l) => l,
+            Err(e) => return tracing::warn!("web server could not bind {ip}:{port}: {e}"),
+        };
+        tracing::info!("web client at http://{ip}:{port}/");
+        if let Err(e) = axum::serve(listener, router).await {
+            tracing::warn!("web server stopped: {e}");
+        }
+    });
 }
 
 /// A running (or externally provided) server. Dropping it kills the child.
