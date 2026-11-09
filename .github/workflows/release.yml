@@ -47,6 +47,22 @@ jobs:
           path: betterrack-server
           sparse-checkout: vendor/7zip
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build the web client
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
@@ -93,3 +109,46 @@ jobs:
           files: |
             dist/BetterRack-Setup-*.exe
             dist/BetterRack-*-linux-x86_64.tar.gz
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Build the debug APK
+        working-directory: web
+        env:
+          VITE_DEFAULT_API_URL: ${{ vars.ANDROID_DEFAULT_API_URL }}
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec cap sync android
+          cd android && ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/BetterRack-android.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BetterRack-android
+          path: BetterRack-android.apk
+
+      - name: Attach to the GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: BetterRack-android.apk

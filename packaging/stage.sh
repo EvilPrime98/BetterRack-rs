@@ -36,6 +36,14 @@ echo "==> 7-Zip"
 cp "$SEVEN_ZIP_DIR/$SEVEN/"* "$OUT/bin/"
 chmod +x "$OUT/bin/7zz" 2>/dev/null || true
 
+if [ -f "$HERE/web/dist/index.html" ]; then
+  echo "==> web client"
+  mkdir -p "$OUT/web"
+  cp -r "$HERE/web/dist/." "$OUT/web/"
+else
+  echo "==> web/dist not built, skipping the web client (cd web && pnpm install && pnpm build)"
+fi
+
 cp "$HERE/packaging/NOTICE.txt" "$OUT/NOTICE.txt"
 [ -f "$HERE/LICENSE" ] && cp "$HERE/LICENSE" "$OUT/LICENSE" || true
 echo "==> staged at $OUT"
