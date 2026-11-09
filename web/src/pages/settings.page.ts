@@ -6,6 +6,8 @@ import type { IAppSettings } from '../settings.types';
 import { TextField } from '../components/text-field/text-field';
 import { LibraryFolderRow } from '@/components/library-folder-row/library-folder-row';
 import { toast } from '../services/toast.service';
+import { ServerInfo } from '../components/server-info/server-info';
+import { DOWNLOAD_DIR_MODAL_CTX } from '../context/download-dir-modal.context';
 import { DOCUMENT_TITLE_CONTEXT } from '../context/document-title.context';
 import { BRButton } from '../components/br-button/br-button';
 import { BRCheckbox } from '../components/br-checkbox/br-checkbox';
@@ -14,7 +16,6 @@ import {
     getStoredApiKey,
     getStoredServerUrl,
     setStoredApiKey,
-    hasNativeFolderPicker,
     isRemoteModeEnabled,
 } from '../services/server-config.service';
 import { LIBRARY_CONTEXT } from '../context/library.context';
@@ -115,30 +116,20 @@ export function SettingsPage() {
     }
 
     async function onBrowseFolder() {
-        const picker = window.desktop?.pickLibraryFolder;
-        if (!picker) return;
         clearFolderError();
-        let selected: string | null;
-        try {
-            selected = await picker();
-        } catch (e) {
-            const message = e instanceof Error ? e.message : 'Could not open the folder picker.';
-            setFolderError(message);
-            toast.error(message);
-            return;
-        }
+        const selected = await DOWNLOAD_DIR_MODAL_CTX.openDownloadDirModal(
+            'library folder',
+            'Add library folder:',
+        );
         if (selected) addFolder(selected);
     }
 
     async function onBrowseDownloadDir() {
-        const picker = window.desktop?.pickLibraryFolder;
-        if (!picker) return;
-        try {
-            const selected = await picker();
-            if (selected) fieldsState.downloadDir.set(selected);
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'Could not open the folder picker.');
-        }
+        const selected = await DOWNLOAD_DIR_MODAL_CTX.openDownloadDirModal(
+            'download folder',
+            'Download folder:',
+        );
+        if (selected) fieldsState.downloadDir.set(selected);
     }
 
     async function onReidentifyAll() {
@@ -297,6 +288,8 @@ export function SettingsPage() {
                                             ],
                                         }),
 
+                                        ServerInfo(),
+
                                         BRButton({
                                             text: 'Change server',
                                             eventHandler: {
@@ -374,20 +367,14 @@ export function SettingsPage() {
                                                                     },
                                                                 }),
 
-                                                                ...(hasNativeFolderPicker()
-                                                                    ? [
-                                                                          BRButton({
-                                                                              text: 'Browse…',
-                                                                              variant: 'secondary',
-                                                                              className: [
-                                                                                  styles.browseBtn,
-                                                                              ],
-                                                                              eventHandler: {
-                                                                                  click: onBrowseDownloadDir,
-                                                                              },
-                                                                          }),
-                                                                      ]
-                                                                    : []),
+                                                                BRButton({
+                                                                    text: 'Browse…',
+                                                                    variant: 'secondary',
+                                                                    className: [styles.browseBtn],
+                                                                    eventHandler: {
+                                                                        click: onBrowseDownloadDir,
+                                                                    },
+                                                                }),
                                                             ],
                                                         }),
                                                     ],
@@ -495,18 +482,14 @@ export function SettingsPage() {
                                                     },
                                                 }),
 
-                                                ...(hasNativeFolderPicker()
-                                                    ? [
-                                                          BRButton({
-                                                              text: 'Browse…',
-                                                              variant: 'secondary',
-                                                              className: [styles.browseBtn],
-                                                              eventHandler: {
-                                                                  click: onBrowseFolder,
-                                                              },
-                                                          }),
-                                                      ]
-                                                    : []),
+                                                BRButton({
+                                                    text: 'Browse…',
+                                                    variant: 'secondary',
+                                                    className: [styles.browseBtn],
+                                                    eventHandler: {
+                                                        click: onBrowseFolder,
+                                                    },
+                                                }),
 
                                                 BRButton({
                                                     text: 'Add Folder',

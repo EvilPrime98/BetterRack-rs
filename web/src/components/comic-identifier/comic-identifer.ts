@@ -13,7 +13,7 @@ import { CONFIRM_MODAL_CTX } from '../../context/confirm-modal.context';
 
 export function ComicIdentifier() {
     const DEBOUNCING_DELAY = 500;
-    let timeOutID: number | null = null;
+    let timeOutID: ReturnType<typeof setTimeout> | null = null;
     const [search, setSearch, subsSearch] = ultraState('');
     const [suggestions, setSuggestions, subsSuggestions] = ultraState<WikiComic[]>([]);
     const [isSearching, setIsSearching, subsIsSearching] = ultraState(false);

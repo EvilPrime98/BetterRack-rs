@@ -44,7 +44,6 @@ export function PageHeader({
         className: [styles.pageHeader],
 
         children: [
-
             UltraComponent({
                 component: '<div></div>',
                 className: [styles.filtersRow],

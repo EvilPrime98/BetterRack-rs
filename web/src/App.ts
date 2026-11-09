@@ -1,4 +1,6 @@
 import { UltraComponent, UltraFragment, UltraRouter } from 'ultra-light-js';
+import { SearchPage } from './pages/search.page';
+import { FILTERS_PATH, writerFromSearch } from './lib/writer-filter';
 import { LibraryPage } from './pages/library-page';
 import { ReaderPage } from './pages/reader.page';
 import { SettingsPage } from './pages/settings.page';
@@ -11,6 +13,7 @@ import { USER_PREF } from './context/user-pref-cache.context';
 import { COMICS_TYPE_CTX } from './context/comics-types.context';
 import { SETTINGS_CONTEXT } from './context/settings.context';
 import { LIBRARY_CONTEXT } from './context/library.context';
+import { BOOKMARKS_CTX } from './context/bookmarks.context';
 import { AppLoader } from './components/app-loader/app-loader';
 import { APP_CTX } from './context/app.context';
 import { ServerModal } from './components/server-modal/server-modal';
@@ -25,6 +28,7 @@ export function App() {
                 LIBRARY_CONTEXT.fetchLibrary(),
                 COMIC_CACHE_CONTEXT.init(),
                 SETTINGS_CONTEXT.fetchSettings(),
+                BOOKMARKS_CTX.load(),
             ]),
         ]);
         if (
@@ -48,6 +52,14 @@ export function App() {
                 { path: '/store', component: () => StorePage() },
                 { path: '/new', component: () => RecentPage() },
                 { path: '/reading', component: () => ReadingPage() },
+                {
+                    path: FILTERS_PATH,
+                    component: () =>
+                        SearchPage({
+                            search: '',
+                            writer: writerFromSearch(window.location.search),
+                        }),
+                },
                 { path: '/:uid', component: ({ uid } = {}) => LibraryPage({ uid }) },
                 { path: '/*', component: () => LibraryPage({}) },
             ),

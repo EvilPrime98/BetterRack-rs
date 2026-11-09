@@ -1,3 +1,5 @@
+import { DOWNLOAD_TRACKER } from '../services/download-guard.service';
+import { countActiveJobs } from '../lib/active-downloads';
 import {
     UltraComponent,
     ultraCompState,
@@ -66,6 +68,7 @@ export function StoreDownloadsPage() {
                 const jobs = await getDownloadJobs();
                 const finished = findNewlyDone(previousStates, jobs);
                 previousStates = stateByJobId(jobs);
+                DOWNLOAD_TRACKER.set(countActiveJobs(jobs));
                 comp.jobs.set(jobs);
                 comp.error.set('');
                 notifyFinished(finished);

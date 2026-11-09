@@ -9,12 +9,13 @@ import type { ILibraryResponseItem } from '../library.types';
 import { ultraFilters } from '../hooks/ultraFilters';
 import { DOCUMENT_TITLE_CONTEXT } from '../context/document-title.context';
 import { matchesReadFilter, READ_TYPES_CTX } from '../context/read-types.context';
+import { filterByWriter } from '../lib/writer-filter';
 import { COMIC_CACHE_CONTEXT } from '../context/comic-cache.context';
 
-export function SearchPage({ search }: { search: string }) {
+export function SearchPage({ search, writer }: { search: string; writer?: string }) {
     const PAGE_SIZE = 60;
 
-    if (LIBRARY_CONTEXT.searchQuery.get() !== search) {
+    if (writer === undefined && LIBRARY_CONTEXT.searchQuery.get() !== search) {
         LIBRARY_CONTEXT.searchQuery.set(search);
     }
 
@@ -93,6 +94,9 @@ export function SearchPage({ search }: { search: string }) {
     }
 
     function getSearchItems() {
+        if (writer !== undefined) {
+            return filterByWriter(LIBRARY_CONTEXT.getLibraryItems({ onlyDir: false }), writer);
+        }
         const query = LIBRARY_CONTEXT.searchQuery.get().trim().toLowerCase();
         return LIBRARY_CONTEXT.getLibraryItems({ onlyDir: false })
             .filter((item) => item.did === false)
@@ -114,9 +118,19 @@ export function SearchPage({ search }: { search: string }) {
 
             className: [styles.page],
 
-            onMount: [() => DOCUMENT_TITLE_CONTEXT.setTitle(`Search: "${search}"`)],
+            onMount: [
+                () =>
+                    DOCUMENT_TITLE_CONTEXT.setTitle(
+                        writer === undefined ? `Search: "${search}"` : 'Filtered',
+                    ),
+            ],
 
             children: [
+                ...(writer === undefined
+                    ? []
+                    : [
+                          `<p class="${styles.loadingNote}">Filtered by writer: <strong></strong> · <a href="/">Clear</a></p>`,
+                      ]),
                 PageHeader({
                     items,
                     subsItems,

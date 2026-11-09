@@ -126,8 +126,7 @@ export const LIBRARY_CONTEXT: ILibraryCtx = ultraCompState({
 
         try {
             localStorage.setItem(STRUCTURE_STORAGE_KEY, structure);
-        } catch {
-        }
+        } catch {}
 
         if (comp.libraryLoaded.get()) structureCache[current] = comp.groups.get();
         const cached = structureCache[structure];

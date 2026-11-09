@@ -3,7 +3,6 @@ import { ArrowLeftIcon } from '../../icons/arrow-left.icon';
 import { RefreshIcon } from '../../icons/refresh-icon';
 import type { IBookmark } from '../../library.types';
 import type { TReadingMode } from '../../context/user-pref-cache.context';
-import { WindowControls } from '../window-controls/window-controls';
 import styles from '../../pages/reader.page.module.css';
 
 export function ReaderPageHeader({
@@ -207,11 +206,6 @@ export function ReaderPageHeader({
                         ],
                     }),
                 ],
-            }),
-            UltraComponent({
-                component: '<div></div>',
-                className: [styles.windowControls],
-                children: [WindowControls()],
             }),
         ],
     });

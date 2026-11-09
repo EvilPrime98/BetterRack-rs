@@ -1,4 +1,5 @@
-import { UltraActivity, UltraComponent } from 'ultra-light-js';
+import { UltraActivity, UltraComponent, ultraNavigate } from 'ultra-light-js';
+import { writerHref } from '@/lib/writer-filter';
 import styles from './comic-card.module.css';
 import type { WikiComic } from 'better-wiki';
 import type { TMetaSource } from '@/library.types';
@@ -122,7 +123,7 @@ export function ComicCardInfo({
                         subsComic,
                         label: 'Writer',
                         onValueChange: ($span) => {
-                            $span.textContent = (comic()?.credits?.writers || []).join(', ');
+                            renderWriters($span, comic()?.credits?.writers || []);
                         },
                     }),
 
@@ -152,4 +153,21 @@ export function ComicCardInfo({
             }),
         ],
     });
+}
+
+function renderWriters($span: HTMLElement, writers: string[]) {
+    const nodes: (Node | string)[] = [];
+    writers.forEach((writer, i) => {
+        if (i > 0) nodes.push(', ');
+        const $link = document.createElement('a');
+        $link.href = writerHref(writer);
+        $link.textContent = writer;
+        $link.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            ultraNavigate({ href: writerHref(writer) });
+        });
+        nodes.push($link);
+    });
+    $span.replaceChildren(...nodes);
 }
