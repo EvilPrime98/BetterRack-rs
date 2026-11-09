@@ -79,18 +79,14 @@ export let API_URL = resolveInitialApiUrl();
 const API_KEY_HEADER = 'x-br-api-key';
 const API_KEY_QUERY_PARAM = 'key';
 
-function usesRemoteServer(): boolean {
-    return isAndroidPlatform() || isRemoteModeEnabled();
-}
-
 export function authHeaders(): Record<string, string> {
     const key = getStoredApiKey();
-    return usesRemoteServer() && key ? { [API_KEY_HEADER]: key } : {};
+    return key ? { [API_KEY_HEADER]: key } : {};
 }
 
 export function withAuthQuery(url: string): string {
     const key = getStoredApiKey();
-    if (!usesRemoteServer() || !key) return url;
+    if (!key) return url;
     const separator = url.includes('?') ? '&' : '?';
     return `${url}${separator}${API_KEY_QUERY_PARAM}=${encodeURIComponent(key)}`;
 }

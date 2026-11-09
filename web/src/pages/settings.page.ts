@@ -11,7 +11,9 @@ import { BRButton } from '../components/br-button/br-button';
 import { BRCheckbox } from '../components/br-checkbox/br-checkbox';
 import {
     clearRemoteServer,
+    getStoredApiKey,
     getStoredServerUrl,
+    setStoredApiKey,
     hasNativeFolderPicker,
     isRemoteModeEnabled,
 } from '../services/server-config.service';
@@ -261,6 +263,37 @@ export function SettingsPage() {
                                                         getStoredServerUrl() ||
                                                         'No server configured';
                                                 },
+                                            ],
+                                        }),
+
+                                        UltraComponent({
+                                            component: '<div></div>',
+                                            className: [styles.field],
+                                            children: [
+                                                `<label class="${styles.label}" for="settings-server-api-key">Server API key</label>`,
+                                                UltraComponent({
+                                                    component:
+                                                        '<input id="settings-server-api-key" type="password" autocomplete="off" />',
+                                                    className: [styles.input],
+                                                    attributes: {
+                                                        placeholder:
+                                                            'Only needed if the server sets BR_API_KEY',
+                                                    },
+                                                    onMount: [
+                                                        ($el: HTMLElement) => {
+                                                            ($el as HTMLInputElement).value =
+                                                                getStoredApiKey();
+                                                        },
+                                                    ],
+                                                    eventHandler: {
+                                                        input: (e: Event) =>
+                                                            setStoredApiKey(
+                                                                (
+                                                                    e.target as HTMLInputElement
+                                                                ).value.trim(),
+                                                            ),
+                                                    },
+                                                }),
                                             ],
                                         }),
 
