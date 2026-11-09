@@ -24,16 +24,6 @@ export async function downloadComic(uid: string, name: string): Promise<string |
         return `Documents/${path}`;
     }
 
-    if (typeof window.desktop?.downloadComic === 'function') {
-        const url = new URL(streamUrl(uid), window.location.origin).href;
-        const savedPath = await window.desktop.downloadComic({
-            url,
-            name: safeFileName(name),
-            headers: authHeaders(),
-        });
-        return savedPath ?? undefined;
-    }
-
     const link = document.createElement('a');
     link.href = withAuthQuery(streamUrl(uid));
     link.download = name;

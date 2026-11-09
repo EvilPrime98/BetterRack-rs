@@ -43,11 +43,6 @@
     position: relative;
 }
 
-:root[data-platform='win32'] .toolbar,
-:root[data-platform='linux'] .toolbar {
-    padding-right: 154px;
-}
-
 .toolbarStart,
 .toolbarEnd {
     display: flex;
@@ -59,17 +54,6 @@
 
 .toolbarEnd {
     justify-content: flex-end;
-}
-
-.windowControls {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-}
-
-:root[data-platform='darwin'] .toolbar {
-    padding-left: 80px;
 }
 
 .back {
@@ -174,15 +158,6 @@
         gap: 8px;
         padding-left: 10px;
         padding-right: 10px;
-    }
-
-    :root[data-platform='win32'] .toolbar,
-    :root[data-platform='linux'] .toolbar {
-        padding-right: 154px;
-    }
-
-    :root[data-platform='darwin'] .toolbar {
-        padding-left: 80px;
     }
 
     .toolbarStart,

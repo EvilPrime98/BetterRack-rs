@@ -4,10 +4,14 @@ import { ImageGen } from '@/components/image-generic/image-generic';
 import { NO_IMAGE_URL } from '@/data';
 import { DOWNLOAD_DIR_MODAL_CTX } from '@/context/download-dir-modal.context';
 import { LINK_PICKER_MODAL_CTX } from '@/context/link-picker-modal.context';
+import { DOWNLOAD_TRACKER } from '@/services/download-guard.service';
 import { getComicLinks, startDownloadJob } from '@/services/store.service';
 import { toast } from '@/services/toast.service';
 import { STRAT, type IStoreLink, type IStorePost, type TCardState } from '@/store.types';
 import { BRButton } from '@/components/br-button/br-button';
+import { BookmarkIcon } from '@/icons/bookmark.icon';
+import { BOOKMARKS_CTX } from '@/context/bookmarks.context';
+import { postKey } from '@/lib/bookmarks';
 
 export function StoreCard({ item }: { item: IStorePost }) {
     const [state, setState, subsState] = ultraState<TCardState>({
@@ -34,6 +38,7 @@ export function StoreCard({ item }: { item: IStorePost }) {
                 outputDir,
                 strat: STRAT,
             });
+            DOWNLOAD_TRACKER.started();
             setState({ status: 'idle' });
             toast.success('Download in progress');
         } catch (e) {
@@ -72,6 +77,13 @@ export function StoreCard({ item }: { item: IStorePost }) {
             setState({ status: 'error', message });
             toast.error(message);
         }
+    }
+
+    function onBookmarkChange($button: HTMLElement) {
+        const marked = BOOKMARKS_CTX.contains(postKey(item));
+        $button.classList.toggle(styles.marked, marked);
+        $button.setAttribute('aria-pressed', String(marked));
+        $button.setAttribute('aria-label', marked ? 'Remove bookmark' : 'Bookmark this post');
     }
 
     function onCoverLoad() {
@@ -147,6 +159,20 @@ export function StoreCard({ item }: { item: IStorePost }) {
                             title: item.title,
                         },
                         eventHandler: { load: onCoverLoad, error: onCoverError },
+                    }),
+                    UltraComponent({
+                        component: '<button></button>',
+                        className: [styles.bookmarkBtn],
+                        attributes: { type: 'button' },
+                        eventHandler: { click: () => BOOKMARKS_CTX.toggle(item) },
+                        onMount: [onBookmarkChange],
+                        trigger: [
+                            {
+                                subscriber: BOOKMARKS_CTX.items.subscribe,
+                                triggerFunction: onBookmarkChange,
+                            },
+                        ],
+                        children: [BookmarkIcon({ size: 18 })],
                     }),
                 ],
             }),

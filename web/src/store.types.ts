@@ -8,6 +8,19 @@ export interface IStorePost {
     uploadDate?: string;
 }
 
+export interface IStoreBookmark {
+    key: string;
+    id?: number | null;
+    title: string;
+    thumbnailUrl?: string | null;
+    link: string;
+    uploadDate?: string | null;
+    folder?: string | null;
+    rating: number;
+    read: boolean;
+    createdAt: number;
+}
+
 export interface IStoreLink {
     uuid: string;
     title: string;

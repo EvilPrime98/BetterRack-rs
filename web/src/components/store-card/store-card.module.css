@@ -184,3 +184,32 @@
         transform: rotate(360deg);
     }
 }
+
+.bookmarkBtn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    color: #fefcf3;
+    background: rgba(0, 0, 0, 0.55);
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.bookmarkBtn svg path {
+    fill: none;
+}
+
+.bookmarkBtn.marked {
+    color: #34c3d1;
+}
+
+.bookmarkBtn.marked svg path {
+    fill: currentColor;
+}

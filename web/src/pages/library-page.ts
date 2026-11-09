@@ -18,6 +18,9 @@ import { SearchPage } from './search.page';
 import { DOCUMENT_TITLE_CONTEXT } from '../context/document-title.context';
 import { matchesReadFilter, READ_TYPES_CTX } from '../context/read-types.context';
 import { COMIC_CACHE_CONTEXT } from '../context/comic-cache.context';
+import { BOOKMARKS_CTX } from '../context/bookmarks.context';
+import { BookmarkCard } from '@/components/bookmark-card/bookmark-card';
+import { bookmarksInFolder, cellKey, mergeBookmarks, type TGridCell } from '../lib/bookmarks';
 
 const PAGE_SIZE = 60;
 
@@ -46,10 +49,25 @@ export function LibraryPage({ uid }: { uid?: string }) {
         $section.classList.toggle(styles.detailLayout, COMICS_TYPE_CTX.type.get() === 'detail');
     }
 
+    function visibleBookmarks() {
+        if (LIBRARY_CONTEXT.structure.get() !== 'folders') return [];
+        const query = LIBRARY_CONTEXT.searchQuery.get().trim().toLowerCase();
+        const readFilter = READ_TYPES_CTX.type.get();
+        return bookmarksInFolder(BOOKMARKS_CTX.items.get(), uid).filter(
+            (b) =>
+                matchesReadFilter(readFilter, b.read ? 100 : 0) &&
+                (!query || b.title.toLowerCase().includes(query)),
+        );
+    }
+
     function onItemsChange($section: HTMLElement) {
-        const allComics = [...items()];
+        const allComics: TGridCell[] = mergeBookmarks(
+            [...items()],
+            visibleBookmarks(),
+            filters.sortByReleaseDate.get(),
+        );
         const currComics = allComics.slice(0, renderCount);
-        const currIds = new Set(currComics.map((c) => c.uid));
+        const currIds = new Set(currComics.map(cellKey));
 
         for (const [uid, node] of itemsMap) {
             if (currIds.has(uid)) continue;
@@ -58,10 +76,16 @@ export function LibraryPage({ uid }: { uid?: string }) {
             itemsMap.delete(uid);
         }
 
-        currComics.map((item) => {
-            if (itemsMap.has(item.uid)) return;
+        currComics.map((cell) => {
+            const key = cellKey(cell);
+            if (itemsMap.has(key)) return;
+            if (cell.type === 'bookmark') {
+                itemsMap.set(key, BookmarkCard({ bookmark: cell.bookmark }));
+                return;
+            }
+            const item = cell.item;
             itemsMap.set(
-                item.uid,
+                key,
                 item.did
                     ? FolderCard({
                           title: item.name,
@@ -74,7 +98,7 @@ export function LibraryPage({ uid }: { uid?: string }) {
         });
 
         currComics.map((c) => {
-            const $item = itemsMap.get(c.uid);
+            const $item = itemsMap.get(cellKey(c));
             if ($item) $section.appendChild($item);
         });
 
@@ -101,6 +125,7 @@ export function LibraryPage({ uid }: { uid?: string }) {
 
     function hasVisibleItems() {
         const readFilter = READ_TYPES_CTX.type.get();
+        if (visibleBookmarks().length) return true;
         return items().some(
             (item) =>
                 item.did ||
@@ -136,6 +161,7 @@ export function LibraryPage({ uid }: { uid?: string }) {
                             LIBRARY_CONTEXT.libraryLoaded.subscribe,
                             READ_TYPES_CTX.type.subscribe,
                             COMIC_CACHE_CONTEXT.cache.subscribe,
+                            BOOKMARKS_CTX.items.subscribe,
                         ],
                         state: () => LIBRARY_CONTEXT.libraryLoaded.get() && !hasVisibleItems(),
                     },
@@ -176,6 +202,15 @@ export function LibraryPage({ uid }: { uid?: string }) {
                         {
                             subscriber: [COMICS_TYPE_CTX.type.subscribe, subsItems],
                             triggerFunction: onLayoutChange,
+                            defer: true,
+                        },
+                        {
+                            subscriber: [
+                                BOOKMARKS_CTX.items.subscribe,
+                                READ_TYPES_CTX.type.subscribe,
+                                filters.sortByReleaseDate.subscribe,
+                            ],
+                            triggerFunction: onItemsChange,
                             defer: true,
                         },
                     ],

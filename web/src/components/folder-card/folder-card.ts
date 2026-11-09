@@ -32,7 +32,6 @@ export function FolderCard({ title, uid }: { title: string; uid: string }) {
                 className: [styles.cardLink],
 
                 children: [
-
                     FolderCardBasic({ title }),
 
                     UltraComponent({

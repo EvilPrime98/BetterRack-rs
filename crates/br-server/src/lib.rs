@@ -1,5 +1,6 @@
 //! Axum app exposing `br-core`.
 
+pub mod bookmarks;
 pub mod comic_file;
 pub mod error;
 pub mod http_cache;
@@ -7,6 +8,7 @@ pub mod library;
 pub mod middleware;
 pub mod reader;
 pub mod routes;
+pub mod server_info;
 pub mod state;
 pub mod store;
 pub mod thumbnail;
@@ -68,6 +70,9 @@ pub fn app_with_web(state: AppState, web_dir: Option<PathBuf>) -> Router {
         .route("/api/comic-data", get(routes::get_comic_data))
         .route("/api/comic-data/{uid}", patch(routes::patch_comic_data))
         .route("/api/directories", get(routes::directories))
+        .route("/api/server/info", get(server_info::info))
+        .route("/api/server/logs", get(server_info::logs))
+        .route("/api/server/update", get(server_info::update))
         .route("/api/library", get(library::list))
         .route("/api/library/", get(library::list))
         .route("/api/library/by-series", get(library::by_series))
@@ -106,6 +111,11 @@ pub fn app_with_web(state: AppState, web_dir: Option<PathBuf>) -> Router {
         .route(
             "/api/library/{uid}/identify/reset",
             post(library::reidentify_file),
+        )
+        .route("/api/bookmarks", get(bookmarks::list).post(bookmarks::add))
+        .route(
+            "/api/bookmarks/{key}",
+            patch(bookmarks::patch).delete(bookmarks::remove),
         )
         .route("/api/wiki/comic", get(wiki::comic))
         .route("/api/wiki/comic/{id}", get(wiki::comic_by_id))

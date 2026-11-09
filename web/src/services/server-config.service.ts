@@ -12,14 +12,6 @@ export function isRemoteModeEnabled(): boolean {
     return localStorage.getItem(REMOTE_MODE_KEY) === '1';
 }
 
-export function hasNativeFolderPicker(): boolean {
-    return typeof window.desktop?.pickLibraryFolder === 'function' && !isRemoteModeEnabled();
-}
-
-export function isDesktopApp(): boolean {
-    return typeof window.desktop?.pickLibraryFolder === 'function';
-}
-
 export function getStoredServerUrl(): string {
     return localStorage.getItem(STORAGE_KEY) ?? '';
 }

@@ -9,6 +9,10 @@ import { ReaderPageHeader } from '../components/reader-page-header/reader-page-h
 import { ReaderPageProgressBar } from '../components/reader-page-progress-bar/reader-page-progress-bar';
 import { COMIC_CACHE_CONTEXT } from '../context/comic-cache.context';
 import { DOCUMENT_TITLE_CONTEXT } from '../context/document-title.context';
+import { SHORTCUTS } from '../services/shortcuts.service';
+import { toggleFullscreen } from '../services/fullscreen.service';
+import type { IShortcut } from '../lib/shortcuts';
+import { applyMove, readerMoveFor } from '../lib/reader-keys';
 import { USER_PREF, type TReadingMode } from '../context/user-pref-cache.context';
 
 const PRELOAD_WINDOW = 2;
@@ -255,15 +259,6 @@ export function ReaderPage({ uid }: { uid: string }) {
         $current?.scrollIntoView({ block: 'nearest', inline: 'start' });
     };
 
-    const toggleFullscreen = () => {
-        if (window.desktop?.toggleFullscreen) {
-            window.desktop.toggleFullscreen();
-            return;
-        }
-        if (document.fullscreenElement) document.exitFullscreen();
-        else document.documentElement.requestFullscreen();
-    };
-
     const pointerGap = () => {
         const points = [...activePointers.values()];
         if (points.length < 2) return 0;
@@ -385,10 +380,6 @@ export function ReaderPage({ uid }: { uid: string }) {
     };
 
     const onKeydown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-            goBack();
-            return;
-        }
         if (!e.ctrlKey) return;
         if (e.code === 'Equal' || e.code === 'NumpadAdd') {
             e.preventDefault();
@@ -401,6 +392,39 @@ export function ReaderPage({ uid }: { uid: string }) {
             zoomReset();
         }
     };
+
+    const moveBy = (e: KeyboardEvent) => {
+        const move = readerMoveFor(e.key, e.shiftKey);
+        if (!move || !scroller) return;
+        if (readingMode() === 'horizontal') {
+            const last = pages().length;
+            const target =
+                move.type === 'to'
+                    ? move.edge === 'start'
+                        ? 1
+                        : last
+                    : currentPage() + (move.amount > 0 ? 1 : -1);
+            goToPage(Math.min(last, Math.max(1, target)));
+            return;
+        }
+        scroller.scrollTop = applyMove(move, {
+            offset: scroller.scrollTop,
+            viewport: scroller.clientHeight,
+            max: scroller.scrollHeight - scroller.clientHeight,
+        });
+    };
+
+    const readerShortcuts = (): IShortcut[] => [
+        { key: 'Escape', handler: goBack },
+        { key: 'PageDown', handler: moveBy },
+        { key: 'PageUp', handler: moveBy },
+        { key: ' ', handler: moveBy },
+        { key: ' ', shift: true, handler: moveBy },
+        { key: 'ArrowDown', handler: moveBy },
+        { key: 'ArrowUp', handler: moveBy },
+        { key: 'Home', handler: moveBy },
+        { key: 'End', handler: moveBy },
+    ];
 
     const onPagesChange = ($section: HTMLElement) => {
         observer?.disconnect();
@@ -477,10 +501,12 @@ export function ReaderPage({ uid }: { uid: string }) {
             loadPages,
             () => DOCUMENT_TITLE_CONTEXT.setTitle('Reader'),
             () => {
+                const unregisterShortcuts = SHORTCUTS.register(readerShortcuts());
                 window.addEventListener('keydown', onKeydown);
                 window.addEventListener('resize', fitZoom);
                 window.addEventListener('resize', realign);
                 return () => {
+                    unregisterShortcuts();
                     window.removeEventListener('keydown', onKeydown);
                     window.removeEventListener('resize', fitZoom);
                     window.removeEventListener('resize', realign);

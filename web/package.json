@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
+    "test": "vitest run",
     "format": "prettier --write src",
     "format:check": "prettier --check src",
     "android:sync": "pnpm build && cap sync android",
@@ -26,7 +27,8 @@
     "prettier": "^3.9.10",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.57.2",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vitest": "^3.2.7"
   },
   "dependencies": {
     "@capacitor/browser": "^8.0.5",

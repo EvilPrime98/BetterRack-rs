@@ -11,10 +11,7 @@ export function FolderStackCard({ cover }: { cover: string; isRead: boolean }) {
     return UltraComponent({
         component: '<article></article>',
 
-        className: [
-            styles.comicCard,
-            styles.stackLayer,
-        ],
+        className: [styles.comicCard, styles.stackLayer],
 
         styles: {
             padding: '0',

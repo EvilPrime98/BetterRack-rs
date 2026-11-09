@@ -28,20 +28,6 @@
     pointer-events: none;
 }
 
-:root[data-platform='win32'] .header,
-:root[data-platform='linux'] .header {
-    padding-right: 0;
-}
-
-.windowControls {
-    align-self: stretch;
-    margin: -8px 0;
-}
-
-:root[data-platform='darwin'] .header {
-    padding-left: 80px;
-}
-
 .left {
     display: flex;
     align-items: center;

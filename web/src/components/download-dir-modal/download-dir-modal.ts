@@ -4,22 +4,12 @@ import { FolderIcon } from '@/icons/folder.icon';
 import { BRCheckbox } from '@/components/br-checkbox/br-checkbox';
 import { SETTINGS_CONTEXT } from '@/context/settings.context';
 import { DOWNLOAD_DIR_MODAL_CTX } from '@/context/download-dir-modal.context';
+import { visibleDirectories } from '@/lib/directory-picker';
 import {
     areDirectoryListsEqual,
     getCachedDirectories,
     refreshDirectories,
 } from '@/services/fs.service';
-
-function normalizePath(dir: string): string {
-    return dir.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-}
-
-function getTopLevelDirs(dirs: string[]): string[] {
-    const normalized = dirs.map(normalizePath);
-    return dirs.filter(
-        (_, i) => !normalized.some((other, j) => j !== i && normalized[i].startsWith(`${other}/`)),
-    );
-}
 
 export function DownloadDirModal() {
     let $list: HTMLElement | null = null;
@@ -32,6 +22,10 @@ export function DownloadDirModal() {
 
     const onKeydown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') cancel();
+    };
+
+    const syncHeading = ($el: HTMLElement) => {
+        $el.textContent = DOWNLOAD_DIR_MODAL_CTX.heading.get();
     };
 
     const renderMessage = (text: string) => {
@@ -61,11 +55,7 @@ export function DownloadDirModal() {
             return;
         }
 
-        const candidates = showSubfolders ? dirs : getTopLevelDirs(dirs);
-        const normalizedQuery = query.trim().toLowerCase();
-        const visibleDirs = normalizedQuery
-            ? candidates.filter((dir) => dir.toLowerCase().includes(normalizedQuery))
-            : candidates;
+        const visibleDirs = visibleDirectories(dirs, { query, showSubfolders });
 
         if (visibleDirs.length === 0) {
             renderMessage('No folders match your search.');
@@ -148,13 +138,22 @@ export function DownloadDirModal() {
                 attributes: {
                     role: 'dialog',
                     'aria-modal': 'true',
-                    'aria-label': 'Choose download directory',
+                    'aria-label': 'Choose directory',
                 },
 
                 className: [styles.modal],
 
                 children: [
-                    `<p class="${styles.title}">Download to: </p>`,
+                    UltraComponent({
+                        component: `<p class="${styles.title}"></p>`,
+                        onMount: [syncHeading],
+                        trigger: [
+                            {
+                                subscriber: DOWNLOAD_DIR_MODAL_CTX.heading.subscribe,
+                                triggerFunction: syncHeading,
+                            },
+                        ],
+                    }),
 
                     UltraComponent({
                         component: '<div></div>',
