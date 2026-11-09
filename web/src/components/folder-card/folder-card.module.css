@@ -1,0 +1,324 @@
+.folderCard {
+    position: relative;
+    z-index: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    align-self: start;
+    width: 100%;
+    max-width: 220px;
+    margin-inline: auto;
+    padding: 10px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0));
+    border: 1px solid rgba(255, 255, 255, 0);
+    transition:
+        box-shadow 220ms ease,
+        scale 0.25s ease-in-out;
+
+    .cardLink {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        color: inherit;
+        text-decoration: none;
+        outline: none;
+    }
+
+    .cardLink:focus-visible {
+        outline: 2px solid #34c3d1;
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+
+    .cover {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        aspect-ratio: 50 / 77;
+        border-radius: 6px;
+        overflow: hidden;
+        background: linear-gradient(160deg, #232222, #1a1a1a);
+        box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.6);
+        transition: box-shadow 220ms ease;
+
+        svg {
+            transition: transform 220ms ease;
+        }
+
+        span {
+            text-transform: capitalize;
+        }
+    }
+
+    .basicFolderCard {
+        display: flex;
+        flex-direction: column;
+        color: #fff;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        gap: 6px;
+        padding: 0 10px;
+    }
+
+    .basicFolderCard span {
+        width: 100%;
+    }
+
+    @media (hover: hover) {
+        .cardLink:hover .cover {
+            box-shadow: 0 8px 16px -8px rgba(0, 0, 0, 0.7);
+
+            svg {
+                transform: scale(1.03);
+            }
+        }
+    }
+
+    .cardLink:focus-visible .cover {
+        box-shadow: 0 8px 16px -8px rgba(0, 0, 0, 0.7);
+    }
+
+    .stack {
+        position: relative;
+        width: 92%;
+        margin: 0 auto 35px;
+        overflow: visible;
+        background: none;
+        box-shadow: none;
+    }
+
+    .stack > * {
+        position: absolute;
+        inset: 0;
+        transition:
+            transform 220ms ease,
+            filter 220ms ease;
+    }
+
+    .stack > *:nth-child(1) {
+        z-index: 3;
+        transform: rotate(-2deg);
+    }
+
+    .stack > *:nth-child(2) {
+        z-index: 2;
+        transform: rotate(-7deg) translate(-9%, 5%);
+        filter: brightness(0.9);
+    }
+
+    .stack > *:nth-child(3) {
+        z-index: 1;
+        transform: rotate(7deg) translate(10%, 7%);
+        filter: brightness(0.78);
+    }
+
+    @media (hover: hover) {
+        .cardLink:hover .stack > *:nth-child(1) {
+            transform: rotate(-4deg);
+        }
+
+        .cardLink:hover .stack > *:nth-child(2) {
+            transform: rotate(-10deg) translate(-13%, 7%);
+        }
+
+        .cardLink:hover .stack > *:nth-child(3) {
+            transform: rotate(10deg) translate(14%, 9%);
+        }
+    }
+
+    .body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 90%;
+        margin-top: 8px;
+        gap: 2px;
+    }
+
+    .kind {
+        display: none;
+        font-family: var(--font-sans);
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #34c3d1;
+    }
+
+    .title {
+        opacity: 0;
+        font-family: var(--font-sans);
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        text-wrap: balance;
+        font-size: 15px;
+        font-weight: 600;
+        text-align: center;
+        line-height: 1.2;
+        color: #fff;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        transition: color 180ms ease;
+        text-transform: capitalize;
+    }
+
+    @media (hover: hover) {
+        .cardLink:hover .title {
+            color: #34c3d1;
+        }
+    }
+
+    .chevron {
+        display: none;
+    }
+
+    .folderActions {
+        display: none;
+        flex-direction: row;
+        gap: 4px;
+    }
+
+    .folderActionButton {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        color: #fff;
+        background: rgba(18, 18, 18, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        cursor: pointer;
+        transition:
+            background-color 160ms ease,
+            border-color 160ms ease,
+            color 160ms ease,
+            transform 160ms ease;
+    }
+
+    .folderActionButton svg {
+        pointer-events: none;
+    }
+
+    &:active {
+        scale: 0.9;
+    }
+}
+
+@media (hover: hover) {
+    .folderActionButton:hover {
+        background: rgba(52, 195, 209, 0.18);
+        border-color: rgba(52, 195, 209, 0.45);
+        color: #34c3d1;
+    }
+}
+
+.folderActionButton:active {
+    transform: scale(0.94);
+}
+
+.folderActionButton:focus-visible {
+    outline: 2px solid #34c3d1;
+    outline-offset: 2px;
+}
+
+@media (hover: hover) {
+    .folderDeleteButton:hover {
+        background: rgba(232, 93, 93, 0.18);
+        border-color: rgba(232, 93, 93, 0.45);
+        color: #e85d5d;
+    }
+}
+
+.detailMode {
+    justify-content: center;
+    max-width: none;
+    margin-inline: 0;
+    padding: 14px;
+
+    .cardLink {
+        flex-direction: row;
+        align-items: center;
+        gap: 14px;
+    }
+
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+    border-color: rgba(255, 255, 255, 0.07);
+
+    .cover {
+        width: 76px;
+        aspect-ratio: 1 / 1;
+        flex-shrink: 0;
+        border-radius: 12px;
+        background:
+            radial-gradient(circle at 50% 38%, rgba(52, 195, 209, 0.18), transparent 70%),
+            linear-gradient(160deg, #232222, #1a1a1a);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .basicFolderCard span {
+        display: none;
+    }
+
+    .stack {
+        width: 62px;
+        margin: 0;
+        background: none;
+        border: none;
+    }
+
+    .stack > * {
+        border-radius: 12px;
+    }
+
+    .body {
+        flex: 1;
+        min-width: 0;
+        width: auto;
+        align-items: flex-start;
+        margin-top: 0;
+        gap: 4px;
+    }
+
+    .kind {
+        display: block;
+    }
+
+    .title {
+        opacity: 1;
+        text-align: left;
+        font-size: 16px;
+        -webkit-line-clamp: 1;
+        line-clamp: 1;
+    }
+
+    .chevron {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        color: #666;
+        transform: rotate(-90deg);
+        transition: color 220ms ease;
+    }
+
+    @media (hover: hover) {
+        .cardLink:hover .chevron {
+            color: #34c3d1;
+        }
+    }
+
+    .folderActions {
+        display: flex;
+    }
+}

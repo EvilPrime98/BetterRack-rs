@@ -1,0 +1,48 @@
+.page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - var(--header-height));
+    padding: 0 20px 20px;
+}
+
+.comicContainer {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
+    align-content: start;
+    gap: 28px 22px;
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.comicContainer::-webkit-scrollbar {
+    display: none;
+}
+
+.comicContainer.detailLayout {
+    grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+    gap: 20px;
+}
+
+.sentinel {
+    grid-column: 1 / -1;
+    height: 1px;
+}
+
+.loadingNote {
+    margin: 0 0 12px;
+    font-size: 13px;
+    opacity: 0.7;
+}
+
+.empty {
+    margin: 0;
+    padding: 40px 0;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: #808080;
+    text-align: center;
+}

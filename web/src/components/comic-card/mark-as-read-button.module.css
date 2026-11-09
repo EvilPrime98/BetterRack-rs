@@ -1,0 +1,65 @@
+.markAsReadButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: rgba(255, 255, 255, 0.5);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        color 160ms ease,
+        transform 160ms ease;
+}
+
+.markAsReadButton svg {
+    pointer-events: none;
+}
+
+.markAsReadButton svg path {
+    fill: none;
+    transition: fill 160ms ease;
+}
+
+.markAsReadButton.isRead svg path {
+    fill: currentColor;
+}
+
+@media (hover: hover) {
+    .markAsReadButton:hover {
+        background: rgba(232, 163, 61, 0.12);
+        border-color: rgba(232, 163, 61, 0.35);
+        color: #e8a33d;
+    }
+}
+
+.markAsReadButton:active {
+    transform: scale(0.96);
+}
+
+.markAsReadButton:focus-visible {
+    outline: 2px solid #e8a33d;
+    outline-offset: 2px;
+}
+
+.markAsReadButton.isRead {
+    color: #e8a33d;
+    background: rgba(232, 163, 61, 0.14);
+    border-color: rgba(232, 163, 61, 0.4);
+}
+
+@media (hover: hover) {
+    .markAsReadButton.isRead:hover {
+        background: rgba(232, 163, 61, 0.22);
+        border-color: rgba(232, 163, 61, 0.6);
+        color: #ffd66b;
+    }
+}
+
+.markAsReadButton.isRead:active {
+    transform: scale(0.96);
+}
