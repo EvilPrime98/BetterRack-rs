@@ -14,7 +14,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
     tracing_subscriber::fmt()
         .with_env_filter(config.log_level.as_str())
-        .with_writer(std::io::stderr)
+        .with_ansi(false)
+        .with_writer(br_server::server_info::LogTee)
         .init();
 
     let bind_ip = config.validated_bind_ip()?;
