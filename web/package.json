@@ -38,6 +38,6 @@
     "@types/node": "^26.1.1",
     "better-wiki": "^0.15.0",
     "notyf": "^3.10.0",
-    "ultra-light-js": "^1.6.0"
+    "ultra-light-js": "^1.6.3"
   }
 }
