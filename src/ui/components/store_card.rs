@@ -119,10 +119,7 @@ pub fn store_card<V: 'static>(
             move |cx| toggle_bookmark(&stores, &post, cx)
         },
     );
-    let followed = stores
-        .pull_list
-        .read(cx)
-        .follows(&keyword_from_title(&post.title));
+    let followed = stores.pull_list.read(cx).follows(&post.title);
     let pull = action_button(format!("store-pull-{key}").into(), Icon::Pin, followed, {
         let title = post.title.clone();
         let stores = stores.clone();
@@ -210,7 +207,9 @@ fn follow_series(stores: &Stores, title: &str, cx: &mut gpui::App) {
         toast::error(cx, "Could not tell which series this is.");
         return;
     }
-    let followed = stores.pull_list.update(cx, |s, cx| s.toggle(&keyword, cx));
+    let followed = stores
+        .pull_list
+        .update(cx, |s, cx| s.toggle(title, &keyword, cx));
     if followed {
         toast::success(cx, format!("Added “{keyword}” to your pull list."));
     } else {

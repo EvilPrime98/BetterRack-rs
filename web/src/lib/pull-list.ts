@@ -3,15 +3,8 @@ import type { IPullEntry } from '../store.types';
 const normalize = (title: string) => title.replace(/_/g, ' ').toLowerCase();
 
 export function matches(entry: IPullEntry, title: string): boolean {
-    const keyword = entry.keyword.trim().toLowerCase();
-    if (!keyword) return false;
-    const text = normalize(title);
-    if (!text.includes(keyword)) return false;
-    return !entry.exclude
-        .split(',')
-        .map((t) => t.trim().toLowerCase())
-        .filter(Boolean)
-        .some((t) => text.includes(t));
+    const keyword = normalize(entry.keyword.trim());
+    return keyword !== '' && normalize(keywordFromTitle(title)) === keyword;
 }
 
 export function keywordFromTitle(title: string): string {

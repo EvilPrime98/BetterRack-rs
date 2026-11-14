@@ -16,19 +16,19 @@ export async function getPullList(): Promise<IPullEntry[]> {
     return parse(await fetch(url(), { headers: authHeaders() }));
 }
 
-export async function addPullEntry(keyword: string, exclude: string): Promise<IPullEntry> {
+export async function addPullEntry(keyword: string): Promise<IPullEntry> {
     return parse(
         await fetch(url(), {
             method: 'POST',
             headers: jsonHeaders(),
-            body: JSON.stringify({ keyword, exclude, lastSeenId: 0 }),
+            body: JSON.stringify({ keyword, lastSeenId: 0 }),
         }),
     );
 }
 
 export async function patchPullEntry(
     id: string,
-    patch: { keyword?: string; exclude?: string; lastSeenId?: number },
+    patch: { keyword?: string; lastSeenId?: number },
 ): Promise<IPullEntry> {
     return parse(
         await fetch(url(id), {

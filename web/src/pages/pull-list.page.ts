@@ -8,9 +8,9 @@ import { DOCUMENT_TITLE_CONTEXT } from '../context/document-title.context';
 import { PULL_LIST_CTX } from '../context/pull-list.context';
 import { STORE_PAGE_CONTEXT } from '../context/store-page.context';
 import { matches } from '../lib/pull-list';
+import { inWeek, parseDay, rangeLabel, today, weekStart } from '../lib/week';
 
 const PAGE_SIZE = 30;
-const FILL_TARGET = 24;
 const MAX_PAGES = 30;
 
 function keyFor(item: IStorePost) {
@@ -20,12 +20,25 @@ function keyFor(item: IStorePost) {
 export function PullListPage() {
     const cards = new Map<string, UltraLightElement>();
     let loading = false;
+    const currentWeek = weekStart(today());
+    let selectedWeek = currentWeek;
+    let $grid: HTMLElement | null = null;
+    let renderNav: () => void = () => {};
+
+    function postDay(p: IStorePost) {
+        return p.uploadDate ? parseDay(p.uploadDate) : undefined;
+    }
 
     function shownPosts(): IStorePost[] {
         const entries = PULL_LIST_CTX.items.get();
-        return STORE_PAGE_CONTEXT.results
-            .get()
-            .filter((p) => entries.some((e) => matches(e, p.title)));
+        return STORE_PAGE_CONTEXT.results.get().filter((p) => {
+            const day = postDay(p);
+            return (
+                day !== undefined &&
+                inWeek(day, selectedWeek) &&
+                entries.some((e) => matches(e, p.title))
+            );
+        });
     }
 
     async function loadFirstPage() {
@@ -63,12 +76,19 @@ export function PullListPage() {
     }
 
     function fillIfSparse() {
-        if (
-            PULL_LIST_CTX.items.get().length > 0 &&
-            shownPosts().length < FILL_TARGET &&
-            STORE_PAGE_CONTEXT.page.get() < MAX_PAGES
-        )
-            loadMore();
+        if (PULL_LIST_CTX.items.get().length === 0) return;
+        const days = STORE_PAGE_CONTEXT.results
+            .get()
+            .map(postDay)
+            .filter((d): d is number => d !== undefined);
+        const reachedBack = days.length > 0 && Math.min(...days) < selectedWeek;
+        if (!reachedBack && STORE_PAGE_CONTEXT.page.get() < MAX_PAGES) loadMore();
+    }
+
+    function selectWeek(week: number) {
+        selectedWeek = week;
+        renderNav();
+        if ($grid) onGridChange($grid);
     }
 
     function start() {
@@ -80,85 +100,58 @@ export function PullListPage() {
         else fillIfSparse();
     }
 
-    function onSentinelMount($sentinel: HTMLElement) {
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries.some((e) => e.isIntersecting) && shownPosts().length >= FILL_TARGET)
-                    loadMore();
-            },
-            { rootMargin: '600px' },
-        );
-        observer.observe($sentinel);
-        return () => observer.disconnect();
-    }
-
-    const sentinel = UltraComponent({
-        component: `<div class="${styles.sentinel}"></div>`,
-        onMount: [onSentinelMount],
-    });
-
-    let shownKeys: string[] = [];
     let $empty: HTMLParagraphElement | null = null;
 
     function emptyText() {
         if (PULL_LIST_CTX.items.get().length === 0)
             return 'Use the pull-list button on a store card to follow a series.';
-        return STORE_PAGE_CONTEXT.hasMore.get() ? 'Loading…' : 'No posts match your pull list yet.';
+        return STORE_PAGE_CONTEXT.hasMore.get() ? 'Loading…' : 'No posts match this week.';
     }
 
     function onGridChange($section: HTMLElement) {
+        $grid = $section;
         const posts = shownPosts();
-        const keys = posts.map(keyFor);
-        const grewOnly =
-            shownKeys.length > 0 && shownKeys.every((key, i) => key === keys[i]) && $empty === null;
-
-        if (grewOnly) {
-            for (const post of posts.slice(shownKeys.length)) {
-                const node = StoreCard({ item: post });
-                cards.set(keyFor(post), node);
-                $section.insertBefore(node, sentinel);
-            }
-        } else {
-            const wanted = new Set(keys);
-            for (const [key, node] of cards) {
-                if (wanted.has(key)) continue;
-                node._cleanup?.();
-                cards.delete(key);
-            }
-            for (const post of posts) {
-                if (!cards.has(keyFor(post))) cards.set(keyFor(post), StoreCard({ item: post }));
-            }
-            $section.replaceChildren(...keys.map((key) => cards.get(key) as Node));
-            $empty = null;
-            if (posts.length === 0) {
-                $empty = document.createElement('p');
-                $empty.className = styles.empty;
-                $section.appendChild($empty);
-            }
-            $section.appendChild(sentinel);
+        const wanted = new Set(posts.map(keyFor));
+        for (const [key, node] of cards) {
+            if (wanted.has(key)) continue;
+            node._cleanup?.();
+            cards.delete(key);
         }
-        if ($empty) $empty.textContent = emptyText();
-        shownKeys = keys;
+        for (const post of posts) {
+            if (!cards.has(keyFor(post))) cards.set(keyFor(post), StoreCard({ item: post }));
+        }
+        $section.replaceChildren(...posts.map((post) => cards.get(keyFor(post)) as Node));
+        $empty = null;
+        if (posts.length === 0) {
+            $empty = document.createElement('p');
+            $empty.className = styles.empty;
+            $empty.textContent = emptyText();
+            $section.appendChild($empty);
+        }
         fillIfSparse();
     }
 
-    function onChipsChange($row: HTMLElement) {
-        $row.replaceChildren(
-            ...PULL_LIST_CTX.items.get().map((entry) => {
-                const $chip = document.createElement('span');
-                $chip.className = styles.chip;
-                const $label = document.createElement('span');
-                $label.textContent = entry.keyword;
-                const $remove = document.createElement('button');
-                $remove.type = 'button';
-                $remove.className = styles.chipRemove;
-                $remove.textContent = '×';
-                $remove.setAttribute('aria-label', `Remove ${entry.keyword} from the pull list`);
-                $remove.addEventListener('click', () => PULL_LIST_CTX.remove(entry.id));
-                $chip.append($label, $remove);
-                return $chip;
-            }),
-        );
+    function onNavMount($nav: HTMLElement) {
+        const button = (label: string, aria: string, onClick: () => void) => {
+            const $b = document.createElement('button');
+            $b.type = 'button';
+            $b.className = styles.weekBtn;
+            $b.textContent = label;
+            $b.setAttribute('aria-label', aria);
+            $b.addEventListener('click', onClick);
+            return $b;
+        };
+        const $prev = button('‹', 'Previous week', () => selectWeek(selectedWeek - 7));
+        const $label = document.createElement('span');
+        $label.className = styles.weekLabel;
+        const $next = button('›', 'Next week', () => selectWeek(selectedWeek + 7));
+        const $now = button('This week', 'Jump to this week', () => selectWeek(currentWeek));
+        renderNav = () => {
+            $label.textContent = rangeLabel(selectedWeek);
+            $next.disabled = $now.disabled = selectedWeek >= currentWeek;
+        };
+        $nav.replaceChildren($prev, $label, $next, $now);
+        renderNav();
     }
 
     return UltraComponent({
@@ -169,15 +162,8 @@ export function PullListPage() {
             `<h1 class="${styles.title}">Pull list</h1>`,
             UltraComponent({
                 component: '<div></div>',
-                className: [styles.chips],
-                onMount: [onChipsChange],
-                trigger: [
-                    {
-                        subscriber: PULL_LIST_CTX.items.subscribe,
-                        triggerFunction: onChipsChange,
-                        defer: true,
-                    },
-                ],
+                className: [styles.weekNav],
+                onMount: [onNavMount],
             }),
             UltraComponent({
                 component: '<section></section>',

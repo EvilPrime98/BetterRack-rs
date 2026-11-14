@@ -38,20 +38,11 @@ fn normalize(title: &str) -> String {
     title.replace('_', " ").to_lowercase()
 }
 
-/// Case-insensitive substring of the title, unless the title contains any exclude term.
+/// The title's series name equals the keyword (case-insensitive). "Batman" matches "Batman #4"
+/// but not "Batman Beyond 012".
 pub fn matches(entry: &PullEntry, title: &str) -> bool {
-    let keyword = entry.keyword.trim().to_lowercase();
-    if keyword.is_empty() {
-        return false;
-    }
-    let title = normalize(title);
-    title.contains(&keyword)
-        && !entry
-            .exclude
-            .split(',')
-            .map(|t| t.trim().to_lowercase())
-            .filter(|t| !t.is_empty())
-            .any(|t| title.contains(&t))
+    let keyword = normalize(entry.keyword.trim());
+    !keyword.is_empty() && normalize(&keyword_from_title(title)) == keyword
 }
 
 /// A keyword guess from a post title: the title up to the issue number or parenthesis.
@@ -87,7 +78,7 @@ impl PullListStore {
     }
 
     /// An already followed keyword (case-insensitive) is left alone.
-    pub fn add(&mut self, keyword: &str, exclude: &str, cx: &mut Context<Self>) -> bool {
+    pub fn add(&mut self, keyword: &str, cx: &mut Context<Self>) -> bool {
         let keyword = keyword.trim();
         if keyword.is_empty()
             || self
@@ -104,7 +95,6 @@ impl PullListStore {
         Rc::make_mut(&mut self.items).push(PullEntry {
             id,
             keyword: keyword.to_string(),
-            exclude: exclude.trim().to_string(),
             last_seen_id: 0,
             created_at,
         });
@@ -112,29 +102,20 @@ impl PullListStore {
         true
     }
 
-    pub fn remove(&mut self, id: &str, cx: &mut Context<Self>) {
-        Rc::make_mut(&mut self.items).retain(|e| e.id != id);
-        self.commit(cx);
+    /// Whether any followed entry matches the post title.
+    pub fn follows(&self, title: &str) -> bool {
+        self.items.iter().any(|e| matches(e, title))
     }
 
-    pub fn follows(&self, keyword: &str) -> bool {
-        self.find(keyword).is_some()
-    }
-
-    fn find(&self, keyword: &str) -> Option<&PullEntry> {
-        let keyword = keyword.trim().to_lowercase();
-        self.items
-            .iter()
-            .find(|e| e.keyword.to_lowercase() == keyword)
-    }
-
-    /// Follows the keyword, or unfollows it when already followed. Returns whether it is followed now.
-    pub fn toggle(&mut self, keyword: &str, cx: &mut Context<Self>) -> bool {
-        if let Some(id) = self.find(keyword).map(|e| e.id.clone()) {
-            self.remove(&id, cx);
+    /// Unfollows every entry matching the title when there is one, else follows `keyword`.
+    /// Returns whether the title is followed now.
+    pub fn toggle(&mut self, title: &str, keyword: &str, cx: &mut Context<Self>) -> bool {
+        if self.follows(title) {
+            Rc::make_mut(&mut self.items).retain(|e| !matches(e, title));
+            self.commit(cx);
             false
         } else {
-            self.add(keyword, "", cx)
+            self.add(keyword, cx)
         }
     }
 }
@@ -143,29 +124,23 @@ impl PullListStore {
 mod tests {
     use super::*;
 
-    fn entry(keyword: &str, exclude: &str, seen: i64) -> PullEntry {
+    fn entry(keyword: &str, seen: i64) -> PullEntry {
         PullEntry {
             keyword: keyword.into(),
-            exclude: exclude.into(),
             last_seen_id: seen,
             ..Default::default()
         }
     }
 
     #[test]
-    fn keyword_is_a_case_insensitive_substring() {
-        let e = entry("batman", "", 0);
-        assert!(matches(&e, "The_Dark Knight BATMAN #3"));
+    fn keyword_is_the_case_insensitive_series_name() {
+        let e = entry("batman", 0);
+        assert!(matches(&e, "BATMAN #3"));
+        assert!(matches(&e, "Batman 012 (2024)"));
+        assert!(!matches(&e, "Batman_Beyond 012 (2024)"));
+        assert!(!matches(&e, "The Dark Knight Batman #3"));
         assert!(!matches(&e, "Superman #3"));
-        assert!(!matches(&entry("  ", "", 0), "anything"));
-    }
-
-    #[test]
-    fn any_exclude_term_rejects() {
-        let e = entry("Batman", "annual, Special ,", 0);
-        assert!(matches(&e, "Batman #4"));
-        assert!(!matches(&e, "Batman Annual #1"));
-        assert!(!matches(&e, "Batman: SPECIAL"));
+        assert!(!matches(&entry("  ", 0), "anything"));
     }
 
     #[test]
@@ -182,7 +157,7 @@ mod tests {
     fn entries_round_trip_through_the_file() {
         let dir = std::env::temp_dir().join(format!("br-pull-{}", std::process::id()));
         let file = dir.join("pull-list.json");
-        let e = entry("Saga", "x", 4);
+        let e = entry("Saga", 4);
         save_file(&file, std::slice::from_ref(&e));
         assert_eq!(load_file(&file), vec![e]);
         let _ = std::fs::remove_dir_all(&dir);

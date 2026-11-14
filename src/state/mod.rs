@@ -12,6 +12,7 @@ pub mod pull_list;
 pub mod reader_images;
 pub mod store;
 pub mod thumbnails;
+pub mod week;
 
 use gpui::{App, AppContext as _, Entity, Global};
 
