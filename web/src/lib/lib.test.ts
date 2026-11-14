@@ -9,7 +9,7 @@ import type { ILibraryGroup, ILibraryResponseItem } from '../library.types';
 import type { IStoreBookmark } from '../store.types';
 import { bookmarksInFolder, folderDir, mergeBookmarks, onlyNewComic, postKey } from './bookmarks';
 import { keywordFromTitle, matches } from './pull-list';
-import { inWeek, parseDay, rangeLabel, weekStart } from './week';
+import { dayStart, parseDay, rangeLabel, weekStart } from './week';
 
 const item = (uid: string, writers: string[], did = false) =>
     ({ uid, did, name: uid, comic: { credits: { writers } } }) as unknown as ILibraryResponseItem;
@@ -266,8 +266,8 @@ describe('week', () => {
         expect(weekStart(day('2026-11-17'))).toBe(day('2026-11-11'));
         expect(weekStart(day('2026-11-18'))).toBe(day('2026-11-18'));
         expect(weekStart(day('2024-12-31'))).toBe(day('2024-12-25'));
-        expect(inWeek(day('2026-11-17'), day('2026-11-11'))).toBe(true);
-        expect(inWeek(day('2026-11-18'), day('2026-11-11'))).toBe(false);
+        expect(dayStart(day('2026-11-11'))).toBe('2026-11-11T00:00:00');
+        expect(dayStart(day('2026-11-11') + 7)).toBe('2026-11-18T00:00:00');
     });
 
     it('labels a week range', () => {

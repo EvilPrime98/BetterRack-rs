@@ -20,8 +20,8 @@ export function weekStart(day: number): number {
     return day - ((((day + 1) % 7) + 7) % 7);
 }
 
-export function inWeek(day: number, start: number): boolean {
-    return day >= start && day < start + 7;
+export function dayStart(day: number): string {
+    return `${new Date(day * DAY_MS).toISOString().slice(0, 10)}T00:00:00`;
 }
 
 function short(day: number): string {
