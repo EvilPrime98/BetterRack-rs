@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use gpui::Context;
 
-use crate::model::{PullEntry, StorePost};
+use crate::model::PullEntry;
 
 fn path() -> Option<PathBuf> {
     Some(
@@ -54,23 +54,6 @@ pub fn matches(entry: &PullEntry, title: &str) -> bool {
             .any(|t| title.contains(&t))
 }
 
-pub fn is_new(entry: &PullEntry, post: &StorePost) -> bool {
-    matches(entry, &post.title) && post.id.is_some_and(|id| id > entry.last_seen_id)
-}
-
-pub fn new_count(entry: &PullEntry, posts: &[StorePost]) -> usize {
-    posts.iter().filter(|p| is_new(entry, p)).count()
-}
-
-/// Highest id among the posts the entry matches, never lower than what it already saw.
-pub fn latest_match_id(entry: &PullEntry, posts: &[StorePost]) -> i64 {
-    posts
-        .iter()
-        .filter(|p| matches(entry, &p.title))
-        .filter_map(|p| p.id)
-        .fold(entry.last_seen_id, i64::max)
-}
-
 /// A keyword guess from a post title: the title up to the issue number or parenthesis.
 pub fn keyword_from_title(title: &str) -> String {
     let t = title.replace('_', " ");
@@ -83,8 +66,6 @@ pub fn keyword_from_title(title: &str) -> String {
 
 pub struct PullListStore {
     pub items: Rc<Vec<PullEntry>>,
-    /// A keyword requested by a post card, taken by the Store page to fill its input.
-    pub prefill: Option<String>,
     file: Option<PathBuf>,
 }
 
@@ -94,7 +75,6 @@ impl PullListStore {
         let items = file.as_deref().map(load_file).unwrap_or_default();
         Self {
             items: Rc::new(items),
-            prefill: None,
             file,
         }
     }
@@ -103,11 +83,6 @@ impl PullListStore {
         if let Some(file) = &self.file {
             save_file(file, &self.items);
         }
-        cx.notify();
-    }
-
-    pub fn request_add(&mut self, title: &str, cx: &mut Context<Self>) {
-        self.prefill = Some(keyword_from_title(title));
         cx.notify();
     }
 
@@ -142,13 +117,24 @@ impl PullListStore {
         self.commit(cx);
     }
 
-    pub fn mark_seen(&mut self, id: &str, last_seen_id: i64, cx: &mut Context<Self>) {
-        if let Some(e) = Rc::make_mut(&mut self.items)
-            .iter_mut()
-            .find(|e| e.id == id)
-        {
-            e.last_seen_id = last_seen_id;
-            self.commit(cx);
+    pub fn follows(&self, keyword: &str) -> bool {
+        self.find(keyword).is_some()
+    }
+
+    fn find(&self, keyword: &str) -> Option<&PullEntry> {
+        let keyword = keyword.trim().to_lowercase();
+        self.items
+            .iter()
+            .find(|e| e.keyword.to_lowercase() == keyword)
+    }
+
+    /// Follows the keyword, or unfollows it when already followed. Returns whether it is followed now.
+    pub fn toggle(&mut self, keyword: &str, cx: &mut Context<Self>) -> bool {
+        if let Some(id) = self.find(keyword).map(|e| e.id.clone()) {
+            self.remove(&id, cx);
+            false
+        } else {
+            self.add(keyword, "", cx)
         }
     }
 }
@@ -166,16 +152,6 @@ mod tests {
         }
     }
 
-    fn post(id: i64, title: &str) -> StorePost {
-        StorePost {
-            id: Some(id),
-            thumbnail_url: None,
-            title: title.into(),
-            link: String::new(),
-            upload_date: None,
-        }
-    }
-
     #[test]
     fn keyword_is_a_case_insensitive_substring() {
         let e = entry("batman", "", 0);
@@ -190,19 +166,6 @@ mod tests {
         assert!(matches(&e, "Batman #4"));
         assert!(!matches(&e, "Batman Annual #1"));
         assert!(!matches(&e, "Batman: SPECIAL"));
-    }
-
-    #[test]
-    fn new_means_matching_and_above_last_seen() {
-        let e = entry("Batman", "", 10);
-        let posts = vec![
-            post(9, "Batman #1"),
-            post(11, "Batman #2"),
-            post(12, "Saga #1"),
-        ];
-        assert_eq!(new_count(&e, &posts), 1);
-        assert_eq!(latest_match_id(&e, &posts), 11);
-        assert_eq!(latest_match_id(&entry("Batman", "", 50), &posts), 50);
     }
 
     #[test]

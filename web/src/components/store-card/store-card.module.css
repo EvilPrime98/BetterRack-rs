@@ -227,3 +227,7 @@
     font-size: 11px;
     cursor: pointer;
 }
+
+.pullBtn.marked {
+    color: #34c3d1;
+}

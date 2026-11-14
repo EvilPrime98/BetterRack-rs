@@ -265,6 +265,13 @@ impl Render for Sidebar {
                             Icon::Download,
                             Route::StoreDownloads,
                             cx,
+                        ))
+                        .child(self.nav_item(
+                            "nav-pull-list",
+                            "Pull list",
+                            Icon::Pin,
+                            Route::PullList,
+                            cx,
                         )),
                 )
                 .child(

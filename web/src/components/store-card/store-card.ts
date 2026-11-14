@@ -87,6 +87,14 @@ export function StoreCard({ item }: { item: IStorePost }) {
         $button.setAttribute('aria-label', marked ? 'Remove bookmark' : 'Bookmark this post');
     }
 
+    function onPullChange($button: HTMLElement) {
+        const followed = PULL_LIST_CTX.follows(item.title);
+        $button.classList.toggle(styles.marked, followed);
+        $button.setAttribute('aria-pressed', String(followed));
+        $button.textContent = followed ? '✓ Pull list' : '+ Pull list';
+        $button.setAttribute('aria-label', followed ? 'Remove from pull list' : 'Add to pull list');
+    }
+
     function onCoverLoad() {
         setCoverLoaded(true);
     }
@@ -176,10 +184,17 @@ export function StoreCard({ item }: { item: IStorePost }) {
                         children: [BookmarkIcon({ size: 18 })],
                     }),
                     UltraComponent({
-                        component: '<button>+ Pull list</button>',
+                        component: '<button></button>',
                         className: [styles.pullBtn],
-                        attributes: { type: 'button', 'aria-label': 'Add to pull list' },
-                        eventHandler: { click: () => PULL_LIST_CTX.requestAdd(item.title) },
+                        attributes: { type: 'button' },
+                        eventHandler: { click: () => PULL_LIST_CTX.toggle(item.title) },
+                        onMount: [onPullChange],
+                        trigger: [
+                            {
+                                subscriber: PULL_LIST_CTX.items.subscribe,
+                                triggerFunction: onPullChange,
+                            },
+                        ],
                     }),
                 ],
             }),
