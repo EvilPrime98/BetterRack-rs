@@ -11,9 +11,7 @@ import { STORE_PAGE_CONTEXT } from '../context/store-page.context';
 import { matches } from '../lib/pull-list';
 
 const PAGE_SIZE = 30;
-/** Matches wanted before the page stops fetching on its own. */
 const FILL_TARGET = 24;
-/** Bound on the automatic fetching, so a series that never matches cannot page through the site. */
 const MAX_PAGES = 30;
 
 function keyFor(item: IStorePost) {
@@ -65,7 +63,6 @@ export function PullListPage() {
         }
     }
 
-    /** Too few matches to scroll: keep fetching until there are enough or the bound is hit. */
     function fillIfSparse() {
         if (
             PULL_LIST_CTX.items.get().length > 0 &&
@@ -76,7 +73,6 @@ export function PullListPage() {
     }
 
     function start() {
-        // The feed is shared with the Store page: a leftover search would hide the latest posts.
         if (STORE_PAGE_CONTEXT.activeSearch.get()) {
             STORE_PAGE_CONTEXT.activeSearch.set('');
             STORE_PAGE_CONTEXT.query.set('');
@@ -88,7 +84,6 @@ export function PullListPage() {
     function onSentinelMount($sentinel: HTMLElement) {
         const observer = new IntersectionObserver(
             (entries) => {
-                // A sparse list is filled (and bounded) by fillIfSparse, not by the sentinel.
                 if (entries.some((e) => e.isIntersecting) && shownPosts().length >= FILL_TARGET)
                     loadMore();
             },
@@ -119,7 +114,6 @@ export function PullListPage() {
             shownKeys.length > 0 && shownKeys.every((key, i) => key === keys[i]) && $empty === null;
 
         if (grewOnly) {
-            // Same posts plus newer ones: add only those, so the cards on screen are untouched.
             for (const post of posts.slice(shownKeys.length)) {
                 const node = StoreCard({ item: post });
                 cards.set(keyFor(post), node);

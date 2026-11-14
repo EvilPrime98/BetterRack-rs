@@ -17,6 +17,8 @@ function fail(e: unknown, fallback: string) {
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+const pending = new Set<string>();
+
 export const PULL_LIST_CTX: IPullListCtx = ultraCompState({
     items: [] as IPullEntry[],
 
@@ -33,13 +35,15 @@ export const PULL_LIST_CTX: IPullListCtx = ultraCompState({
         return comp.items.get().some((e) => same(e.keyword, keyword));
     },
 
-    /** The pin on a store card: follow the series, or unfollow it when already followed. */
     toggle: async (comp: IPullListCtx, title: string) => {
         const keyword = keywordFromTitle(title);
         if (!keyword) {
             toast.error('Could not tell which series this is.');
             return;
         }
+        const lock = keyword.toLowerCase();
+        if (pending.has(lock)) return;
+        pending.add(lock);
         const existing = comp.items.get().find((e) => same(e.keyword, keyword));
         try {
             if (existing) {
@@ -48,11 +52,14 @@ export const PULL_LIST_CTX: IPullListCtx = ultraCompState({
                 toast.success(`Removed "${keyword}" from your pull list.`);
             } else {
                 const saved = await addPullEntry(keyword, '');
-                comp.items.set([...comp.items.get(), saved]);
+                const list = comp.items.get();
+                if (!list.some((e) => e.id === saved.id)) comp.items.set([...list, saved]);
                 toast.success(`Added "${keyword}" to your pull list.`);
             }
         } catch (e) {
             fail(e, 'Failed to update the pull list.');
+        } finally {
+            pending.delete(lock);
         }
     },
 });
