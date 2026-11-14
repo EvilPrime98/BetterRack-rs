@@ -28,8 +28,8 @@ export function ComicCardInfo({
 }: {
     comic: () => WikiComic | null;
     subsComic: (fn: (value: WikiComic | null) => void) => () => void;
-    metaSource: () => TMetaSource | undefined;
-    subsMetaSource: (fn: (value: TMetaSource | undefined) => void) => () => void;
+    metaSource: () => TMetaSource | null;
+    subsMetaSource: (fn: (value: TMetaSource | null) => void) => () => void;
     isLoading: () => boolean;
     subsIsLoading: (fn: (value: boolean) => void) => () => void;
 }) {
