@@ -68,6 +68,10 @@ export function RecentPage() {
 
     const itemsMap = new Map<string, UltraLightElement>();
 
+    function renderTitle($h1: HTMLElement) {
+        $h1.textContent = labelForWindow(store.windowHours.get());
+    }
+
     function onItemsChange($section: HTMLElement) {
         const currItems = store.items.get();
         const currIds = new Set(currItems.map((item) => item.uid));
@@ -112,16 +116,21 @@ export function RecentPage() {
                     component: '<header></header>',
                     className: [styles.header],
                     children: [
-                        `<span class="${styles.eyebrow}">Recently added</span>`,
                         UltraComponent({
-                            component: `<h1 class="${styles.title}"></h1>`,
-                            trigger: [
-                                {
-                                    subscriber: store.windowHours.subscribe,
-                                    triggerFunction: ($h1: HTMLElement) => {
-                                        $h1.textContent = labelForWindow(store.windowHours.get());
-                                    },
-                                },
+                            component: '<div></div>',
+                            className: [styles.heading],
+                            children: [
+                                `<span class="${styles.eyebrow}">Recently added</span>`,
+                                UltraComponent({
+                                    component: `<h1 class="${styles.title}"></h1>`,
+                                    onMount: [renderTitle],
+                                    trigger: [
+                                        {
+                                            subscriber: store.windowHours.subscribe,
+                                            triggerFunction: renderTitle,
+                                        },
+                                    ],
+                                }),
                             ],
                         }),
                         BRDropdown({
