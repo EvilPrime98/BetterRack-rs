@@ -494,20 +494,44 @@ impl ApiClient {
         page: u32,
         per_page: usize,
     ) -> ApiResult<Vec<StorePost>> {
+        let mut q: Vec<(&str, String)> = vec![];
+        match search {
+            Some(s) if !s.trim().is_empty() => q.push(("search", s.to_string())),
+            _ => q.push(("latest", "true".into())),
+        }
+        self.comics_page(q, page, per_page).await
+    }
+
+    /// The latest posts dated strictly between `after` and `before` (full local datetimes).
+    pub async fn store_posts_between(
+        &self,
+        after: &str,
+        before: &str,
+        page: u32,
+        per_page: usize,
+    ) -> ApiResult<Vec<StorePost>> {
+        let q = vec![
+            ("latest", "true".to_string()),
+            ("after", after.to_string()),
+            ("before", before.to_string()),
+        ];
+        self.comics_page(q, page, per_page).await
+    }
+
+    async fn comics_page(
+        &self,
+        mut q: Vec<(&str, String)>,
+        page: u32,
+        per_page: usize,
+    ) -> ApiResult<Vec<StorePost>> {
         #[derive(serde::Deserialize)]
         #[serde(untagged)]
         enum Resp {
             List(Vec<StorePost>),
             Wrapped { items: Vec<StorePost> },
         }
-        let mut q: Vec<(&str, String)> = vec![
-            ("page", page.to_string()),
-            ("perPage", per_page.to_string()),
-        ];
-        match search {
-            Some(s) if !s.trim().is_empty() => q.push(("search", s.to_string())),
-            _ => q.push(("latest", "true".into())),
-        }
+        q.push(("page", page.to_string()));
+        q.push(("perPage", per_page.to_string()));
         Ok(
             match self
                 .json::<Resp>(self.get(&["api", "comics"]).query(&q))
