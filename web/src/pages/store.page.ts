@@ -6,7 +6,6 @@ import {
     type UltraLightElement,
 } from 'ultra-light-js';
 import styles from './store.page.module.css';
-import { Layout } from '../layout';
 import { StoreCard } from '../components/store-card/store-card';
 import { searchComics, getLatestComics } from '../services/store.service';
 import { toast } from '../services/toast.service';
@@ -183,112 +182,107 @@ export function StorePage() {
         }
     }
 
-    return Layout(
-        UltraComponent({
-            component: '<section></section>',
+    return UltraComponent({
+        component: '<section></section>',
 
-            className: [styles.page],
+        className: [styles.page],
 
-            onMount: [
-                loadFirstPageIfEmpty,
-                () => DOCUMENT_TITLE_CONTEXT.setTitle('Store'),
-                trackScroll,
-            ],
+        onMount: [
+            loadFirstPageIfEmpty,
+            () => DOCUMENT_TITLE_CONTEXT.setTitle('Store'),
+            trackScroll,
+        ],
 
-            children: [
-                `<h1 class="${styles.title}">Store</h1>`,
+        children: [
+            `<h1 class="${styles.title}">Store</h1>`,
 
-                UltraComponent({
-                    component: '<div></div>',
+            UltraComponent({
+                component: '<div></div>',
 
-                    className: [styles.searchRow],
+                className: [styles.searchRow],
 
-                    children: [
-                        UltraComponent({
-                            component: '<input type="text" />',
-                            className: [styles.searchInput],
-                            attributes: {
-                                placeholder: 'Search for a comic…',
-                                'aria-label': 'Search comics',
-                            },
-                            trigger: [
-                                {
-                                    subscriber: STORE_PAGE_CONTEXT.query.subscribe,
-                                    triggerFunction: ($el: HTMLElement) => {
-                                        ($el as HTMLInputElement).value =
-                                            STORE_PAGE_CONTEXT.query.get();
-                                    },
+                children: [
+                    UltraComponent({
+                        component: '<input type="text" />',
+                        className: [styles.searchInput],
+                        attributes: {
+                            placeholder: 'Search for a comic…',
+                            'aria-label': 'Search comics',
+                        },
+                        trigger: [
+                            {
+                                subscriber: STORE_PAGE_CONTEXT.query.subscribe,
+                                triggerFunction: ($el: HTMLElement) => {
+                                    ($el as HTMLInputElement).value =
+                                        STORE_PAGE_CONTEXT.query.get();
                                 },
-                            ],
-                            eventHandler: {
-                                input: onQueryInput,
-                                keydown: onQueryKeydown,
                             },
-                        }),
-
-                        BRButton({
-                            text: 'Search',
-                            eventHandler: { click: store.runSearch },
-                        }),
-                    ],
-                }),
-
-                UltraComponent({
-                    component: `<p class="${styles.errorText}"></p>`,
-                    trigger: [
-                        {
-                            subscriber: store.error.subscribe,
-                            triggerFunction: onErrorChange,
-                        },
-                    ],
-                }),
-
-                UltraActivity({
-                    mode: {
-                        subscriber: [
-                            store.isLoading.subscribe,
-                            STORE_PAGE_CONTEXT.results.subscribe,
                         ],
-                        state: () =>
-                            !store.isLoading.get() && STORE_PAGE_CONTEXT.results.get().length === 0,
-                    },
-                    component: '<p></p>',
-                    className: [styles.empty],
-                    trigger: [
-                        {
-                            subscriber: [
-                                STORE_PAGE_CONTEXT.results.subscribe,
-                                store.isLoading.subscribe,
-                                store.isLoadingMore.subscribe,
-                                STORE_PAGE_CONTEXT.hasMore.subscribe,
-                            ],
-                            triggerFunction: ($p: HTMLElement) => {
-                                $p.textContent = store.isLoading.get()
-                                    ? 'Loading…'
-                                    : 'No comics found.';
-                            },
+                        eventHandler: {
+                            input: onQueryInput,
+                            keydown: onQueryKeydown,
                         },
-                    ],
-                }),
+                    }),
 
-                UltraComponent({
-                    component: '<section></section>',
-                    className: [styles.grid],
-                    onMount: [onResultsChange],
-                    trigger: [
-                        {
-                            subscriber: [
-                                STORE_PAGE_CONTEXT.results.subscribe,
-                                store.isLoading.subscribe,
-                                store.isLoadingMore.subscribe,
-                                STORE_PAGE_CONTEXT.hasMore.subscribe,
-                            ],
-                            triggerFunction: onResultsChange,
-                            defer: true,
+                    BRButton({
+                        text: 'Search',
+                        eventHandler: { click: store.runSearch },
+                    }),
+                ],
+            }),
+
+            UltraComponent({
+                component: `<p class="${styles.errorText}"></p>`,
+                trigger: [
+                    {
+                        subscriber: store.error.subscribe,
+                        triggerFunction: onErrorChange,
+                    },
+                ],
+            }),
+
+            UltraActivity({
+                mode: {
+                    subscriber: [store.isLoading.subscribe, STORE_PAGE_CONTEXT.results.subscribe],
+                    state: () =>
+                        !store.isLoading.get() && STORE_PAGE_CONTEXT.results.get().length === 0,
+                },
+                component: '<p></p>',
+                className: [styles.empty],
+                trigger: [
+                    {
+                        subscriber: [
+                            STORE_PAGE_CONTEXT.results.subscribe,
+                            store.isLoading.subscribe,
+                            store.isLoadingMore.subscribe,
+                            STORE_PAGE_CONTEXT.hasMore.subscribe,
+                        ],
+                        triggerFunction: ($p: HTMLElement) => {
+                            $p.textContent = store.isLoading.get()
+                                ? 'Loading…'
+                                : 'No comics found.';
                         },
-                    ],
-                }),
-            ],
-        }),
-    );
+                    },
+                ],
+            }),
+
+            UltraComponent({
+                component: '<section></section>',
+                className: [styles.grid],
+                onMount: [onResultsChange],
+                trigger: [
+                    {
+                        subscriber: [
+                            STORE_PAGE_CONTEXT.results.subscribe,
+                            store.isLoading.subscribe,
+                            store.isLoadingMore.subscribe,
+                            STORE_PAGE_CONTEXT.hasMore.subscribe,
+                        ],
+                        triggerFunction: onResultsChange,
+                        defer: true,
+                    },
+                ],
+            }),
+        ],
+    });
 }

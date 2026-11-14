@@ -1,6 +1,8 @@
 import { UltraActivity, UltraComponent } from 'ultra-light-js';
 import styles from './app-loader.module.css';
 
+export const LOADER_HINT_SELECTOR = '[data-loader-hint]';
+
 export function AppLoader({
     mode,
     message = 'Loading your library&hellip;',
@@ -19,7 +21,7 @@ export function AppLoader({
                 `<img src="/favicon.svg" alt="BetterRack" class="${styles.logo}" />`,
                 `<p class="${styles.brand}">Better<span>Rack</span></p>`,
                 `<div class="${styles.spinner}"></div>`,
-                `<p class="${styles.hint}">${message}</p>`,
+                `<p class="${styles.hint}" data-loader-hint>${message}</p>`,
             ],
         });
     }
@@ -32,7 +34,7 @@ export function AppLoader({
             `<img src="/favicon.svg" alt="BetterRack" class="${styles.logo}" />`,
             `<p class="${styles.brand}">Better<span>Rack</span></p>`,
             `<div class="${styles.spinner}"></div>`,
-            `<p class="${styles.hint}">${message}</p>`,
+            `<p class="${styles.hint}" data-loader-hint>${message}</p>`,
         ],
     });
 }

@@ -7,7 +7,6 @@ import {
     type IUltraCompStateStateful,
 } from 'ultra-light-js';
 import styles from './store-downloads.page.module.css';
-import { Layout } from '../layout';
 import { Browser } from '@capacitor/browser';
 import { isAndroidPlatform } from '@/services/server-config.service';
 import {
@@ -152,68 +151,66 @@ export function StoreDownloadsPage() {
         $p.textContent = store.loaded.get() ? 'No active downloads.' : 'Loading downloads…';
     }
 
-    return Layout(
-        UltraComponent({
-            component: '<section></section>',
+    return UltraComponent({
+        component: '<section></section>',
 
-            className: [styles.page],
+        className: [styles.page],
 
-            onMount: [
-                () => DOCUMENT_TITLE_CONTEXT.setTitle('Downloads'),
-                () => {
-                    store.load();
-                    const timer = setInterval(() => store.load(), POLL_INTERVAL_MS);
-                    return () => clearInterval(timer);
-                },
-            ],
+        onMount: [
+            () => DOCUMENT_TITLE_CONTEXT.setTitle('Downloads'),
+            () => {
+                store.load();
+                const timer = setInterval(() => store.load(), POLL_INTERVAL_MS);
+                return () => clearInterval(timer);
+            },
+        ],
 
-            children: [
-                UltraComponent({
-                    component: '<header></header>',
-                    className: [styles.header],
-                    children: [
-                        `<span class="${styles.eyebrow}">Store</span>`,
-                        `<h1 class="${styles.title}">Downloads</h1>`,
-                    ],
-                }),
+        children: [
+            UltraComponent({
+                component: '<header></header>',
+                className: [styles.header],
+                children: [
+                    `<span class="${styles.eyebrow}">Store</span>`,
+                    `<h1 class="${styles.title}">Downloads</h1>`,
+                ],
+            }),
 
-                UltraComponent({
-                    component: '<p></p>',
-                    className: [styles.empty],
-                    onMount: [renderEmpty],
-                    trigger: [
-                        {
-                            subscriber: [
-                                store.jobs.subscribe,
-                                store.error.subscribe,
-                                store.loaded.subscribe,
-                            ],
-                            triggerFunction: ($p: HTMLElement) => {
-                                $p.hidden = store.jobs.get().length > 0;
-                                renderEmpty($p);
-                            },
+            UltraComponent({
+                component: '<p></p>',
+                className: [styles.empty],
+                onMount: [renderEmpty],
+                trigger: [
+                    {
+                        subscriber: [
+                            store.jobs.subscribe,
+                            store.error.subscribe,
+                            store.loaded.subscribe,
+                        ],
+                        triggerFunction: ($p: HTMLElement) => {
+                            $p.hidden = store.jobs.get().length > 0;
+                            renderEmpty($p);
                         },
-                    ],
-                }),
+                    },
+                ],
+            }),
 
-                UltraComponent({
-                    component: '<ul></ul>',
-                    className: [styles.list],
-                    eventHandler: { click: onListClick },
-                    onMount: [renderList],
-                    trigger: [
-                        {
-                            subscriber: [
-                                store.jobs.subscribe,
-                                store.retryingIds.subscribe,
-                                store.stoppingIds.subscribe,
-                            ],
-                            triggerFunction: renderList,
-                            defer: true,
-                        },
-                    ],
-                }),
-            ],
-        }),
-    );
+            UltraComponent({
+                component: '<ul></ul>',
+                className: [styles.list],
+                eventHandler: { click: onListClick },
+                onMount: [renderList],
+                trigger: [
+                    {
+                        subscriber: [
+                            store.jobs.subscribe,
+                            store.retryingIds.subscribe,
+                            store.stoppingIds.subscribe,
+                        ],
+                        triggerFunction: renderList,
+                        defer: true,
+                    },
+                ],
+            }),
+        ],
+    });
 }

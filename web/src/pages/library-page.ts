@@ -10,7 +10,6 @@ import { PageHeader } from '@/components/page-header/page-header';
 import { LIBRARY_CONTEXT } from '../context/library.context';
 import { FolderCard } from '@/components/folder-card/folder-card';
 import { ComicCard } from '@/components/comic-card/comic-card';
-import { Layout } from '@/layout';
 import { COMICS_TYPE_CTX } from '../context/comics-types.context';
 import type { ILibraryResponseItem } from '../library.types';
 import { ultraFilters } from '../hooks/ultraFilters';
@@ -136,96 +135,94 @@ export function LibraryPage({ uid }: { uid?: string }) {
         );
     }
 
-    return Layout(
-        UltraComponent({
-            component: '<section></section>',
+    return UltraComponent({
+        component: '<section></section>',
 
-            className: [styles.page],
+        className: [styles.page],
 
-            onMount: [() => DOCUMENT_TITLE_CONTEXT.setTitle('Library')],
+        onMount: [() => DOCUMENT_TITLE_CONTEXT.setTitle('Library')],
 
-            children: [
-                PageHeader({
-                    uid,
-                    items,
-                    subsItems,
-                    filters,
-                    resetFilters,
-                    showNewFolder: true,
-                }),
+        children: [
+            PageHeader({
+                uid,
+                items,
+                subsItems,
+                filters,
+                resetFilters,
+                showNewFolder: true,
+            }),
 
-                UltraActivity({
-                    mode: {
-                        subscriber: [
-                            subsItems,
-                            LIBRARY_CONTEXT.libraryLoaded.subscribe,
-                            READ_TYPES_CTX.type.subscribe,
-                            COMIC_CACHE_CONTEXT.cache.subscribe,
-                            BOOKMARKS_CTX.items.subscribe,
-                        ],
-                        state: () => LIBRARY_CONTEXT.libraryLoaded.get() && !hasVisibleItems(),
-                    },
-                    component: `<p class="${styles.empty}">No items to show.</p>`,
-                }),
-
-                UltraComponent({
-                    onMount: [
-                        ($el: HTMLElement) => {
-                            LIBRARY_CONTEXT.fetchLibrary();
-                            if (LIBRARY_CONTEXT.groups.get().length) applyFilters();
-                            $el.scrollTo(0, 0);
-
-                            sentinelObserver = new IntersectionObserver(
-                                (entries) => {
-                                    if (!entries.some((e) => e.isIntersecting)) return;
-                                    renderCount += PAGE_SIZE;
-                                    sentinelObserver?.unobserve($sentinel);
-                                    onItemsChange($el);
-                                    if ($sentinel.isConnected) sentinelObserver?.observe($sentinel);
-                                },
-                                { rootMargin: '600px' },
-                            );
-                            sentinelObserver.observe($sentinel);
-
-                            return () => sentinelObserver?.disconnect();
-                        },
-                    ],
-
-                    component: '<section></section>',
-                    className: [styles.comicContainer],
-                    trigger: [
-                        {
-                            subscriber: subsItems,
-                            triggerFunction: onItemsChange,
-                            defer: true,
-                        },
-                        {
-                            subscriber: [COMICS_TYPE_CTX.type.subscribe, subsItems],
-                            triggerFunction: onLayoutChange,
-                            defer: true,
-                        },
-                        {
-                            subscriber: [
-                                BOOKMARKS_CTX.items.subscribe,
-                                READ_TYPES_CTX.type.subscribe,
-                                filters.sortByReleaseDate.subscribe,
-                            ],
-                            triggerFunction: onItemsChange,
-                            defer: true,
-                        },
-                    ],
-                }),
-            ],
-
-            trigger: [
-                {
+            UltraActivity({
+                mode: {
                     subscriber: [
-                        LIBRARY_CONTEXT.groups.subscribe,
-                        LIBRARY_CONTEXT.searchQuery.subscribe,
+                        subsItems,
+                        LIBRARY_CONTEXT.libraryLoaded.subscribe,
+                        READ_TYPES_CTX.type.subscribe,
+                        COMIC_CACHE_CONTEXT.cache.subscribe,
+                        BOOKMARKS_CTX.items.subscribe,
                     ],
-                    triggerFunction: () => applyFilters(),
+                    state: () => LIBRARY_CONTEXT.libraryLoaded.get() && !hasVisibleItems(),
                 },
-            ],
-        }),
-    );
+                component: `<p class="${styles.empty}">No items to show.</p>`,
+            }),
+
+            UltraComponent({
+                onMount: [
+                    ($el: HTMLElement) => {
+                        LIBRARY_CONTEXT.fetchLibrary();
+                        if (LIBRARY_CONTEXT.groups.get().length) applyFilters();
+                        $el.scrollTo(0, 0);
+
+                        sentinelObserver = new IntersectionObserver(
+                            (entries) => {
+                                if (!entries.some((e) => e.isIntersecting)) return;
+                                renderCount += PAGE_SIZE;
+                                sentinelObserver?.unobserve($sentinel);
+                                onItemsChange($el);
+                                if ($sentinel.isConnected) sentinelObserver?.observe($sentinel);
+                            },
+                            { rootMargin: '600px' },
+                        );
+                        sentinelObserver.observe($sentinel);
+
+                        return () => sentinelObserver?.disconnect();
+                    },
+                ],
+
+                component: '<section></section>',
+                className: [styles.comicContainer],
+                trigger: [
+                    {
+                        subscriber: subsItems,
+                        triggerFunction: onItemsChange,
+                        defer: true,
+                    },
+                    {
+                        subscriber: [COMICS_TYPE_CTX.type.subscribe, subsItems],
+                        triggerFunction: onLayoutChange,
+                        defer: true,
+                    },
+                    {
+                        subscriber: [
+                            BOOKMARKS_CTX.items.subscribe,
+                            READ_TYPES_CTX.type.subscribe,
+                            filters.sortByReleaseDate.subscribe,
+                        ],
+                        triggerFunction: onItemsChange,
+                        defer: true,
+                    },
+                ],
+            }),
+        ],
+
+        trigger: [
+            {
+                subscriber: [
+                    LIBRARY_CONTEXT.groups.subscribe,
+                    LIBRARY_CONTEXT.searchQuery.subscribe,
+                ],
+                triggerFunction: () => applyFilters(),
+            },
+        ],
+    });
 }
