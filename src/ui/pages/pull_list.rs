@@ -1,8 +1,8 @@
 //! Pull-list page: the Store feed, narrowed to the posts that match a followed series.
 //!
-//! It scrolls like the Store page (a virtualized grid that loads the next page near its end) over
-//! the shared [`StoreState`](crate::state::store::StoreState) feed. Because most posts do not
-//! match, pages are also fetched while too few matches are on screen, up to [`MAX_PAGES`].
+//! It shows one Wednesday-anchored week at a time over the shared
+//! [`StoreState`](crate::state::store::StoreState) feed. Pages are fetched until the loaded posts
+//! reach back past the selected week, up to [`MAX_PAGES`].
 //! Series are followed and unfollowed with the pin on a store card.
 
 use gpui::{
@@ -14,19 +14,20 @@ use crate::model::StorePost;
 use crate::route::Navigate;
 use crate::state::Stores;
 use crate::state::pull_list::matches;
+use crate::state::week;
 use crate::ui::components::items_grid::{PAGE_PAD_X, available_width};
 use crate::ui::components::store_card::{card_height, store_card};
-use crate::ui::pages::store::{GAP_X, GAP_Y, PREFETCH_ROWS, geometry, is_configured};
+use crate::ui::pages::store::{GAP_X, GAP_Y, geometry, is_configured};
 use crate::ui::theme;
 
-/// Matches wanted on screen before the page stops fetching on its own.
-const FILL_TARGET: usize = 24;
 /// Bound on the automatic fetching, so a series that never matches cannot page through the site.
 const MAX_PAGES: u32 = 30;
 
 pub struct PullListPage {
     stores: Stores,
     scroll: UniformListScrollHandle,
+    /// Day number of the selected week's Wednesday.
+    week_start: i64,
     _subs: Vec<Subscription>,
 }
 
@@ -54,8 +55,67 @@ impl PullListPage {
         Self {
             stores,
             scroll: UniformListScrollHandle::new(),
+            week_start: week::week_start(week::today()),
             _subs: subs,
         }
+    }
+}
+
+fn nav_button(id: &'static str, label: &'static str, enabled: bool) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .px(px(10.0))
+        .py(px(4.0))
+        .rounded_md()
+        .border_1()
+        .border_color(theme::border_subtle())
+        .text_size(px(12.0))
+        .text_color(if enabled {
+            theme::text()
+        } else {
+            rgb(0x555555)
+        })
+        .when(enabled, |d| d.cursor_pointer())
+        .child(label)
+}
+
+impl PullListPage {
+    fn navigator(&self, current_week: i64, cx: &mut Context<Self>) -> impl IntoElement {
+        let at_current = self.week_start >= current_week;
+        div()
+            .flex()
+            .items_center()
+            .gap(px(8.0))
+            .child(
+                nav_button("week-prev", "‹", true).on_click(cx.listener(|this, _, _, cx| {
+                    this.week_start -= 7;
+                    cx.notify();
+                })),
+            )
+            .child(
+                div()
+                    .min_w(px(140.0))
+                    .text_center()
+                    .text_size(px(13.0))
+                    .text_color(theme::text())
+                    .child(week::range_label(self.week_start)),
+            )
+            .child(
+                nav_button("week-next", "›", !at_current).when(!at_current, |d| {
+                    d.on_click(cx.listener(|this, _, _, cx| {
+                        this.week_start += 7;
+                        cx.notify();
+                    }))
+                }),
+            )
+            .child(
+                nav_button("week-now", "This week", !at_current).when(!at_current, |d| {
+                    d.on_click(cx.listener(move |this, _, _, cx| {
+                        this.week_start = current_week;
+                        cx.notify();
+                    }))
+                }),
+            )
     }
 }
 
@@ -81,42 +141,27 @@ impl Render for PullListPage {
                 s.error().unwrap_or_default().to_string(),
             )
         };
+        let week_start = self.week_start;
+        let current_week = week::week_start(week::today());
+        let in_selected_week = |p: &StorePost| {
+            p.upload_date
+                .as_deref()
+                .and_then(week::parse_day)
+                .is_some_and(|d| week::in_week(d, week_start))
+        };
         let shown: Vec<StorePost> = results
             .iter()
-            .filter(|p| entries.iter().any(|e| matches(e, &p.title)))
+            .filter(|p| in_selected_week(p) && entries.iter().any(|e| matches(e, &p.title)))
             .cloned()
             .collect();
-
-        let chips: Vec<_> = entries
+        let oldest = results
             .iter()
-            .map(|e| {
-                let id = e.id.clone();
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .px(px(10.0))
-                    .py(px(4.0))
-                    .rounded_full()
-                    .border_1()
-                    .border_color(theme::border_subtle())
-                    .text_size(px(12.0))
-                    .text_color(theme::text())
-                    .child(e.keyword.clone())
-                    .child(
-                        div()
-                            .id(gpui::SharedString::from(format!("pull-rm-{}", e.id)))
-                            .cursor_pointer()
-                            .child("×")
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.stores.pull_list.update(cx, |s, cx| s.remove(&id, cx));
-                            })),
-                    )
-            })
-            .collect();
+            .filter_map(|p| p.upload_date.as_deref().and_then(week::parse_day))
+            .min();
 
-        // Too few matches to scroll: keep fetching (a no-op while a page is loading or none is left).
-        if !entries.is_empty() && shown.len() < FILL_TARGET && page < MAX_PAGES {
+        // The loaded posts do not yet reach back past the week: keep fetching (a no-op while a page
+        // is loading or none is left).
+        if !entries.is_empty() && oldest.is_none_or(|o| o >= week_start) && page < MAX_PAGES {
             self.stores.store.update(cx, |s, cx| s.load_more(cx));
         }
 
@@ -128,7 +173,7 @@ impl Render for PullListPage {
             let text = if loading || loading_more {
                 "Loading…"
             } else {
-                "No posts match your pull list yet."
+                "No posts match this week."
             };
             note(text).into_any_element()
         } else {
@@ -140,11 +185,6 @@ impl Render for PullListPage {
                 "pull-grid",
                 rows,
                 cx.processor(move |_this, range: std::ops::Range<usize>, _w, cx| {
-                    // Scroll-driven paging only once there is a list to scroll; a sparse list is
-                    // filled (and bounded) by the fetch in `render`.
-                    if shown.len() >= FILL_TARGET && range.end + PREFETCH_ROWS >= rows {
-                        stores.store.update(cx, |s, cx| s.load_more(cx));
-                    }
                     range
                         .map(|row| {
                             let first = row * cols;
@@ -198,6 +238,7 @@ impl Render for PullListPage {
                     .text_color(rgb(0xf2f2f2))
                     .child("Pull list"),
             )
+            .child(self.navigator(current_week, cx))
             .when(!error.is_empty(), |d| {
                 d.child(
                     div()
@@ -205,9 +246,6 @@ impl Render for PullListPage {
                         .text_color(rgb(0xe05a5a))
                         .child(error),
                 )
-            })
-            .when(!entries.is_empty(), |d| {
-                d.child(div().flex().flex_wrap().gap(px(8.0)).children(chips))
             })
             .child(div().flex_1().min_h_0().child(body))
     }
