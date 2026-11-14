@@ -213,3 +213,17 @@
 .bookmarkBtn.marked svg path {
     fill: currentColor;
 }
+
+.pullBtn {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 1;
+    padding: 4px 10px;
+    color: #fefcf3;
+    background: rgba(0, 0, 0, 0.55);
+    border: none;
+    border-radius: 999px;
+    font-size: 11px;
+    cursor: pointer;
+}

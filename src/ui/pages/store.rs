@@ -35,6 +35,10 @@ fn geometry(avail: f32) -> (usize, f32) {
 pub struct StorePage {
     stores: Stores,
     input: Entity<TextInput>,
+    follow: Entity<TextInput>,
+    exclude: Entity<TextInput>,
+    /// The pull-list entry whose matches the grid is narrowed to.
+    focus: Option<String>,
     _subs: Vec<Subscription>,
 }
 
@@ -46,7 +50,18 @@ impl StorePage {
     pub fn new(stores: Stores, cx: &mut Context<Self>) -> Self {
         let query = stores.store.read(cx).query.clone();
         let input = cx.new(|cx| TextInput::new("Search for a comic…", cx).with_value(query));
+        let follow = cx.new(|cx| TextInput::new("Follow a series (title keyword)…", cx));
+        let exclude = cx.new(|cx| TextInput::new("Exclude (comma separated)", cx));
         let subs = vec![
+            cx.subscribe(&follow, |this, _, ev: &TextInputEvent, cx| {
+                if matches!(ev, TextInputEvent::Submit) {
+                    this.follow_series(cx);
+                }
+            }),
+            cx.observe(&stores.pull_list, |this, _, cx| {
+                this.apply_prefill(cx);
+                cx.notify();
+            }),
             cx.subscribe(&input, |this, input, ev: &TextInputEvent, cx| match ev {
                 TextInputEvent::Changed => {
                     let text = input.read(cx).value().to_string();
@@ -67,10 +82,161 @@ impl StorePage {
         let this = Self {
             stores,
             input,
+            follow,
+            exclude,
+            focus: None,
             _subs: subs,
         };
         this.load_if_configured(cx);
         this
+    }
+
+    fn apply_prefill(&mut self, cx: &mut Context<Self>) {
+        let prefill = self.stores.pull_list.update(cx, |s, _| s.prefill.take());
+        if let Some(keyword) = prefill {
+            self.follow.update(cx, |i, cx| i.set_value(keyword, cx));
+            self.exclude.update(cx, |i, cx| i.set_value("", cx));
+        }
+    }
+
+    fn follow_series(&mut self, cx: &mut Context<Self>) {
+        let keyword = self.follow.read(cx).value().to_string();
+        let exclude = self.exclude.read(cx).value().to_string();
+        let added = self
+            .stores
+            .pull_list
+            .update(cx, |s, cx| s.add(&keyword, &exclude, cx));
+        if added {
+            self.follow.update(cx, |i, cx| i.set_value("", cx));
+            self.exclude.update(cx, |i, cx| i.set_value("", cx));
+        }
+    }
+
+    /// The pull-list strip: add form, one chip per entry (new count, click to narrow the grid,
+    /// × to unfollow) and, for the narrowed entry, a "Mark seen" button.
+    fn pull_section(
+        &self,
+        results: &[crate::model::StorePost],
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        use crate::state::pull_list::{latest_match_id, new_count};
+        let entries = self.stores.pull_list.read(cx).items.clone();
+        let box_ = |input: &Entity<TextInput>, w: f32| {
+            div()
+                .flex()
+                .items_center()
+                .w(px(w))
+                .h(px(32.0))
+                .px(px(12.0))
+                .rounded(px(6.0))
+                .border_1()
+                .border_color(theme::border_subtle())
+                .bg(theme::bg_panel())
+                .child(input.clone())
+        };
+        let chips: Vec<_> = entries
+            .iter()
+            .map(|e| {
+                let active = self.focus.as_deref() == Some(e.id.as_str());
+                let fresh = new_count(e, results);
+                let label = if fresh > 0 {
+                    format!("{} · {fresh} new", e.keyword)
+                } else {
+                    e.keyword.clone()
+                };
+                let (focus_id, remove_id, seen_id) = (e.id.clone(), e.id.clone(), e.id.clone());
+                let latest = latest_match_id(e, results);
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .px(px(10.0))
+                    .py(px(4.0))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(if active {
+                        theme::accent()
+                    } else {
+                        theme::border_subtle().into()
+                    })
+                    .text_size(px(12.0))
+                    .text_color(if fresh > 0 {
+                        theme::accent()
+                    } else {
+                        theme::text()
+                    })
+                    .child(
+                        div()
+                            .id(gpui::SharedString::from(format!("pull-chip-{}", e.id)))
+                            .cursor_pointer()
+                            .child(label)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.focus = if this.focus.as_deref() == Some(focus_id.as_str()) {
+                                    None
+                                } else {
+                                    Some(focus_id.clone())
+                                };
+                                cx.notify();
+                            })),
+                    )
+                    .when(active && fresh > 0, |d| {
+                        d.child(
+                            div()
+                                .id(gpui::SharedString::from(format!("pull-seen-{}", e.id)))
+                                .cursor_pointer()
+                                .text_color(theme::text())
+                                .child("Mark seen")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.stores
+                                        .pull_list
+                                        .update(cx, |s, cx| s.mark_seen(&seen_id, latest, cx));
+                                })),
+                        )
+                    })
+                    .child(
+                        div()
+                            .id(gpui::SharedString::from(format!("pull-rm-{}", e.id)))
+                            .cursor_pointer()
+                            .child("×")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if this.focus.as_deref() == Some(remove_id.as_str()) {
+                                    this.focus = None;
+                                }
+                                this.stores
+                                    .pull_list
+                                    .update(cx, |s, cx| s.remove(&remove_id, cx));
+                            })),
+                    )
+            })
+            .collect();
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(10.0))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(rgb(0xf2f2f2))
+                            .child("Pull list"),
+                    )
+                    .child(box_(&self.follow, 260.0))
+                    .child(box_(&self.exclude, 200.0))
+                    .child(button(
+                        "pull-add",
+                        "Add",
+                        ButtonVariant::Secondary,
+                        cx.listener(|this, _, _, cx| this.follow_series(cx)),
+                    )),
+            )
+            .when(!chips.is_empty(), |d| {
+                d.child(div().flex().flex_wrap().gap(px(8.0)).children(chips))
+            })
     }
 
     /// Without a store source the server refuses every request: do not provoke an error toast on
@@ -101,6 +267,21 @@ impl Render for StorePage {
                 s.more_failed(),
                 s.error().unwrap_or_default().to_string(),
             )
+        };
+
+        let pull_section = self.pull_section(&results, cx);
+        let results = match self.focus.as_deref().and_then(|id| {
+            let items = self.stores.pull_list.read(cx).items.clone();
+            items.iter().find(|e| e.id == id).cloned()
+        }) {
+            Some(entry) => std::rc::Rc::new(
+                results
+                    .iter()
+                    .filter(|p| crate::state::pull_list::matches(&entry, &p.title))
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            ),
+            None => results,
         };
 
         let search_row = div()
@@ -240,6 +421,7 @@ impl Render for StorePage {
                     .child("Store"),
             )
             .child(search_row)
+            .child(pull_section)
             .when(!error.is_empty(), |s| {
                 s.child(
                     div()

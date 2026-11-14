@@ -118,6 +118,15 @@ pub fn store_card<V: 'static>(
             move |cx| toggle_bookmark(&stores, &post, cx)
         },
     );
+    let pull = action_button(format!("store-pull-{key}").into(), Icon::Pin, false, {
+        let title = post.title.clone();
+        let stores = stores.clone();
+        move |cx| {
+            stores
+                .pull_list
+                .update(cx, |s, cx| s.request_add(&title, cx))
+        }
+    });
     let overlay = div()
         .absolute()
         .left_0()
@@ -135,7 +144,8 @@ pub fn store_card<V: 'static>(
             linear_color_stop(rgba(0x000000d0), 1.0),
         ))
         .child(action)
-        .child(bookmark);
+        .child(bookmark)
+        .child(pull);
     let overlay = if pinned {
         overlay
     } else {

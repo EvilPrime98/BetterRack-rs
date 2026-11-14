@@ -1,0 +1,71 @@
+.pullList {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.heading {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #f2f2f2;
+}
+
+.input {
+    box-sizing: border-box;
+    height: 32px;
+    width: 240px;
+    padding: 0 12px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: #f2f2f2;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    font-size: 12px;
+}
+
+.chip button {
+    padding: 0;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.chip.fresh {
+    color: var(--accent);
+}
+
+.chip.active {
+    border-color: var(--accent);
+}

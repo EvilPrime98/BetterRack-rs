@@ -21,6 +21,14 @@ export interface IStoreBookmark {
     createdAt: number;
 }
 
+export interface IPullEntry {
+    id: string;
+    keyword: string;
+    exclude: string;
+    lastSeenId: number;
+    createdAt: number;
+}
+
 export interface IStoreLink {
     uuid: string;
     title: string;

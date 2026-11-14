@@ -18,6 +18,7 @@ import { AppLoader } from './components/app-loader/app-loader';
 import { APP_CTX } from './context/app.context';
 import { ServerModal } from './components/server-modal/server-modal';
 import { SERVER_MODAL_CTX } from './context/server-modal.context';
+import { PULL_LIST_CTX } from './context/pull-list.context';
 
 export function App() {
     async function onMount() {
@@ -29,6 +30,7 @@ export function App() {
                 COMIC_CACHE_CONTEXT.init(),
                 SETTINGS_CONTEXT.fetchSettings(),
                 BOOKMARKS_CTX.load(),
+                PULL_LIST_CTX.load(),
             ]),
         ]);
         if (

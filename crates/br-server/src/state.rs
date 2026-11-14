@@ -1,4 +1,5 @@
 use crate::bookmarks::Bookmarks;
+use crate::pull_list::PullList;
 use br_core::archive::Archives;
 use br_core::comic_data::ComicDataStore;
 use br_core::config::Config;
@@ -28,6 +29,7 @@ pub struct AppState {
     pub downloads: Arc<DownloadService>,
     pub wiki: Arc<dyn WikiLookup>,
     pub bookmarks: Arc<Bookmarks>,
+    pub pull_list: Arc<PullList>,
 }
 
 /// Network behaviour of the store client and the download engine. The defaults are the
@@ -121,6 +123,7 @@ impl AppState {
             cwd,
         ));
         let bookmarks = Arc::new(Bookmarks::open(&config.data_dir));
+        let pull_list = Arc::new(PullList::open(&config.data_dir));
         Ok(Self {
             config: Arc::new(config),
             prefs,
@@ -133,6 +136,7 @@ impl AppState {
             downloads,
             wiki,
             bookmarks,
+            pull_list,
         })
     }
 

@@ -12,6 +12,7 @@ import { BRButton } from '@/components/br-button/br-button';
 import { BookmarkIcon } from '@/icons/bookmark.icon';
 import { BOOKMARKS_CTX } from '@/context/bookmarks.context';
 import { postKey } from '@/lib/bookmarks';
+import { PULL_LIST_CTX } from '@/context/pull-list.context';
 
 export function StoreCard({ item }: { item: IStorePost }) {
     const [state, setState, subsState] = ultraState<TCardState>({
@@ -173,6 +174,12 @@ export function StoreCard({ item }: { item: IStorePost }) {
                             },
                         ],
                         children: [BookmarkIcon({ size: 18 })],
+                    }),
+                    UltraComponent({
+                        component: '<button>+ Pull list</button>',
+                        className: [styles.pullBtn],
+                        attributes: { type: 'button', 'aria-label': 'Add to pull list' },
+                        eventHandler: { click: () => PULL_LIST_CTX.requestAdd(item.title) },
                     }),
                 ],
             }),

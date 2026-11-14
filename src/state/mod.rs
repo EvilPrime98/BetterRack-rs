@@ -8,6 +8,7 @@ pub mod epoch;
 pub mod identify;
 pub mod library;
 pub mod prefs;
+pub mod pull_list;
 pub mod reader_images;
 pub mod store;
 pub mod thumbnails;
@@ -22,6 +23,7 @@ use crate::api::ApiClient;
 pub struct Stores {
     pub library: Entity<library::LibraryStore>,
     pub bookmarks: Entity<bookmarks::BookmarksStore>,
+    pub pull_list: Entity<pull_list::PullListStore>,
     pub comics: Entity<comic_cache::ComicCacheStore>,
     pub thumbs: Entity<thumbnails::Thumbnails>,
     pub identify: Entity<identify::IdentifyStore>,
@@ -39,6 +41,7 @@ impl Stores {
         Self {
             library: cx.new(|_| library::LibraryStore::default()),
             bookmarks: cx.new(|_| bookmarks::BookmarksStore::load()),
+            pull_list: cx.new(|_| pull_list::PullListStore::load()),
             comics: cx.new(|_| comic_cache::ComicCacheStore::default()),
             thumbs: cx.new(|_| thumbnails::Thumbnails::default()),
             identify: cx.new(|_| identify::IdentifyStore::default()),
