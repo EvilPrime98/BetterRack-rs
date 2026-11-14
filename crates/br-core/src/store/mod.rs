@@ -342,19 +342,45 @@ impl StoreApi {
         Ok(results)
     }
 
-    pub async fn get_latest(&self, page: &str, per_page: &str) -> Result<Vec<PostLink>> {
-        let key = format!("latest_{page}_{per_page}");
-        if let Some(hit) = self.latest.get(&key).filter(|h| !h.is_empty()) {
-            return Ok(hit);
-        }
-        let params = url::form_urlencoded::Serializer::new(String::new())
+    fn latest_query(page: &str, per_page: &str, range: Option<(&str, &str)>) -> String {
+        let mut params = url::form_urlencoded::Serializer::new(String::new());
+        params
             .append_pair("orderby", "date")
             .append_pair("order", "desc")
             .append_pair("per_page", per_page)
             .append_pair("page", page)
-            .append_pair("_fields", POST_FIELDS)
-            .finish();
-        let url = format!("{}/posts?{params}", self.api_url()?);
+            .append_pair("_fields", POST_FIELDS);
+        if let Some((after, before)) = range {
+            params
+                .append_pair("after", after)
+                .append_pair("before", before);
+        }
+        params.finish()
+    }
+
+    /// The newest posts. `range` restricts them to `(after, before)`, both exclusive full local
+    /// datetimes such as `2026-11-04T00:00:00`; the store compares them with the post's site-local
+    /// `date` and rejects a bare date.
+    pub async fn get_latest(
+        &self,
+        page: &str,
+        per_page: &str,
+        range: Option<(&str, &str)>,
+    ) -> Result<Vec<PostLink>> {
+        let (after, before) = range.unzip();
+        let key = format!(
+            "latest_{page}_{per_page}_{}_{}",
+            after.unwrap_or_default(),
+            before.unwrap_or_default()
+        );
+        if let Some(hit) = self.latest.get(&key).filter(|h| !h.is_empty()) {
+            return Ok(hit);
+        }
+        let url = format!(
+            "{}/posts?{}",
+            self.api_url()?,
+            Self::latest_query(page, per_page, range)
+        );
         let Some(posts) = self.get_json(&url).await? else {
             return Ok(vec![]);
         };
@@ -687,6 +713,18 @@ mod tests {
         let dc = StoreApi::parse_weekly_list(WEEKLY, Some("dc"));
         assert_eq!(dc.len(), 2);
         assert!(StoreApi::parse_weekly_list(WEEKLY, Some("image")).is_empty());
+    }
+
+    #[test]
+    fn latest_query_carries_the_date_window() {
+        let q = StoreApi::latest_query(
+            "1",
+            "100",
+            Some(("2026-11-04T00:00:00", "2026-11-11T00:00:00")),
+        );
+        assert!(q.contains("after=2026-11-04T00%3A00%3A00"), "{q}");
+        assert!(q.contains("before=2026-11-11T00%3A00%3A00"), "{q}");
+        assert!(!StoreApi::latest_query("1", "10", None).contains("after="));
     }
 
     #[test]

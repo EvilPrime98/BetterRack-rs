@@ -37,9 +37,17 @@ pub async fn get_comics(
     Query(q): Q,
 ) -> Result<axum::response::Response, ApiError> {
     if q.get("latest").is_some_and(|v| v == "true") {
+        let range = q
+            .get("after")
+            .zip(q.get("before"))
+            .map(|(a, b)| (a.as_str(), b.as_str()));
         let posts = s
             .store
-            .get_latest(&number_or(&q, "page", 1.0), &number_or(&q, "perPage", 10.0))
+            .get_latest(
+                &number_or(&q, "page", 1.0),
+                &number_or(&q, "perPage", 10.0),
+                range,
+            )
             .await
             .map_err(store_err)?;
         return Ok(Json(posts).into_response());
