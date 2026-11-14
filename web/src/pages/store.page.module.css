@@ -111,34 +111,32 @@
     color: #808080;
 }
 
-.chips {
+.weekNav {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.chips:empty {
-    display: none;
-}
-
-.chip {
-    display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 10px;
-    border: 1px solid #ffffff1f;
-    border-radius: 999px;
+}
+
+.weekLabel {
+    min-width: 140px;
+    text-align: center;
     font-family: var(--font-sans);
-    font-size: 12px;
+    font-size: 13px;
     color: #f2f2f2;
 }
 
-.chipRemove {
-    padding: 0;
-    border: 0;
+.weekBtn {
+    padding: 4px 10px;
+    border: 1px solid #ffffff1f;
+    border-radius: 6px;
     background: none;
-    color: inherit;
-    font-size: 14px;
-    line-height: 1;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: #f2f2f2;
     cursor: pointer;
+}
+
+.weekBtn:disabled {
+    color: #555555;
+    cursor: default;
 }

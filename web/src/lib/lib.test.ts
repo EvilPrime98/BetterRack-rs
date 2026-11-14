@@ -9,6 +9,7 @@ import type { ILibraryGroup, ILibraryResponseItem } from '../library.types';
 import type { IStoreBookmark } from '../store.types';
 import { bookmarksInFolder, folderDir, mergeBookmarks, onlyNewComic, postKey } from './bookmarks';
 import { keywordFromTitle, matches } from './pull-list';
+import { inWeek, parseDay, rangeLabel, weekStart } from './week';
 
 const item = (uid: string, writers: string[], did = false) =>
     ({ uid, did, name: uid, comic: { credits: { writers } } }) as unknown as ILibraryResponseItem;
@@ -225,26 +226,52 @@ describe('store bookmarks', () => {
 });
 
 describe('pull list', () => {
-    const entry = (keyword: string, exclude = '', lastSeenId = 0) => ({
+    const entry = (keyword: string, lastSeenId = 0) => ({
         id: 'e',
         keyword,
-        exclude,
         lastSeenId,
         createdAt: 0,
     });
 
-    it('matches a case-insensitive substring and honours exclude terms', () => {
-        expect(matches(entry('batman'), 'The_Dark BATMAN #3')).toBe(true);
-        expect(matches(entry('batman'), 'Superman')).toBe(false);
+    it('matches the case-insensitive series name', () => {
+        const e = entry('batman');
+        expect(matches(e, 'BATMAN #3')).toBe(true);
+        expect(matches(e, 'Batman 012 (2024)')).toBe(true);
+        expect(matches(e, 'Batman_Beyond 012 (2024)')).toBe(false);
+        expect(matches(e, 'The Dark Knight Batman #3')).toBe(false);
+        expect(matches(e, 'Superman #3')).toBe(false);
         expect(matches(entry(' '), 'x')).toBe(false);
-        const e = entry('Batman', 'annual, Special ,');
-        expect(matches(e, 'Batman Annual #1')).toBe(false);
-        expect(matches(e, 'Batman #4')).toBe(true);
     });
 
     it('guesses a keyword from a title', () => {
         expect(keywordFromTitle('Batman_Beyond 012 (2024)')).toBe('Batman Beyond');
         expect(keywordFromTitle('Saga #54')).toBe('Saga');
         expect(keywordFromTitle('Maus')).toBe('Maus');
+    });
+});
+
+describe('week', () => {
+    const day = (s: string) => parseDay(s) as number;
+
+    it('parses dates and rejects bad ones', () => {
+        expect(day('1970-01-01')).toBe(0);
+        expect(day('2024-02-29T10:00:00')).toBe(day('2024-02-28') + 1);
+        expect(parseDay('2023-02-29')).toBeUndefined();
+        expect(parseDay('2023-13-01')).toBeUndefined();
+        expect(parseDay('nope')).toBeUndefined();
+    });
+
+    it('anchors weeks on Wednesday', () => {
+        expect(weekStart(day('2026-11-11'))).toBe(day('2026-11-11'));
+        expect(weekStart(day('2026-11-17'))).toBe(day('2026-11-11'));
+        expect(weekStart(day('2026-11-18'))).toBe(day('2026-11-18'));
+        expect(weekStart(day('2024-12-31'))).toBe(day('2024-12-25'));
+        expect(inWeek(day('2026-11-17'), day('2026-11-11'))).toBe(true);
+        expect(inWeek(day('2026-11-18'), day('2026-11-11'))).toBe(false);
+    });
+
+    it('labels a week range', () => {
+        expect(rangeLabel(day('2026-11-11'))).toBe('Nov 11 – Nov 17');
+        expect(rangeLabel(day('2024-12-31'))).toBe('Dec 31 – Jan 6');
     });
 });
