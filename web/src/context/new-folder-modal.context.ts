@@ -3,7 +3,7 @@ import { LIBRARY_CONTEXT } from './library.context';
 
 export interface INewFolderModalCtx {
     isVisible: IUltraCompStateStateful<boolean>;
-    parentFolderUid: IUltraCompStateStateful<string | undefined>;
+    parentFolderUid: IUltraCompStateStateful<string | null>;
     openNewFolderModal: (parentFolderUid?: string) => void;
     closeNewFolderModal: () => void;
     submitNewFolder: (folderName: string) => Promise<void>;
@@ -12,10 +12,10 @@ export interface INewFolderModalCtx {
 export const NEW_FOLDER_MODAL_CTX: INewFolderModalCtx = ultraCompState({
     isVisible: false,
 
-    parentFolderUid: undefined as string | undefined,
+    parentFolderUid: null as string | null,
 
     openNewFolderModal: (comp: INewFolderModalCtx, parentFolderUid?: string) => {
-        comp.parentFolderUid.set(parentFolderUid);
+        comp.parentFolderUid.set(parentFolderUid ?? null);
         comp.isVisible.set(true);
     },
 
@@ -27,6 +27,9 @@ export const NEW_FOLDER_MODAL_CTX: INewFolderModalCtx = ultraCompState({
         const trimmed = folderName.trim();
         if (!trimmed) return;
         comp.closeNewFolderModal();
-        await LIBRARY_CONTEXT.createFolder(trimmed, NEW_FOLDER_MODAL_CTX.parentFolderUid.get());
+        await LIBRARY_CONTEXT.createFolder(
+            trimmed,
+            NEW_FOLDER_MODAL_CTX.parentFolderUid.get() ?? undefined,
+        );
     },
 });

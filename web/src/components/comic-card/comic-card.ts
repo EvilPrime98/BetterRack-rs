@@ -3,7 +3,11 @@ import type { WikiComic } from 'better-wiki';
 import styles from './comic-card.module.css';
 import { ReadBar } from '@/components/read-bar/read-bar';
 import { ComicRating } from './rating';
-import { type IComicLSCache, type ILibraryResponseItem } from '@/library.types';
+import {
+    type IComicLSCache,
+    type ILibraryResponseItem,
+    type TMetaSource,
+} from '@/library.types';
 import { COMICS_TYPE_CTX } from '@/context/comics-types.context';
 import { ComicCardTitle } from './title';
 import { ComicCardInfo } from './info';
@@ -18,7 +22,9 @@ import { identifyLibraryEntry } from '@/services/library.service';
 
 export function ComicCard({ item }: { item: ILibraryResponseItem }) {
     const [comic, setComic, subsComic] = ultraState<WikiComic | null>(item.comic ?? null);
-    const [metaSource, setMetaSource, subsMetaSource] = ultraState(item.metaSource);
+    const [metaSource, setMetaSource, subsMetaSource] = ultraState<TMetaSource | null>(
+        item.metaSource ?? null,
+    );
     const [identified, setIdentified, subsIdentified] = ultraState(item.identified !== false);
     const [isLoadingInfo, setIsLoadingInfo, subsIsLoadingInfo] = ultraState(
         item.identified === undefined,
@@ -71,7 +77,7 @@ export function ComicCard({ item }: { item: ILibraryResponseItem }) {
                 identifyLibraryEntry(item.uid)
                     .then((resolved) => {
                         setComic(resolved.comic ?? null);
-                        setMetaSource(resolved.metaSource);
+                        setMetaSource(resolved.metaSource ?? null);
                         setIdentified(resolved.identified === true);
                     })
                     .catch(() => {})
