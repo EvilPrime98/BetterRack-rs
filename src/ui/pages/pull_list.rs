@@ -17,6 +17,7 @@ use crate::state::pull_list::matches;
 use crate::ui::components::items_grid::{PAGE_PAD_X, available_width};
 use crate::ui::components::store_card::{card_height, store_card};
 use crate::ui::pages::store::{GAP_X, GAP_Y, PREFETCH_ROWS, geometry, is_configured};
+use crate::ui::theme;
 
 /// Matches wanted on screen before the page stops fetching on its own.
 const FILL_TARGET: usize = 24;
@@ -84,6 +85,34 @@ impl Render for PullListPage {
             .iter()
             .filter(|p| entries.iter().any(|e| matches(e, &p.title)))
             .cloned()
+            .collect();
+
+        let chips: Vec<_> = entries
+            .iter()
+            .map(|e| {
+                let id = e.id.clone();
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .px(px(10.0))
+                    .py(px(4.0))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(theme::border_subtle())
+                    .text_size(px(12.0))
+                    .text_color(theme::text())
+                    .child(e.keyword.clone())
+                    .child(
+                        div()
+                            .id(gpui::SharedString::from(format!("pull-rm-{}", e.id)))
+                            .cursor_pointer()
+                            .child("×")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.stores.pull_list.update(cx, |s, cx| s.remove(&id, cx));
+                            })),
+                    )
+            })
             .collect();
 
         // Too few matches to scroll: keep fetching (a no-op while a page is loading or none is left).
@@ -176,6 +205,9 @@ impl Render for PullListPage {
                         .text_color(rgb(0xe05a5a))
                         .child(error),
                 )
+            })
+            .when(!entries.is_empty(), |d| {
+                d.child(div().flex().flex_wrap().gap(px(8.0)).children(chips))
             })
             .child(div().flex_1().min_h_0().child(body))
     }
