@@ -14,9 +14,6 @@ import type { IStorePost } from '../store.types';
 import { DOCUMENT_TITLE_CONTEXT } from '../context/document-title.context';
 import { STORE_PAGE_CONTEXT } from '../context/store-page.context';
 import { BRButton } from '../components/br-button/br-button';
-import { PullList } from '../components/pull-list/pull-list';
-import { PULL_LIST_CTX } from '../context/pull-list.context';
-import { matches } from '../lib/pull-list';
 
 interface IStorePageState {
     isLoading: IUltraCompStateStateful<boolean>;
@@ -149,10 +146,7 @@ export function StorePage() {
     });
 
     function onResultsChange($section: HTMLElement) {
-        const focused = PULL_LIST_CTX.items.get().find((e) => e.id === PULL_LIST_CTX.focus.get());
-        const currResults = focused
-            ? STORE_PAGE_CONTEXT.results.get().filter((p) => matches(focused, p.title))
-            : STORE_PAGE_CONTEXT.results.get();
+        const currResults = STORE_PAGE_CONTEXT.results.get();
 
         if (currResults.length === 0) {
             for (const node of itemsMap.values()) {
@@ -239,8 +233,6 @@ export function StorePage() {
                     ],
                 }),
 
-                PullList(),
-
                 UltraComponent({
                     component: `<p class="${styles.errorText}"></p>`,
                     trigger: [
@@ -287,8 +279,6 @@ export function StorePage() {
                         {
                             subscriber: [
                                 STORE_PAGE_CONTEXT.results.subscribe,
-                                PULL_LIST_CTX.items.subscribe,
-                                PULL_LIST_CTX.focus.subscribe,
                                 store.isLoading.subscribe,
                                 store.isLoadingMore.subscribe,
                                 STORE_PAGE_CONTEXT.hasMore.subscribe,

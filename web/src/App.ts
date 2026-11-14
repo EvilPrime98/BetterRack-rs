@@ -6,6 +6,7 @@ import { ReaderPage } from './pages/reader.page';
 import { SettingsPage } from './pages/settings.page';
 import { StorePage } from './pages/store.page';
 import { StoreDownloadsPage } from './pages/store-downloads.page';
+import { PullListPage } from './pages/pull-list.page';
 import { RecentPage } from './pages/recent-page';
 import { ReadingPage } from './pages/reading-page';
 import { COMIC_CACHE_CONTEXT } from './context/comic-cache.context';
@@ -51,6 +52,7 @@ export function App() {
                 { path: '/:uid/reader', component: ({ uid } = {}) => ReaderPage({ uid }) },
                 { path: '/settings', component: () => SettingsPage() },
                 { path: '/store/downloads', component: () => StoreDownloadsPage() },
+                { path: '/store/pull-list', component: () => PullListPage() },
                 { path: '/store', component: () => StorePage() },
                 { path: '/new', component: () => RecentPage() },
                 { path: '/reading', component: () => ReadingPage() },

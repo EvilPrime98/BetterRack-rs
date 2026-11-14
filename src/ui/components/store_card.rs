@@ -5,11 +5,12 @@ use gpui::{
 
 use crate::model::StorePost;
 use crate::state::Stores;
+use crate::state::pull_list::keyword_from_title;
 use crate::state::store::{CardState, display_date, post_key};
 use crate::state::thumbnails::Thumb;
 use crate::ui::components::comic_card::action_button;
 use crate::ui::icons::{Icon, icon};
-use crate::ui::theme;
+use crate::ui::{theme, toast};
 
 const CARD_PAD: f32 = 10.0;
 const COVER_RATIO: f32 = 77.0 / 50.0;
@@ -118,14 +119,14 @@ pub fn store_card<V: 'static>(
             move |cx| toggle_bookmark(&stores, &post, cx)
         },
     );
-    let pull = action_button(format!("store-pull-{key}").into(), Icon::Pin, false, {
+    let followed = stores
+        .pull_list
+        .read(cx)
+        .follows(&keyword_from_title(&post.title));
+    let pull = action_button(format!("store-pull-{key}").into(), Icon::Pin, followed, {
         let title = post.title.clone();
         let stores = stores.clone();
-        move |cx| {
-            stores
-                .pull_list
-                .update(cx, |s, cx| s.request_add(&title, cx))
-        }
+        move |cx| follow_series(&stores, &title, cx)
     });
     let overlay = div()
         .absolute()
@@ -200,6 +201,21 @@ pub fn store_card<V: 'static>(
                         .unwrap_or_default(),
                 ),
         )
+}
+
+/// The pin: follows the series named by the post title right away, or unfollows it.
+fn follow_series(stores: &Stores, title: &str, cx: &mut gpui::App) {
+    let keyword = keyword_from_title(title);
+    if keyword.is_empty() {
+        toast::error(cx, "Could not tell which series this is.");
+        return;
+    }
+    let followed = stores.pull_list.update(cx, |s, cx| s.toggle(&keyword, cx));
+    if followed {
+        toast::success(cx, format!("Added “{keyword}” to your pull list."));
+    } else {
+        toast::success(cx, format!("Removed “{keyword}” from your pull list."));
+    }
 }
 
 fn toggle_bookmark(stores: &Stores, post: &StorePost, cx: &mut gpui::App) {

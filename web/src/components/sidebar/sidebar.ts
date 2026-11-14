@@ -292,6 +292,12 @@ export function SideBar() {
                                         `<span>Downloads</span>`,
                                     ],
                                 }),
+                                UltraLink({
+                                    href: '/store/pull-list',
+                                    className: [styles.item],
+                                    eventHandler: { click: closeSidebar },
+                                    children: [PinIcon({ size: 16 }), `<span>Pull list</span>`],
+                                }),
                             ],
                         }),
 

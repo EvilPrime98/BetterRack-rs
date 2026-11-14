@@ -8,7 +8,7 @@ import { getTopLevelDirs, visibleDirectories } from './directory-picker';
 import type { ILibraryGroup, ILibraryResponseItem } from '../library.types';
 import type { IStoreBookmark } from '../store.types';
 import { bookmarksInFolder, folderDir, mergeBookmarks, onlyNewComic, postKey } from './bookmarks';
-import { keywordFromTitle, latestMatchId, matches, newCount } from './pull-list';
+import { keywordFromTitle, matches } from './pull-list';
 
 const item = (uid: string, writers: string[], did = false) =>
     ({ uid, did, name: uid, comic: { credits: { writers } } }) as unknown as ILibraryResponseItem;
@@ -240,17 +240,6 @@ describe('pull list', () => {
         const e = entry('Batman', 'annual, Special ,');
         expect(matches(e, 'Batman Annual #1')).toBe(false);
         expect(matches(e, 'Batman #4')).toBe(true);
-    });
-
-    it('counts posts above the last seen id as new', () => {
-        const posts = [
-            { id: 9, title: 'Batman #1', link: 'a' },
-            { id: 11, title: 'Batman #2', link: 'b' },
-            { id: 12, title: 'Saga #1', link: 'c' },
-        ];
-        expect(newCount(entry('Batman', '', 10), posts)).toBe(1);
-        expect(latestMatchId(entry('Batman', '', 10), posts)).toBe(11);
-        expect(latestMatchId(entry('Batman', '', 50), posts)).toBe(50);
     });
 
     it('guesses a keyword from a title', () => {

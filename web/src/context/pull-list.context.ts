@@ -1,34 +1,27 @@
 import { ultraCompState, type IUltraCompStateStateful } from 'ultra-light-js';
-import {
-    addPullEntry,
-    deletePullEntry,
-    getPullList,
-    patchPullEntry,
-} from '../services/pull-list.service';
+import { addPullEntry, deletePullEntry, getPullList } from '../services/pull-list.service';
 import { toast } from '../services/toast.service';
 import type { IPullEntry } from '../store.types';
-import { keywordFromTitle, latestMatchId } from '../lib/pull-list';
-import { STORE_PAGE_CONTEXT } from './store-page.context';
+import { keywordFromTitle } from '../lib/pull-list';
 
 export interface IPullListCtx {
     items: IUltraCompStateStateful<IPullEntry[]>;
-    focus: IUltraCompStateStateful<string>;
-    prefill: IUltraCompStateStateful<string>;
     load: () => Promise<void>;
-    requestAdd: (title: string) => void;
-    add: (keyword: string, exclude: string) => Promise<boolean>;
+    follows: (title: string) => boolean;
+    toggle: (title: string) => Promise<void>;
     remove: (id: string) => Promise<void>;
-    markSeen: (id: string) => Promise<void>;
 }
 
 function fail(e: unknown, fallback: string) {
     toast.error(e instanceof Error ? e.message : fallback);
 }
 
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+const pending = new Set<string>();
+
 export const PULL_LIST_CTX: IPullListCtx = ultraCompState({
     items: [] as IPullEntry[],
-    focus: '',
-    prefill: '',
 
     load: async (comp: IPullListCtx) => {
         try {
@@ -38,43 +31,49 @@ export const PULL_LIST_CTX: IPullListCtx = ultraCompState({
         }
     },
 
-    requestAdd: (comp: IPullListCtx, title: string) => {
-        comp.prefill.set(keywordFromTitle(title));
+    follows: (comp: IPullListCtx, title: string) => {
+        const keyword = keywordFromTitle(title);
+        return comp.items.get().some((e) => same(e.keyword, keyword));
     },
 
-    add: async (comp: IPullListCtx, keyword: string, exclude: string) => {
-        if (!keyword.trim()) return false;
+    toggle: async (comp: IPullListCtx, title: string) => {
+        const keyword = keywordFromTitle(title);
+        if (!keyword) {
+            toast.error('Could not tell which series this is.');
+            return;
+        }
+        const lock = keyword.toLowerCase();
+        if (pending.has(lock)) return;
+        pending.add(lock);
+        const existing = comp.items.get().find((e) => same(e.keyword, keyword));
         try {
-            const saved = await addPullEntry(keyword, exclude);
-            const list = comp.items.get();
-            if (!list.some((e) => e.id === saved.id)) comp.items.set([...list, saved]);
-            return true;
+            if (existing) {
+                await deletePullEntry(existing.id);
+                comp.items.set(comp.items.get().filter((e) => e.id !== existing.id));
+                toast.success(`Removed "${keyword}" from your pull list.`);
+            } else {
+                const saved = await addPullEntry(keyword, '');
+                const list = comp.items.get();
+                if (!list.some((e) => e.id === saved.id)) comp.items.set([...list, saved]);
+                toast.success(`Added "${keyword}" to your pull list.`);
+            }
         } catch (e) {
-            fail(e, 'Failed to add to the pull list.');
-            return false;
+            fail(e, 'Failed to update the pull list.');
+        } finally {
+            pending.delete(lock);
         }
     },
 
     remove: async (comp: IPullListCtx, id: string) => {
+        if (pending.has(id)) return;
+        pending.add(id);
         try {
             await deletePullEntry(id);
-            if (comp.focus.get() === id) comp.focus.set('');
             comp.items.set(comp.items.get().filter((e) => e.id !== id));
         } catch (e) {
             fail(e, 'Failed to remove from the pull list.');
-        }
-    },
-
-    markSeen: async (comp: IPullListCtx, id: string) => {
-        const entry = comp.items.get().find((e) => e.id === id);
-        if (!entry) return;
-        try {
-            const saved = await patchPullEntry(id, {
-                lastSeenId: latestMatchId(entry, STORE_PAGE_CONTEXT.results.get()),
-            });
-            comp.items.set(comp.items.get().map((e) => (e.id === id ? saved : e)));
-        } catch (e) {
-            fail(e, 'Failed to mark as seen.');
+        } finally {
+            pending.delete(id);
         }
     },
 });

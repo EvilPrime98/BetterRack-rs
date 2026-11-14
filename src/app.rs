@@ -21,6 +21,7 @@ use crate::ui::motion;
 use crate::ui::pages::downloads::DownloadsPage;
 use crate::ui::pages::library::LibraryPage;
 use crate::ui::pages::lists::{ListPage, Source};
+use crate::ui::pages::pull_list::PullListPage;
 use crate::ui::pages::reader::ReaderPage;
 use crate::ui::pages::settings::SettingsPage;
 use crate::ui::pages::store::StorePage;
@@ -79,6 +80,7 @@ enum Page {
     Settings(Entity<SettingsPage>),
     Store(Entity<StorePage>),
     Downloads(Entity<DownloadsPage>),
+    PullList(Entity<PullListPage>),
     Placeholder,
 }
 
@@ -449,6 +451,15 @@ impl AppRoot {
             Route::StoreDownloads => {
                 Page::Downloads(cx.new(|cx| DownloadsPage::new(self.stores.clone(), cx)))
             }
+            Route::PullList => {
+                let page = cx.new(|cx| PullListPage::new(self.stores.clone(), cx));
+                self._page_subs.push(cx.subscribe_in(
+                    &page,
+                    window,
+                    |this, _, ev: &Navigate, window, cx| this.navigate(ev.0.clone(), window, cx),
+                ));
+                Page::PullList(page)
+            }
         };
     }
 
@@ -633,6 +644,7 @@ impl Render for AppRoot {
             Page::Settings(page) if !failed => AnyView::from(page.clone()).into_any_element(),
             Page::Store(page) if !failed => AnyView::from(page.clone()).into_any_element(),
             Page::Downloads(page) if !failed => AnyView::from(page.clone()).into_any_element(),
+            Page::PullList(page) if !failed => AnyView::from(page.clone()).into_any_element(),
             _ => self.placeholder(cx),
         };
 
@@ -771,6 +783,7 @@ fn dev_route() -> Option<Route> {
             "settings" => Route::Settings,
             "store" => Route::Store,
             "downloads" => Route::StoreDownloads,
+            "pull-list" => Route::PullList,
             "recent" => Route::Recent,
             "reading" => Route::Reading,
             _ => return None,
