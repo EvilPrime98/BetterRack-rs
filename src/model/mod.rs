@@ -393,6 +393,18 @@ impl StoreBookmark {
     }
 }
 
+/// A followed title keyword. `exclude` is a comma-separated list of terms; posts with an id above
+/// `last_seen_id` count as new.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PullEntry {
+    pub id: String,
+    pub keyword: String,
+    pub exclude: String,
+    pub last_seen_id: i64,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoreLink {
     pub uuid: String,
