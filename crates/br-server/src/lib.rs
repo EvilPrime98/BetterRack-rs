@@ -6,6 +6,7 @@ pub mod error;
 pub mod http_cache;
 pub mod library;
 pub mod middleware;
+pub mod pull_list;
 pub mod reader;
 pub mod routes;
 pub mod server_info;
@@ -116,6 +117,11 @@ pub fn app_with_web(state: AppState, web_dir: Option<PathBuf>) -> Router {
         .route(
             "/api/bookmarks/{key}",
             patch(bookmarks::patch).delete(bookmarks::remove),
+        )
+        .route("/api/pull-list", get(pull_list::list).post(pull_list::add))
+        .route(
+            "/api/pull-list/{id}",
+            patch(pull_list::patch).delete(pull_list::remove),
         )
         .route("/api/wiki/comic", get(wiki::comic))
         .route("/api/wiki/comic/{id}", get(wiki::comic_by_id))
