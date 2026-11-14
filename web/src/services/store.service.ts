@@ -27,8 +27,14 @@ export async function searchComics(params: {
 export async function getLatestComics(params?: {
     page?: number;
     perPage?: number;
+    after?: string;
+    before?: string;
 }): Promise<IStorePost[]> {
     const searchParams = new URLSearchParams({ latest: 'true' });
+    if (params?.after && params.before) {
+        searchParams.set('after', params.after);
+        searchParams.set('before', params.before);
+    }
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.perPage) searchParams.set('perPage', String(params.perPage));
     const response = await fetch(`${API_URL}/api/comics?${searchParams}`, {

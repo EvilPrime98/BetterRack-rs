@@ -1,9 +1,10 @@
 //! Pull-list page: the Store feed, narrowed to the posts that match a followed series.
 //!
-//! It shows one Wednesday-anchored week at a time over the shared
-//! [`StoreState`](crate::state::store::StoreState) feed. Pages are fetched until the loaded posts
-//! reach back past the selected week, up to [`MAX_PAGES`].
+//! It shows one Wednesday-anchored week at a time. The week's posts are fetched with the store's
+//! date window (`after`/`before`), page by page, and filtered to the followed series.
 //! Series are followed and unfollowed with the pin on a store card.
+
+use std::rc::Rc;
 
 use gpui::{
     Context, IntoElement, ParentElement, Render, Styled, Subscription, UniformListScrollHandle,
@@ -12,22 +13,39 @@ use gpui::{
 
 use crate::model::StorePost;
 use crate::route::Navigate;
+use crate::runtime;
 use crate::state::Stores;
+use crate::state::epoch::Epoch;
 use crate::state::pull_list::matches;
+use crate::state::store::append_unique;
 use crate::state::week;
 use crate::ui::components::items_grid::{PAGE_PAD_X, available_width};
 use crate::ui::components::store_card::{card_height, store_card};
 use crate::ui::pages::store::{GAP_X, GAP_Y, geometry, is_configured};
-use crate::ui::theme;
+use crate::ui::{theme, toast};
 
-/// Bound on the automatic fetching, so a series that never matches cannot page through the site.
-const MAX_PAGES: u32 = 30;
+/// The WordPress maximum, so a busy week fits in a couple of requests.
+const WEEK_PAGE_SIZE: usize = 100;
+/// Bound on the paging of one week.
+const MAX_PAGES: u32 = 10;
+
+#[derive(Debug, Clone, PartialEq)]
+enum WeekFeed {
+    Loading,
+    Ready,
+    Failed(String),
+}
 
 pub struct PullListPage {
     stores: Stores,
     scroll: UniformListScrollHandle,
     /// Day number of the selected week's Wednesday.
     week_start: i64,
+    /// Every post of the selected week, followed or not.
+    posts: Rc<Vec<StorePost>>,
+    feed: WeekFeed,
+    /// Bumped by every week change so a late answer for an older week is dropped.
+    epoch: Epoch,
     _subs: Vec<Subscription>,
 }
 
@@ -41,23 +59,80 @@ impl PullListPage {
             cx.observe(&stores.thumbs, |_, _, cx| cx.notify()),
             cx.observe(&stores.bookmarks, |_, _, cx| cx.notify()),
         ];
-        if is_configured(&stores, cx) {
-            // The feed is shared with the Store page: a leftover search would hide the latest posts.
-            stores.store.update(cx, |s, cx| {
-                if !s.active_search.is_empty() {
-                    s.query.clear();
-                    s.run_search(cx);
-                } else {
-                    s.ensure_loaded(cx);
-                }
-            });
-        }
-        Self {
+        let mut page = Self {
             stores,
             scroll: UniformListScrollHandle::new(),
             week_start: week::week_start(week::today()),
+            posts: Rc::new(Vec::new()),
+            feed: WeekFeed::Loading,
+            epoch: Epoch::default(),
             _subs: subs,
-        }
+        };
+        page.load_week(cx);
+        page
+    }
+
+    fn select_week(&mut self, week_start: i64, cx: &mut Context<Self>) {
+        self.week_start = week_start;
+        self.load_week(cx);
+    }
+
+    /// Fetch every post of the selected week.
+    fn load_week(&mut self, cx: &mut Context<Self>) {
+        self.posts = Rc::new(Vec::new());
+        let client = self
+            .stores
+            .store
+            .read(cx)
+            .client
+            .clone()
+            .filter(|_| is_configured(&self.stores, cx));
+        let Some(client) = client else {
+            self.feed = WeekFeed::Ready;
+            cx.notify();
+            return;
+        };
+        let ticket = self.epoch.next();
+        self.feed = WeekFeed::Loading;
+        cx.notify();
+        let after = week::day_start(self.week_start);
+        let before = week::day_start(self.week_start + 7);
+        cx.spawn(async move |this, cx| {
+            let result = runtime::run(async move {
+                let mut all = Vec::new();
+                for page in 1..=MAX_PAGES {
+                    let items = client
+                        .store_posts_between(&after, &before, page, WEEK_PAGE_SIZE)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let last = items.len() < WEEK_PAGE_SIZE;
+                    all = append_unique(&all, items);
+                    if last {
+                        break;
+                    }
+                }
+                Ok::<_, String>(all)
+            })
+            .await;
+            this.update(cx, |s, cx| {
+                if !s.epoch.is_current(ticket) {
+                    return;
+                }
+                match result {
+                    Ok(items) => {
+                        s.posts = Rc::new(items);
+                        s.feed = WeekFeed::Ready;
+                    }
+                    Err(message) => {
+                        toast::error(cx, message.clone());
+                        s.feed = WeekFeed::Failed(message);
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 }
 
@@ -88,8 +163,7 @@ impl PullListPage {
             .gap(px(8.0))
             .child(
                 nav_button("week-prev", "‹", true).on_click(cx.listener(|this, _, _, cx| {
-                    this.week_start -= 7;
-                    cx.notify();
+                    this.select_week(this.week_start - 7, cx);
                 })),
             )
             .child(
@@ -103,16 +177,14 @@ impl PullListPage {
             .child(
                 nav_button("week-next", "›", !at_current).when(!at_current, |d| {
                     d.on_click(cx.listener(|this, _, _, cx| {
-                        this.week_start += 7;
-                        cx.notify();
+                        this.select_week(this.week_start + 7, cx);
                     }))
                 }),
             )
             .child(
                 nav_button("week-now", "This week", !at_current).when(!at_current, |d| {
                     d.on_click(cx.listener(move |this, _, _, cx| {
-                        this.week_start = current_week;
-                        cx.notify();
+                        this.select_week(current_week, cx);
                     }))
                 }),
             )
@@ -131,51 +203,30 @@ impl Render for PullListPage {
         let configured = is_configured(&self.stores, cx);
         let sidebar_docked = self.stores.prefs.read(cx).prefs.sidebar_docked();
         let entries = self.stores.pull_list.read(cx).items.clone();
-        let (results, loading, loading_more, page, error) = {
-            let s = self.stores.store.read(cx);
-            (
-                s.results.clone(),
-                s.is_loading(),
-                s.loading_more(),
-                s.page,
-                s.error().unwrap_or_default().to_string(),
-            )
+        let loading = self.feed == WeekFeed::Loading;
+        let error = match &self.feed {
+            WeekFeed::Failed(m) => m.clone(),
+            _ => String::new(),
         };
-        let week_start = self.week_start;
         let current_week = week::week_start(week::today());
-        let in_selected_week = |p: &StorePost| {
-            p.upload_date
-                .as_deref()
-                .and_then(week::parse_day)
-                .is_some_and(|d| week::in_week(d, week_start))
-        };
-        let shown: Vec<StorePost> = results
+        let shown: Vec<StorePost> = self
+            .posts
             .iter()
-            .filter(|p| in_selected_week(p) && entries.iter().any(|e| matches(e, &p.title)))
+            .filter(|p| entries.iter().any(|e| matches(e, &p.title)))
             .cloned()
             .collect();
-        let oldest = results
-            .iter()
-            .filter_map(|p| p.upload_date.as_deref().and_then(week::parse_day))
-            .min();
-
-        // The loaded posts do not yet reach back past the week: keep fetching (a no-op while a page
-        // is loading or none is left).
-        if !entries.is_empty() && oldest.is_none_or(|o| o >= week_start) && page < MAX_PAGES {
-            self.stores.store.update(cx, |s, cx| s.load_more(cx));
-        }
 
         let body = if !configured {
             note("The store source is not configured. Set it in Settings.").into_any_element()
         } else if entries.is_empty() {
             note("Use the pin on a store card to follow a series.").into_any_element()
         } else if shown.is_empty() {
-            let text = if loading || loading_more {
+            note(if loading {
                 "Loading…"
             } else {
                 "No posts match this week."
-            };
-            note(text).into_any_element()
+            })
+            .into_any_element()
         } else {
             let (cols, col_w) = geometry(available_width(window, sidebar_docked));
             let row_h = card_height(col_w) + GAP_Y;
@@ -211,14 +262,6 @@ impl Render for PullListPage {
                 .flex_col()
                 .size_full()
                 .child(div().flex_1().min_h_0().child(list))
-                .child(
-                    div()
-                        .h(px(30.0))
-                        .flex_none()
-                        .py(px(8.0))
-                        .text_center()
-                        .when(loading_more, |d| d.child(note("Loading more…"))),
-                )
                 .into_any_element()
         };
 

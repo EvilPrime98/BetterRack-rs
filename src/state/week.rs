@@ -9,6 +9,7 @@ const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
+#[cfg(test)]
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
@@ -32,6 +33,7 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
     (y, m, d)
 }
 
+#[cfg(test)]
 /// Day number of a leading `YYYY-MM-DD`, or `None` when the text has no valid date there.
 pub fn parse_day(raw: &str) -> Option<i64> {
     let s = raw.get(..10)?;
@@ -68,9 +70,10 @@ pub fn today() -> i64 {
     (secs / 86_400) as i64
 }
 
-/// Whether `day` falls in the week that starts on `start`.
-pub fn in_week(day: i64, start: i64) -> bool {
-    (start..start + 7).contains(&day)
+/// Midnight at the start of `day` as the full datetime the store's `after`/`before` filters need.
+pub fn day_start(day: i64) -> String {
+    let (y, m, d) = civil_from_days(day);
+    format!("{y:04}-{m:02}-{d:02}T00:00:00")
 }
 
 fn short(day: i64) -> String {
@@ -118,12 +121,10 @@ mod tests {
     }
 
     #[test]
-    fn week_membership_edges() {
-        let start = day("2026-11-11");
-        assert!(in_week(day("2026-11-11"), start));
-        assert!(in_week(day("2026-11-17"), start));
-        assert!(!in_week(day("2026-11-10"), start));
-        assert!(!in_week(day("2026-11-18"), start));
+    fn day_starts_are_full_datetimes() {
+        assert_eq!(day_start(day("2026-11-11")), "2026-11-11T00:00:00");
+        assert_eq!(day_start(day("2026-11-11") + 7), "2026-11-18T00:00:00");
+        assert_eq!(day_start(day("2024-02-29") + 1), "2024-03-01T00:00:00");
     }
 
     #[test]

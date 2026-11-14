@@ -6,12 +6,11 @@ import { toast } from '../services/toast.service';
 import type { IStorePost } from '../store.types';
 import { DOCUMENT_TITLE_CONTEXT } from '../context/document-title.context';
 import { PULL_LIST_CTX } from '../context/pull-list.context';
-import { STORE_PAGE_CONTEXT } from '../context/store-page.context';
 import { matches } from '../lib/pull-list';
-import { inWeek, parseDay, rangeLabel, today, weekStart } from '../lib/week';
+import { dayStart, rangeLabel, today, weekStart } from '../lib/week';
 
-const PAGE_SIZE = 30;
-const MAX_PAGES = 30;
+const PAGE_SIZE = 100;
+const MAX_PAGES = 10;
 
 function keyFor(item: IStorePost) {
     return item.id !== undefined ? `id:${item.id}` : `link:${item.link}`;
@@ -19,85 +18,52 @@ function keyFor(item: IStorePost) {
 
 export function PullListPage() {
     const cards = new Map<string, UltraLightElement>();
+    let weekPosts: IStorePost[] = [];
     let loading = false;
+    let request = 0;
     const currentWeek = weekStart(today());
     let selectedWeek = currentWeek;
     let $grid: HTMLElement | null = null;
     let renderNav: () => void = () => {};
 
-    function postDay(p: IStorePost) {
-        return p.uploadDate ? parseDay(p.uploadDate) : undefined;
-    }
-
     function shownPosts(): IStorePost[] {
         const entries = PULL_LIST_CTX.items.get();
-        return STORE_PAGE_CONTEXT.results.get().filter((p) => {
-            const day = postDay(p);
-            return (
-                day !== undefined &&
-                inWeek(day, selectedWeek) &&
-                entries.some((e) => matches(e, p.title))
-            );
-        });
+        return weekPosts.filter((p) => entries.some((e) => matches(e, p.title)));
     }
 
-    async function loadFirstPage() {
+    async function loadWeek() {
+        const mine = ++request;
+        const after = dayStart(selectedWeek);
+        const before = dayStart(selectedWeek + 7);
+        weekPosts = [];
         loading = true;
+        if ($grid) onGridChange($grid);
         try {
-            const items = await getLatestComics({ page: 1, perPage: PAGE_SIZE });
-            STORE_PAGE_CONTEXT.results.set(items);
-            STORE_PAGE_CONTEXT.page.set(1);
-            STORE_PAGE_CONTEXT.hasMore.set(items.length === PAGE_SIZE);
-            STORE_PAGE_CONTEXT.hasLoaded.set(true);
+            const seen = new Set<string>();
+            const all: IStorePost[] = [];
+            for (let page = 1; page <= MAX_PAGES; page++) {
+                const items = await getLatestComics({ page, perPage: PAGE_SIZE, after, before });
+                if (mine !== request) return;
+                for (const item of items) {
+                    if (seen.has(keyFor(item))) continue;
+                    seen.add(keyFor(item));
+                    all.push(item);
+                }
+                if (items.length < PAGE_SIZE) break;
+            }
+            weekPosts = all;
         } catch (e) {
+            if (mine !== request) return;
             toast.error(e instanceof Error ? e.message : 'Failed to load comics.');
-        } finally {
-            loading = false;
-            fillIfSparse();
         }
-    }
-
-    async function loadMore() {
-        if (loading || !STORE_PAGE_CONTEXT.hasMore.get()) return;
-        const nextPage = STORE_PAGE_CONTEXT.page.get() + 1;
-        loading = true;
-        try {
-            const items = await getLatestComics({ page: nextPage, perPage: PAGE_SIZE });
-            STORE_PAGE_CONTEXT.results.set([...STORE_PAGE_CONTEXT.results.get(), ...items]);
-            STORE_PAGE_CONTEXT.page.set(nextPage);
-            STORE_PAGE_CONTEXT.hasMore.set(items.length === PAGE_SIZE);
-        } catch (e) {
-            STORE_PAGE_CONTEXT.hasMore.set(false);
-            toast.error(e instanceof Error ? e.message : 'Failed to load more comics.');
-        } finally {
-            loading = false;
-            fillIfSparse();
-        }
-    }
-
-    function fillIfSparse() {
-        if (PULL_LIST_CTX.items.get().length === 0) return;
-        const days = STORE_PAGE_CONTEXT.results
-            .get()
-            .map(postDay)
-            .filter((d): d is number => d !== undefined);
-        const reachedBack = days.length > 0 && Math.min(...days) < selectedWeek;
-        if (!reachedBack && STORE_PAGE_CONTEXT.page.get() < MAX_PAGES) loadMore();
+        loading = false;
+        if ($grid) onGridChange($grid);
     }
 
     function selectWeek(week: number) {
         selectedWeek = week;
         renderNav();
-        if ($grid) onGridChange($grid);
-    }
-
-    function start() {
-        if (STORE_PAGE_CONTEXT.activeSearch.get()) {
-            STORE_PAGE_CONTEXT.activeSearch.set('');
-            STORE_PAGE_CONTEXT.query.set('');
-            loadFirstPage();
-        } else if (!STORE_PAGE_CONTEXT.hasLoaded.get()) loadFirstPage();
-        else fillIfSparse();
+        loadWeek();
     }
 
     let $empty: HTMLParagraphElement | null = null;
@@ -105,7 +71,7 @@ export function PullListPage() {
     function emptyText() {
         if (PULL_LIST_CTX.items.get().length === 0)
             return 'Use the pull-list button on a store card to follow a series.';
-        return STORE_PAGE_CONTEXT.hasMore.get() ? 'Loading…' : 'No posts match this week.';
+        return loading ? 'Loading…' : 'No posts match this week.';
     }
 
     function onGridChange($section: HTMLElement) {
@@ -128,7 +94,6 @@ export function PullListPage() {
             $empty.textContent = emptyText();
             $section.appendChild($empty);
         }
-        fillIfSparse();
     }
 
     function onNavMount($nav: HTMLElement) {
@@ -157,7 +122,7 @@ export function PullListPage() {
     return UltraComponent({
         component: '<section></section>',
         className: [styles.page],
-        onMount: [start, () => DOCUMENT_TITLE_CONTEXT.setTitle('Pull list')],
+        onMount: [loadWeek, () => DOCUMENT_TITLE_CONTEXT.setTitle('Pull list')],
         children: [
             `<h1 class="${styles.title}">Pull list</h1>`,
             UltraComponent({
@@ -171,11 +136,7 @@ export function PullListPage() {
                 onMount: [onGridChange],
                 trigger: [
                     {
-                        subscriber: [
-                            STORE_PAGE_CONTEXT.results.subscribe,
-                            STORE_PAGE_CONTEXT.hasMore.subscribe,
-                            PULL_LIST_CTX.items.subscribe,
-                        ],
+                        subscriber: [PULL_LIST_CTX.items.subscribe],
                         triggerFunction: onGridChange,
                         defer: true,
                     },
