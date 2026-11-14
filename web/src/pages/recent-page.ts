@@ -6,7 +6,6 @@ import {
     type UltraLightElement,
 } from 'ultra-light-js';
 import styles from './recent-page.module.css';
-import { Layout } from '../layout';
 import { ComicCard } from '@/components/comic-card/comic-card';
 import { getRecentlyAdded } from '../services/library.service';
 import { toast } from '../services/toast.service';
@@ -94,109 +93,105 @@ export function RecentPage() {
         });
     }
 
-    return Layout(
-        UltraComponent({
-            component: '<section></section>',
+    return UltraComponent({
+        component: '<section></section>',
 
-            className: [styles.page],
+        className: [styles.page],
 
-            onMount: [
-                () => {
-                    store.load();
-                },
-                () =>
-                    LIBRARY_CONTEXT.lastDeleted.subscribe((deleted) => {
-                        if (deleted) store.dropDeleted(deleted.uid);
-                    }),
-                () => DOCUMENT_TITLE_CONTEXT.setTitle('Recently added'),
-            ],
-
-            children: [
-                UltraComponent({
-                    component: '<header></header>',
-                    className: [styles.header],
-                    children: [
-                        UltraComponent({
-                            component: '<div></div>',
-                            className: [styles.heading],
-                            children: [
-                                `<span class="${styles.eyebrow}">Recently added</span>`,
-                                UltraComponent({
-                                    component: `<h1 class="${styles.title}"></h1>`,
-                                    onMount: [renderTitle],
-                                    trigger: [
-                                        {
-                                            subscriber: store.windowHours.subscribe,
-                                            triggerFunction: renderTitle,
-                                        },
-                                    ],
-                                }),
-                            ],
-                        }),
-                        BRDropdown({
-                            className: [styles.filter],
-                            options: WINDOW_DROPDOWN_OPTIONS,
-                            value: () => labelForWindow(store.windowHours.get()),
-                            subscribe: store.windowHours.subscribe,
-                            onChange: (label) => {
-                                const option = RECENT_WINDOW_OPTIONS.find(
-                                    (opt) => opt.label === label,
-                                );
-                                if (!option || store.windowHours.get() === option.hours) return;
-                                store.windowHours.set(option.hours);
-                                store.load();
-                            },
-                            ariaLabel: 'Time window',
-                        }),
-                    ],
+        onMount: [
+            () => {
+                store.load();
+            },
+            () =>
+                LIBRARY_CONTEXT.lastDeleted.subscribe((deleted) => {
+                    if (deleted) store.dropDeleted(deleted.uid);
                 }),
+            () => DOCUMENT_TITLE_CONTEXT.setTitle('Recently added'),
+        ],
 
-                UltraActivity({
-                    mode: {
+        children: [
+            UltraComponent({
+                component: '<header></header>',
+                className: [styles.header],
+                children: [
+                    UltraComponent({
+                        component: '<div></div>',
+                        className: [styles.heading],
+                        children: [
+                            `<span class="${styles.eyebrow}">Recently added</span>`,
+                            UltraComponent({
+                                component: `<h1 class="${styles.title}"></h1>`,
+                                onMount: [renderTitle],
+                                trigger: [
+                                    {
+                                        subscriber: store.windowHours.subscribe,
+                                        triggerFunction: renderTitle,
+                                    },
+                                ],
+                            }),
+                        ],
+                    }),
+                    BRDropdown({
+                        className: [styles.filter],
+                        options: WINDOW_DROPDOWN_OPTIONS,
+                        value: () => labelForWindow(store.windowHours.get()),
+                        subscribe: store.windowHours.subscribe,
+                        onChange: (label) => {
+                            const option = RECENT_WINDOW_OPTIONS.find((opt) => opt.label === label);
+                            if (!option || store.windowHours.get() === option.hours) return;
+                            store.windowHours.set(option.hours);
+                            store.load();
+                        },
+                        ariaLabel: 'Time window',
+                    }),
+                ],
+            }),
+
+            UltraActivity({
+                mode: {
+                    subscriber: [
+                        store.isLoading.subscribe,
+                        store.items.subscribe,
+                        store.error.subscribe,
+                    ],
+                    state: () =>
+                        store.isLoading.get() ||
+                        !!store.error.get() ||
+                        store.items.get().length === 0,
+                },
+                component: '<p></p>',
+                className: [styles.empty],
+                trigger: [
+                    {
                         subscriber: [
                             store.isLoading.subscribe,
                             store.items.subscribe,
                             store.error.subscribe,
+                            store.windowHours.subscribe,
                         ],
-                        state: () =>
-                            store.isLoading.get() ||
-                            !!store.error.get() ||
-                            store.items.get().length === 0,
+                        triggerFunction: ($p: HTMLElement) => {
+                            $p.textContent = store.isLoading.get()
+                                ? 'Loading recently added comics…'
+                                : store.error.get()
+                                  ? store.error.get()
+                                  : `Nothing added in the ${labelForWindow(store.windowHours.get()).toLowerCase()}.`;
+                        },
                     },
-                    component: '<p></p>',
-                    className: [styles.empty],
-                    trigger: [
-                        {
-                            subscriber: [
-                                store.isLoading.subscribe,
-                                store.items.subscribe,
-                                store.error.subscribe,
-                                store.windowHours.subscribe,
-                            ],
-                            triggerFunction: ($p: HTMLElement) => {
-                                $p.textContent = store.isLoading.get()
-                                    ? 'Loading recently added comics…'
-                                    : store.error.get()
-                                      ? store.error.get()
-                                      : `Nothing added in the ${labelForWindow(store.windowHours.get()).toLowerCase()}.`;
-                            },
-                        },
-                    ],
-                }),
+                ],
+            }),
 
-                UltraComponent({
-                    component: '<section></section>',
-                    className: [styles.comicContainer],
-                    onMount: [onItemsChange],
-                    trigger: [
-                        {
-                            subscriber: store.items.subscribe,
-                            triggerFunction: onItemsChange,
-                            defer: true,
-                        },
-                    ],
-                }),
-            ],
-        }),
-    );
+            UltraComponent({
+                component: '<section></section>',
+                className: [styles.comicContainer],
+                onMount: [onItemsChange],
+                trigger: [
+                    {
+                        subscriber: store.items.subscribe,
+                        triggerFunction: onItemsChange,
+                        defer: true,
+                    },
+                ],
+            }),
+        ],
+    });
 }

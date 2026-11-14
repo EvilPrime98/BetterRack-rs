@@ -1,6 +1,5 @@
 import { UltraComponent, type UltraLightElement } from 'ultra-light-js';
 import styles from './store.page.module.css';
-import { Layout } from '../layout';
 import { StoreCard } from '../components/store-card/store-card';
 import { getLatestComics } from '../services/store.service';
 import { toast } from '../services/toast.service';
@@ -162,42 +161,40 @@ export function PullListPage() {
         );
     }
 
-    return Layout(
-        UltraComponent({
-            component: '<section></section>',
-            className: [styles.page],
-            onMount: [start, () => DOCUMENT_TITLE_CONTEXT.setTitle('Pull list')],
-            children: [
-                `<h1 class="${styles.title}">Pull list</h1>`,
-                UltraComponent({
-                    component: '<div></div>',
-                    className: [styles.chips],
-                    onMount: [onChipsChange],
-                    trigger: [
-                        {
-                            subscriber: PULL_LIST_CTX.items.subscribe,
-                            triggerFunction: onChipsChange,
-                            defer: true,
-                        },
-                    ],
-                }),
-                UltraComponent({
-                    component: '<section></section>',
-                    className: [styles.grid],
-                    onMount: [onGridChange],
-                    trigger: [
-                        {
-                            subscriber: [
-                                STORE_PAGE_CONTEXT.results.subscribe,
-                                STORE_PAGE_CONTEXT.hasMore.subscribe,
-                                PULL_LIST_CTX.items.subscribe,
-                            ],
-                            triggerFunction: onGridChange,
-                            defer: true,
-                        },
-                    ],
-                }),
-            ],
-        }),
-    );
+    return UltraComponent({
+        component: '<section></section>',
+        className: [styles.page],
+        onMount: [start, () => DOCUMENT_TITLE_CONTEXT.setTitle('Pull list')],
+        children: [
+            `<h1 class="${styles.title}">Pull list</h1>`,
+            UltraComponent({
+                component: '<div></div>',
+                className: [styles.chips],
+                onMount: [onChipsChange],
+                trigger: [
+                    {
+                        subscriber: PULL_LIST_CTX.items.subscribe,
+                        triggerFunction: onChipsChange,
+                        defer: true,
+                    },
+                ],
+            }),
+            UltraComponent({
+                component: '<section></section>',
+                className: [styles.grid],
+                onMount: [onGridChange],
+                trigger: [
+                    {
+                        subscriber: [
+                            STORE_PAGE_CONTEXT.results.subscribe,
+                            STORE_PAGE_CONTEXT.hasMore.subscribe,
+                            PULL_LIST_CTX.items.subscribe,
+                        ],
+                        triggerFunction: onGridChange,
+                        defer: true,
+                    },
+                ],
+            }),
+        ],
+    });
 }

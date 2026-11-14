@@ -6,7 +6,6 @@ import {
     type UltraLightElement,
 } from 'ultra-light-js';
 import styles from './reading-page.module.css';
-import { Layout } from '../layout';
 import { ComicCard } from '@/components/comic-card/comic-card';
 import { LayoutSelector } from '@/components/layout/layout-selector';
 import { getReading } from '../services/library.service';
@@ -91,91 +90,89 @@ export function ReadingPage() {
         });
     }
 
-    return Layout(
-        UltraComponent({
-            component: '<section></section>',
+    return UltraComponent({
+        component: '<section></section>',
 
-            className: [styles.page],
+        className: [styles.page],
 
-            onMount: [
-                () => {
-                    store.load();
-                },
-                () => COMIC_CACHE_CONTEXT.cache.subscribe(() => store.dropNotInProgress()),
-                () =>
-                    LIBRARY_CONTEXT.lastDeleted.subscribe((deleted) => {
-                        if (deleted) store.dropDeleted(deleted.uid);
-                    }),
-                () => DOCUMENT_TITLE_CONTEXT.setTitle('Keep reading'),
-            ],
-
-            children: [
-                UltraComponent({
-                    component: '<header></header>',
-                    className: [styles.header],
-                    children: [
-                        UltraComponent({
-                            component: '<div></div>',
-                            className: [styles.left],
-                            children: [
-                                `<span class="${styles.eyebrow}">Keep reading</span>`,
-                                `<h1 class="${styles.title}">Currently reading</h1>`,
-                            ],
-                        }),
-
-                        UltraComponent({
-                            component: '<div></div>',
-                            className: [styles.right],
-                            children: [LayoutSelector()],
-                        }),
-                    ],
+        onMount: [
+            () => {
+                store.load();
+            },
+            () => COMIC_CACHE_CONTEXT.cache.subscribe(() => store.dropNotInProgress()),
+            () =>
+                LIBRARY_CONTEXT.lastDeleted.subscribe((deleted) => {
+                    if (deleted) store.dropDeleted(deleted.uid);
                 }),
+            () => DOCUMENT_TITLE_CONTEXT.setTitle('Keep reading'),
+        ],
 
-                UltraActivity({
-                    mode: {
+        children: [
+            UltraComponent({
+                component: '<header></header>',
+                className: [styles.header],
+                children: [
+                    UltraComponent({
+                        component: '<div></div>',
+                        className: [styles.left],
+                        children: [
+                            `<span class="${styles.eyebrow}">Keep reading</span>`,
+                            `<h1 class="${styles.title}">Currently reading</h1>`,
+                        ],
+                    }),
+
+                    UltraComponent({
+                        component: '<div></div>',
+                        className: [styles.right],
+                        children: [LayoutSelector()],
+                    }),
+                ],
+            }),
+
+            UltraActivity({
+                mode: {
+                    subscriber: [
+                        store.isLoading.subscribe,
+                        store.items.subscribe,
+                        store.error.subscribe,
+                    ],
+                    state: () =>
+                        store.isLoading.get() ||
+                        !!store.error.get() ||
+                        store.items.get().length === 0,
+                },
+                component: '<p></p>',
+                className: [styles.empty],
+                trigger: [
+                    {
                         subscriber: [
                             store.isLoading.subscribe,
                             store.items.subscribe,
                             store.error.subscribe,
                         ],
-                        state: () =>
-                            store.isLoading.get() ||
-                            !!store.error.get() ||
-                            store.items.get().length === 0,
+                        triggerFunction: ($p: HTMLElement) => {
+                            $p.textContent = store.isLoading.get()
+                                ? 'Loading comics in progress…'
+                                : store.error.get()
+                                  ? store.error.get()
+                                  : 'Nothing in progress.';
+                        },
                     },
-                    component: '<p></p>',
-                    className: [styles.empty],
-                    trigger: [
-                        {
-                            subscriber: [
-                                store.isLoading.subscribe,
-                                store.items.subscribe,
-                                store.error.subscribe,
-                            ],
-                            triggerFunction: ($p: HTMLElement) => {
-                                $p.textContent = store.isLoading.get()
-                                    ? 'Loading comics in progress…'
-                                    : store.error.get()
-                                      ? store.error.get()
-                                      : 'Nothing in progress.';
-                            },
-                        },
-                    ],
-                }),
+                ],
+            }),
 
-                UltraComponent({
-                    component: '<section></section>',
-                    className: [styles.comicContainer],
-                    onMount: [onItemsChange],
-                    trigger: [
-                        {
-                            subscriber: store.items.subscribe,
-                            triggerFunction: onItemsChange,
-                            defer: true,
-                        },
-                    ],
-                }),
-            ],
-        }),
-    );
+            UltraComponent({
+                component: '<section></section>',
+                className: [styles.comicContainer],
+                onMount: [onItemsChange],
+                trigger: [
+                    {
+                        subscriber: store.items.subscribe,
+                        triggerFunction: onItemsChange,
+                        defer: true,
+                    },
+                ],
+            }),
+        ],
+    });
 }

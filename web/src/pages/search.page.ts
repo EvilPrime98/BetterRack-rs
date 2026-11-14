@@ -3,7 +3,6 @@ import styles from './search-page.module.css';
 import { PageHeader } from '../components/page-header/page-header';
 import { LIBRARY_CONTEXT } from '../context/library.context';
 import { ComicCard } from '../components/comic-card/comic-card';
-import { Layout } from '../layout';
 import { COMICS_TYPE_CTX } from '../context/comics-types.context';
 import type { ILibraryResponseItem } from '../library.types';
 import { ultraFilters } from '../hooks/ultraFilters';
@@ -112,85 +111,83 @@ export function SearchPage({ search, writer }: { search: string; writer?: string
 
     subsItems(() => setVisibleCount(PAGE_SIZE));
 
-    return Layout(
-        UltraComponent({
-            component: '<section></section>',
+    return UltraComponent({
+        component: '<section></section>',
 
-            className: [styles.page],
+        className: [styles.page],
 
-            onMount: [
-                () =>
-                    DOCUMENT_TITLE_CONTEXT.setTitle(
-                        writer === undefined ? `Search: "${search}"` : 'Filtered',
-                    ),
-            ],
+        onMount: [
+            () =>
+                DOCUMENT_TITLE_CONTEXT.setTitle(
+                    writer === undefined ? `Search: "${search}"` : 'Filtered',
+                ),
+        ],
 
-            children: [
-                ...(writer === undefined
-                    ? []
-                    : [
-                          `<p class="${styles.loadingNote}">Filtered by writer: <strong></strong> · <a href="/">Clear</a></p>`,
-                      ]),
-                PageHeader({
-                    items,
-                    subsItems,
-                    filters,
-                    resetFilters,
-                }),
+        children: [
+            ...(writer === undefined
+                ? []
+                : [
+                      `<p class="${styles.loadingNote}">Filtered by writer: <strong></strong> · <a href="/">Clear</a></p>`,
+                  ]),
+            PageHeader({
+                items,
+                subsItems,
+                filters,
+                resetFilters,
+            }),
 
-                UltraActivity({
-                    mode: { state: libLoading, subscriber: subsLibLoading },
-                    component: '<p></p>',
-                    className: [styles.loadingNote],
-                    children: ['Still loading your library — search results may be incomplete.'],
-                }),
+            UltraActivity({
+                mode: { state: libLoading, subscriber: subsLibLoading },
+                component: '<p></p>',
+                className: [styles.loadingNote],
+                children: ['Still loading your library — search results may be incomplete.'],
+            }),
 
-                UltraActivity({
-                    mode: {
-                        subscriber: [
-                            subsItems,
-                            subsLibLoading,
-                            READ_TYPES_CTX.type.subscribe,
-                            COMIC_CACHE_CONTEXT.cache.subscribe,
-                        ],
-                        state: () => !libLoading() && !hasVisibleItems(),
-                    },
-                    component: `<p class="${styles.empty}">No items to show.</p>`,
-                }),
-
-                UltraComponent({
-                    onMount: [
-                        () => {
-                            LIBRARY_CONTEXT.fetchLibrary();
-                            if (LIBRARY_CONTEXT.groups.get().length) applyFilters();
-                        },
-                    ],
-                    component: '<section></section>',
-                    className: [styles.comicContainer],
-                    trigger: [
-                        {
-                            subscriber: [subsItems, subsVisibleCount],
-                            triggerFunction: onItemsChange,
-                            defer: true,
-                        },
-                        {
-                            subscriber: [COMICS_TYPE_CTX.type.subscribe, subsItems],
-                            triggerFunction: onLayoutChange,
-                            defer: true,
-                        },
-                    ],
-                }),
-            ],
-
-            trigger: [
-                {
+            UltraActivity({
+                mode: {
                     subscriber: [
-                        LIBRARY_CONTEXT.groups.subscribe,
-                        LIBRARY_CONTEXT.searchQuery.subscribe,
+                        subsItems,
+                        subsLibLoading,
+                        READ_TYPES_CTX.type.subscribe,
+                        COMIC_CACHE_CONTEXT.cache.subscribe,
                     ],
-                    triggerFunction: () => applyFilters(),
+                    state: () => !libLoading() && !hasVisibleItems(),
                 },
-            ],
-        }),
-    );
+                component: `<p class="${styles.empty}">No items to show.</p>`,
+            }),
+
+            UltraComponent({
+                onMount: [
+                    () => {
+                        LIBRARY_CONTEXT.fetchLibrary();
+                        if (LIBRARY_CONTEXT.groups.get().length) applyFilters();
+                    },
+                ],
+                component: '<section></section>',
+                className: [styles.comicContainer],
+                trigger: [
+                    {
+                        subscriber: [subsItems, subsVisibleCount],
+                        triggerFunction: onItemsChange,
+                        defer: true,
+                    },
+                    {
+                        subscriber: [COMICS_TYPE_CTX.type.subscribe, subsItems],
+                        triggerFunction: onLayoutChange,
+                        defer: true,
+                    },
+                ],
+            }),
+        ],
+
+        trigger: [
+            {
+                subscriber: [
+                    LIBRARY_CONTEXT.groups.subscribe,
+                    LIBRARY_CONTEXT.searchQuery.subscribe,
+                ],
+                triggerFunction: () => applyFilters(),
+            },
+        ],
+    });
 }
