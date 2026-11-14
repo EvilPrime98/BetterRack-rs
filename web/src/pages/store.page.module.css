@@ -110,3 +110,35 @@
     font-size: 12px;
     color: #808080;
 }
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.chips:empty {
+    display: none;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    border: 1px solid #ffffff1f;
+    border-radius: 999px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: #f2f2f2;
+}
+
+.chipRemove {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}

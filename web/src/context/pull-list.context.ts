@@ -9,6 +9,7 @@ export interface IPullListCtx {
     load: () => Promise<void>;
     follows: (title: string) => boolean;
     toggle: (title: string) => Promise<void>;
+    remove: (id: string) => Promise<void>;
 }
 
 function fail(e: unknown, fallback: string) {
@@ -60,6 +61,19 @@ export const PULL_LIST_CTX: IPullListCtx = ultraCompState({
             fail(e, 'Failed to update the pull list.');
         } finally {
             pending.delete(lock);
+        }
+    },
+
+    remove: async (comp: IPullListCtx, id: string) => {
+        if (pending.has(id)) return;
+        pending.add(id);
+        try {
+            await deletePullEntry(id);
+            comp.items.set(comp.items.get().filter((e) => e.id !== id));
+        } catch (e) {
+            fail(e, 'Failed to remove from the pull list.');
+        } finally {
+            pending.delete(id);
         }
     },
 });

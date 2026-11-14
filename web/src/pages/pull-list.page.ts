@@ -143,6 +143,25 @@ export function PullListPage() {
         fillIfSparse();
     }
 
+    function onChipsChange($row: HTMLElement) {
+        $row.replaceChildren(
+            ...PULL_LIST_CTX.items.get().map((entry) => {
+                const $chip = document.createElement('span');
+                $chip.className = styles.chip;
+                const $label = document.createElement('span');
+                $label.textContent = entry.keyword;
+                const $remove = document.createElement('button');
+                $remove.type = 'button';
+                $remove.className = styles.chipRemove;
+                $remove.textContent = '×';
+                $remove.setAttribute('aria-label', `Remove ${entry.keyword} from the pull list`);
+                $remove.addEventListener('click', () => PULL_LIST_CTX.remove(entry.id));
+                $chip.append($label, $remove);
+                return $chip;
+            }),
+        );
+    }
+
     return Layout(
         UltraComponent({
             component: '<section></section>',
@@ -150,6 +169,18 @@ export function PullListPage() {
             onMount: [start, () => DOCUMENT_TITLE_CONTEXT.setTitle('Pull list')],
             children: [
                 `<h1 class="${styles.title}">Pull list</h1>`,
+                UltraComponent({
+                    component: '<div></div>',
+                    className: [styles.chips],
+                    onMount: [onChipsChange],
+                    trigger: [
+                        {
+                            subscriber: PULL_LIST_CTX.items.subscribe,
+                            triggerFunction: onChipsChange,
+                            defer: true,
+                        },
+                    ],
+                }),
                 UltraComponent({
                     component: '<section></section>',
                     className: [styles.grid],
