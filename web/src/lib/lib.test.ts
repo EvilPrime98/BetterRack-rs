@@ -8,6 +8,7 @@ import { getTopLevelDirs, visibleDirectories } from './directory-picker';
 import type { ILibraryGroup, ILibraryResponseItem } from '../library.types';
 import type { IStoreBookmark } from '../store.types';
 import { bookmarksInFolder, folderDir, mergeBookmarks, onlyNewComic, postKey } from './bookmarks';
+import { keywordFromTitle, latestMatchId, matches, newCount } from './pull-list';
 
 const item = (uid: string, writers: string[], did = false) =>
     ({ uid, did, name: uid, comic: { credits: { writers } } }) as unknown as ILibraryResponseItem;
@@ -186,7 +187,11 @@ describe('store bookmarks', () => {
     });
 
     it('slots bookmarks alphabetically among comics, after folders', () => {
-        const items = [entry('f', true), entry('a', false, 'Alpha 1'), entry('c', false, 'Charlie 1')];
+        const items = [
+            entry('f', true),
+            entry('a', false, 'Alpha 1'),
+            entry('c', false, 'Charlie 1'),
+        ];
         const merged = mergeBookmarks(items, [bm('late', 'Zulu 9'), bm('mid', 'Bravo 2')], false);
         expect(keys(merged)).toEqual(['f', 'a', 'mid', 'c', 'late']);
     });
@@ -216,5 +221,41 @@ describe('store bookmarks', () => {
         expect(onlyNewComic(groups, before)).toBe('n1');
         groups[0].entries.push(entry('n2', false));
         expect(onlyNewComic(groups, before)).toBeUndefined();
+    });
+});
+
+describe('pull list', () => {
+    const entry = (keyword: string, exclude = '', lastSeenId = 0) => ({
+        id: 'e',
+        keyword,
+        exclude,
+        lastSeenId,
+        createdAt: 0,
+    });
+
+    it('matches a case-insensitive substring and honours exclude terms', () => {
+        expect(matches(entry('batman'), 'The_Dark BATMAN #3')).toBe(true);
+        expect(matches(entry('batman'), 'Superman')).toBe(false);
+        expect(matches(entry(' '), 'x')).toBe(false);
+        const e = entry('Batman', 'annual, Special ,');
+        expect(matches(e, 'Batman Annual #1')).toBe(false);
+        expect(matches(e, 'Batman #4')).toBe(true);
+    });
+
+    it('counts posts above the last seen id as new', () => {
+        const posts = [
+            { id: 9, title: 'Batman #1', link: 'a' },
+            { id: 11, title: 'Batman #2', link: 'b' },
+            { id: 12, title: 'Saga #1', link: 'c' },
+        ];
+        expect(newCount(entry('Batman', '', 10), posts)).toBe(1);
+        expect(latestMatchId(entry('Batman', '', 10), posts)).toBe(11);
+        expect(latestMatchId(entry('Batman', '', 50), posts)).toBe(50);
+    });
+
+    it('guesses a keyword from a title', () => {
+        expect(keywordFromTitle('Batman_Beyond 012 (2024)')).toBe('Batman Beyond');
+        expect(keywordFromTitle('Saga #54')).toBe('Saga');
+        expect(keywordFromTitle('Maus')).toBe('Maus');
     });
 });
