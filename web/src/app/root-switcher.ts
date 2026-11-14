@@ -17,8 +17,8 @@ export function mountRoot($anchor: HTMLElement) {
         $anchor.after($root);
     }
 
-    sync();
     window.addEventListener('popstate', sync);
+    sync();
 
     return function dispose() {
         window.removeEventListener('popstate', sync);
