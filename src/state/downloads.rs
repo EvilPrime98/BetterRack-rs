@@ -17,6 +17,7 @@ use crate::ui::toast;
 pub enum Pending {
     Retrying,
     Stopping,
+    Deleting,
 }
 
 #[derive(Default)]
@@ -95,6 +96,10 @@ pub fn detail_for(progress: Option<&StoreProgressEvent>) -> String {
 pub fn can_stop(job: &JobStatus) -> bool {
     matches!(job.state, JobState::Queued | JobState::Running)
         && !matches!(job.progress, Some(StoreProgressEvent::Extracting { .. }))
+}
+
+pub fn can_delete(job: &JobStatus) -> bool {
+    matches!(job.state, JobState::Done | JobState::Error)
 }
 
 pub fn state_label(state: JobState) -> &'static str {
@@ -194,13 +199,37 @@ impl DownloadsStore {
     }
 
     pub fn stop(&mut self, job_id: String, cx: &mut Context<Self>) {
+        self.remove(
+            job_id,
+            Pending::Stopping,
+            "Failed to stop the download.",
+            cx,
+        );
+    }
+
+    pub fn delete(&mut self, job_id: String, cx: &mut Context<Self>) {
+        self.remove(
+            job_id,
+            Pending::Deleting,
+            "Failed to delete the download.",
+            cx,
+        );
+    }
+
+    fn remove(
+        &mut self,
+        job_id: String,
+        pending: Pending,
+        error: &'static str,
+        cx: &mut Context<Self>,
+    ) {
         let Some(client) = self.client.clone() else {
             return;
         };
         if self.pending.contains_key(&job_id) {
             return;
         }
-        self.pending.insert(job_id.clone(), Pending::Stopping);
+        self.pending.insert(job_id.clone(), pending);
         cx.notify();
         cx.spawn(async move |this, cx| {
             let id = job_id.clone();
@@ -214,7 +243,7 @@ impl DownloadsStore {
                 s.pending.remove(&job_id);
                 match result {
                     Ok(jobs) => s.jobs = jobs,
-                    Err(e) => toast::error(cx, describe(e, "Failed to stop the download.")),
+                    Err(e) => toast::error(cx, describe(e, error)),
                 }
                 cx.notify();
             })
@@ -325,5 +354,13 @@ mod tests {
         assert!(can_stop(&job("a", JobState::Queued, None)));
         assert!(!can_stop(&job("a", JobState::Done, None)));
         assert!(!can_stop(&job("a", JobState::Error, None)));
+    }
+
+    #[test]
+    fn only_finished_jobs_can_be_deleted() {
+        assert!(can_delete(&job("a", JobState::Done, None)));
+        assert!(can_delete(&job("a", JobState::Error, None)));
+        assert!(!can_delete(&job("a", JobState::Queued, None)));
+        assert!(!can_delete(&job("a", JobState::Running, None)));
     }
 }
