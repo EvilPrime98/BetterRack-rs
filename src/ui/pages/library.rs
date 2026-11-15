@@ -173,6 +173,8 @@ impl Render for LibraryPage {
                 .collect()
         };
 
+        let has_subfolders = base.iter().any(|i| i.did);
+        let flatten_uid = self.uid.clone();
         let has_uid = self.uid.is_some();
         let header = div()
             .flex()
@@ -247,13 +249,35 @@ impl Render for LibraryPage {
                     .child(actions_menu(
                         "actions",
                         "Actions",
-                        vec![(
-                            "Mark entire folder as read",
-                            !unread.is_empty(),
-                            Rc::new(move |cx: &mut gpui::App| {
-                                crate::ui::modals::open_mark_folder_read(cx, unread.clone())
-                            }) as Rc<dyn Fn(&mut gpui::App)>,
-                        )],
+                        vec![
+                            (
+                                "Mark entire folder as read",
+                                !unread.is_empty(),
+                                Rc::new(move |cx: &mut gpui::App| {
+                                    crate::ui::modals::open_mark_folder_read(cx, unread.clone())
+                                }) as Rc<dyn Fn(&mut gpui::App)>,
+                            ),
+                            (
+                                "Flatten folder",
+                                has_subfolders,
+                                Rc::new(move |cx: &mut gpui::App| {
+                                    let (comics, folders) = cx
+                                        .try_global::<Stores>()
+                                        .map(|s| {
+                                            s.library
+                                                .read(cx)
+                                                .flatten_counts(flatten_uid.as_deref())
+                                        })
+                                        .unwrap_or_default();
+                                    crate::ui::modals::open_flatten_folder(
+                                        cx,
+                                        flatten_uid.clone(),
+                                        comics,
+                                        folders,
+                                    )
+                                }) as Rc<dyn Fn(&mut gpui::App)>,
+                            ),
+                        ],
                         &self.stores.prefs,
                         cx,
                     ))

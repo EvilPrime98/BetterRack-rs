@@ -1,4 +1,4 @@
-import { UltraComponent, ultraNavigate } from 'ultra-light-js';
+import { UltraActivity, UltraComponent, ultraNavigate } from 'ultra-light-js';
 import { BRDropdown, type IBRDropdownOption } from '@/components/br-dropdown/br-dropdown';
 import { ItemCounter } from '@/components/item-counter/item-counter';
 import { StateFilter } from '@/components/state-filter/state-filter';
@@ -10,6 +10,8 @@ import styles from './page-header.module.css';
 import { FILTER_OPTIONS, type ILibraryResponseItem, type ILibraryFilters } from '@/library.types';
 import { NEW_FOLDER_MODAL_CTX } from '@/context/new-folder-modal.context';
 import { LIBRARY_CONTEXT } from '@/context/library.context';
+import { CONFIRM_MODAL_CTX } from '@/context/confirm-modal.context';
+import { flattenCounts } from '@/lib/flatten';
 
 type TSortOption = 'alphabetical' | 'releaseDate';
 
@@ -38,6 +40,16 @@ export function PageHeader({
             .get()
             .flatMap((g) => g.entries)
             .find((e) => e.uid === uid)?.name || 'Root';
+
+    const onFlattenClick = async () => {
+        const { comics, folders } = flattenCounts(LIBRARY_CONTEXT.groups.get(), uid);
+        const confirmed = await CONFIRM_MODAL_CTX.confirmDialog({
+            title: 'Flatten folder?',
+            message: `${comics} comic${comics === 1 ? '' : 's'} will be moved into this folder and up to ${folders} subfolder${folders === 1 ? '' : 's'} removed once empty.`,
+            confirmLabel: 'Flatten',
+        });
+        if (confirmed) LIBRARY_CONTEXT.flattenFolder(uid);
+    };
 
     return UltraComponent({
         component: '<header></header>',
@@ -105,6 +117,17 @@ export function PageHeader({
                                           component: '<span></span>',
                                           className: [styles.divider],
                                           attributes: { 'aria-hidden': 'true' },
+                                      }),
+                                      UltraActivity({
+                                          mode: {
+                                              subscriber: [subsItems],
+                                              state: () => items().some((i) => i.did),
+                                          },
+                                          component: BRButton({
+                                              text: 'Flatten',
+                                              variant: 'secondary',
+                                              eventHandler: { click: onFlattenClick },
+                                          }),
                                       }),
                                       BRButton({
                                           text: 'New Folder',

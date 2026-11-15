@@ -259,6 +259,28 @@ pub fn open_mark_folder_read(cx: &mut App, uids: Vec<String>) {
     );
 }
 
+pub fn open_flatten_folder(cx: &mut App, uid: Option<String>, comics: usize, folders: usize) {
+    let message = format!(
+        "{comics} comic{} will be moved into this folder and up to {folders} subfolder{} removed once empty.",
+        if comics == 1 { "" } else { "s" },
+        if folders == 1 { "" } else { "s" }
+    );
+    confirm::ask(
+        cx,
+        ConfirmOptions::new("Flatten folder?", message).labels("Flatten", "Cancel"),
+        move |answer, _, cx| {
+            if answer != Some(true) {
+                return;
+            }
+            if let Some(stores) = cx.try_global::<Stores>().cloned() {
+                stores
+                    .library
+                    .update(cx, |s, cx| s.flatten_folder(uid.clone(), cx));
+            }
+        },
+    );
+}
+
 /// `openMoveFileModal(uid, name)`.
 pub fn open_move_file(cx: &mut App, uid: String) {
     let moving = uid.clone();

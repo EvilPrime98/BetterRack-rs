@@ -94,6 +94,7 @@ pub fn app_with_web(state: AppState, web_dir: Option<PathBuf>) -> Router {
         )
         .route("/api/library/file", delete(library::delete_file))
         .route("/api/library/file/move", post(library::move_file))
+        .route("/api/library/folder/flatten", post(library::flatten_folder))
         .route(
             "/api/library/file/unidentify",
             post(library::unidentify_file),

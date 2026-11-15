@@ -280,6 +280,33 @@ impl LibraryStore {
         );
     }
 
+    pub fn flatten_folder(&mut self, uid: Option<String>, cx: &mut Context<Self>) {
+        self.mutate(
+            "Failed to flatten folder.",
+            "Folder flattened",
+            cx,
+            move |c| async move { c.flatten_folder(uid.as_deref()).await },
+        );
+    }
+
+    pub fn flatten_counts(&self, uid: Option<&str>) -> (usize, usize) {
+        let start = uid.filter(|u| !self.groups.iter().any(|g| g.uid == *u));
+        let all: Vec<&LibraryEntry> = self.groups.iter().flat_map(|g| g.entries.iter()).collect();
+        let (mut comics, mut folders) = (0, 0);
+        let mut stack = vec![(start.unwrap_or(""), true)];
+        while let Some((parent, direct)) = stack.pop() {
+            for e in all.iter().filter(|e| e.parent_id == parent) {
+                if e.did {
+                    folders += 1;
+                    stack.push((e.uid.as_str(), false));
+                } else if !direct {
+                    comics += 1;
+                }
+            }
+        }
+        (comics, folders)
+    }
+
     pub fn unidentify_file(&mut self, uid: String, cx: &mut Context<Self>) {
         let broadcast = uid.clone();
         self.mutate_then(
