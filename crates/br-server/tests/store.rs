@@ -41,12 +41,13 @@ async fn harness(configure_store: bool) -> Harness {
                     if id != "1" {
                         return (StatusCode::NOT_FOUND, axum::Json(json!({}))).into_response_();
                     }
-                    let html = format!(r#"<h2>Download Free Comic</h2><p><strong>Batman 1</strong></p><a class="aio-red" title="Download Now" href="{b}/files/batman.cbz">Download Now</a>"#);
+                    let html = format!(r#"<h2>Download Free Comic</h2><p><strong>Batman 1</strong></p><a class="aio-red" title="Download Now" href="{b}/files/batman.cbz">Download Now</a><ul><li>Batman 1 <a href="{b}/files/batman.cbz">dl</a></li><li>Batman 2 <a href="{b}/files/batman2.cbz">dl</a></li></ul>"#);
                     (StatusCode::OK, axum::Json(json!({"content": {"rendered": html}, "jetpack_featured_media_url": ""}))).into_response_()
                 }
             }),
         )
-        .route("/files/batman.cbz", get(|| async { "COMICBYTES" }));
+        .route("/files/batman.cbz", get(|| async { "COMICBYTES" }))
+        .route("/files/batman2.cbz", get(|| async { "COMICBYTES" }));
     tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
 
     let dir = tempfile::tempdir().unwrap();
@@ -196,6 +197,34 @@ async fn links_then_download_runs_to_done_and_the_file_lands() {
     let (_, v) = call(&h, "GET", "/api/downloads/jobs", None).await;
     assert!(v["jobs"].as_array().unwrap().is_empty());
     let _ = &h.base;
+}
+
+#[tokio::test]
+async fn links_of_one_post_run_as_separate_jobs_and_the_same_link_dedupes() {
+    let h = harness(true).await;
+    let (_, v) = call(&h, "GET", "/api/comics/1/links", None).await;
+    let uuids: Vec<String> = v["links"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["uuid"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(uuids.len(), 2);
+    let dir = h.out.path().to_string_lossy().to_string();
+    let start = |uuid: String| {
+        let body = json!({"id": 1, "title": "Batman", "uuid": uuid, "outputDir": dir});
+        let h = &h;
+        async move { call(h, "POST", "/api/downloads", Some(body)).await }
+    };
+
+    let (s1, v1) = start(uuids[0].clone()).await;
+    let (s2, v2) = start(uuids[1].clone()).await;
+    assert_eq!((s1, s2), (StatusCode::CREATED, StatusCode::CREATED));
+    assert_ne!(v1["jobId"], v2["jobId"]);
+
+    let (s3, v3) = start(uuids[0].clone()).await;
+    assert_eq!(s3, StatusCode::OK);
+    assert_eq!(v3["jobId"], v1["jobId"]);
 }
 
 #[tokio::test]
