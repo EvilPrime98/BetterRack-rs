@@ -860,7 +860,7 @@ impl Library {
             },
         };
         std::fs::create_dir_all(resolve_in(name, &base))?;
-        Ok(())
+        self.rescan()
     }
 
     pub fn move_file(&self, file_uid: &str, target_folder_uid: &str) -> Result<()> {
@@ -1685,6 +1685,7 @@ mod tests {
         f.rescan();
         f.lib.create_folder("New/Deep", None).unwrap();
         assert!(f.root.path().join("New/Deep").is_dir());
+        assert!(f.lib.get(&f.uid("New/Deep")).is_some_and(|e| e.did));
         f.lib
             .create_folder("In Keep", Some(&f.uid("Keep")))
             .unwrap();
