@@ -224,6 +224,18 @@ export async function moveFile(
     return data;
 }
 
+export async function flattenFolder(folderUid?: string): Promise<ILibraryRefreshResponse> {
+    const response = await fetch(`${API_URL}/api/library/folder/flatten`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ folderUid }),
+    });
+    const data: ILibraryRefreshResponse = await response.json();
+    if (!response.ok) throw new Error(data.message);
+    invalidateDirectories();
+    return data;
+}
+
 export async function retryThumbnail(uid: string): Promise<void> {
     const response = await fetch(`${API_URL}/api/thumbnail/${uid}/retry`, {
         method: 'POST',

@@ -8,6 +8,7 @@ import {
     deleteFolder as requestDeleteFolder,
     createFolder as requestCreateFolder,
     moveFile as requestMoveFile,
+    flattenFolder as requestFlattenFolder,
     unidentifyFile as requestUnidentifyFile,
     reidentifyAllLibrary as requestReidentifyAllLibrary,
     startIdentifyLibrary,
@@ -97,6 +98,7 @@ export interface ILibraryCtx {
     deleteFolder: (uid: string) => Promise<void>;
     createFolder: (folderName: string, parentFolderUid?: string) => Promise<void>;
     moveFile: (fileUid: string, targetFolderUid?: string) => Promise<void>;
+    flattenFolder: (folderUid?: string) => Promise<void>;
     unidentifyFile: (uid: string) => Promise<void>;
     reidentifyAll: () => Promise<void>;
     getLibraryItems: (args: { onlyDir: boolean; uid?: string }) => ILibraryResponseItem[];
@@ -330,6 +332,16 @@ export const LIBRARY_CONTEXT: ILibraryCtx = ultraCompState({
             toast.success(data.message || 'File moved');
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Failed to move file.');
+        }
+    },
+
+    flattenFolder: async (comp: ILibraryCtx, folderUid?: string) => {
+        try {
+            const data = await requestFlattenFolder(folderUid);
+            await reloadLibrary(comp);
+            toast.success(data.message || 'Folder flattened');
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Failed to flatten folder.');
         }
     },
 
