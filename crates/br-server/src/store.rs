@@ -303,11 +303,6 @@ pub async fn cancel_job(
     let outcome = s.downloads.cancel(&job_id).map_err(store_err)?;
     Ok(match outcome {
         CancelOutcome::NotFound => not_found(),
-        CancelOutcome::NotActive => ApiError::Json(
-            StatusCode::CONFLICT,
-            "Only active downloads can be stopped".into(),
-        )
-        .into_response(),
         CancelOutcome::Extracting => ApiError::Json(
             StatusCode::CONFLICT,
             "The download is being extracted and cannot be stopped".into(),

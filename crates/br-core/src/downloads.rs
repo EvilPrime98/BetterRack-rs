@@ -29,8 +29,6 @@ pub struct DownloadService {
 pub enum CancelOutcome {
     Cancelled,
     NotFound,
-    /// Finished already (`done`/`error`).
-    NotActive,
     /// The pack is being unpacked, which cannot be interrupted safely.
     Extracting,
 }
@@ -188,14 +186,14 @@ impl DownloadService {
         let Some(job) = self.jobs.get(job_id) else {
             return Ok(CancelOutcome::NotFound);
         };
-        if !matches!(job.state, JobState::Queued | JobState::Running) {
-            return Ok(CancelOutcome::NotActive);
-        }
-        if job.progress.as_ref().and_then(|p| p["type"].as_str()) == Some("extracting") {
-            return Ok(CancelOutcome::Extracting);
-        }
-        if let Some(token) = self.active().get(job_id) {
-            token.cancel();
+        let active = matches!(job.state, JobState::Queued | JobState::Running);
+        if active {
+            if job.progress.as_ref().and_then(|p| p["type"].as_str()) == Some("extracting") {
+                return Ok(CancelOutcome::Extracting);
+            }
+            if let Some(token) = self.active().get(job_id) {
+                token.cancel();
+            }
         }
         self.jobs.remove(job_id)?;
         Ok(CancelOutcome::Cancelled)

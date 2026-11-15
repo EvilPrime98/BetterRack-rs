@@ -187,13 +187,14 @@ async fn links_then_download_runs_to_done_and_the_file_lands() {
 
     let (_, v) = call(&h, "GET", "/api/downloads/jobs", None).await;
     assert_eq!(v["jobs"][0]["jobId"], job_id.as_str());
-    // A finished job cannot be stopped; unknown jobs are 404.
-    let (s, _) = call(&h, "DELETE", &format!("/api/downloads/{job_id}"), None).await;
+    let (s, _) = call(&h, "POST", &format!("/api/downloads/{job_id}/retry"), None).await;
     assert_eq!(s, StatusCode::CONFLICT);
     let (s, _) = call(&h, "DELETE", "/api/downloads/missing", None).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
-    let (s, _) = call(&h, "POST", &format!("/api/downloads/{job_id}/retry"), None).await;
-    assert_eq!(s, StatusCode::CONFLICT);
+    let (s, _) = call(&h, "DELETE", &format!("/api/downloads/{job_id}"), None).await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, v) = call(&h, "GET", "/api/downloads/jobs", None).await;
+    assert!(v["jobs"].as_array().unwrap().is_empty());
     let _ = &h.base;
 }
 
