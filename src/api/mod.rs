@@ -310,6 +310,12 @@ impl ApiClient {
             .await
     }
 
+    pub async fn flatten_folder(&self, folder_uid: Option<&str>) -> ApiResult<()> {
+        let body = json!({ "folderUid": folder_uid });
+        self.done(self.post_json(&["api", "library", "folder", "flatten"], body))
+            .await
+    }
+
     pub async fn unidentify_file(&self, file_uid: &str) -> ApiResult<()> {
         let body = json!({ "fileUid": file_uid });
         self.done(self.post_json(&["api", "library", "file", "unidentify"], body))
