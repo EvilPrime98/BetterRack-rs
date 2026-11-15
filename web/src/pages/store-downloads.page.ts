@@ -21,6 +21,7 @@ import { CONFIRM_MODAL_CTX } from '../context/confirm-modal.context';
 import { toast } from '@/services/toast.service';
 import { POLL_INTERVAL_MS } from '@/data';
 import type { TJobStates } from '../store.types';
+import type { TPendingAction, TPendingJobs } from '@/components/downloads-page/job-row';
 import { JobRow } from '@/components/downloads-page/job-row';
 import { USER_PREF } from '../context/user-pref-cache.context';
 
@@ -28,11 +29,30 @@ interface IStoreDownloadsState {
     jobs: IUltraCompStateStateful<TJobStatus[]>;
     error: IUltraCompStateStateful<string>;
     loaded: IUltraCompStateStateful<boolean>;
-    retryingIds: IUltraCompStateStateful<Set<string>>;
-    stoppingIds: IUltraCompStateStateful<Set<string>>;
+    pending: IUltraCompStateStateful<TPendingJobs>;
     load: () => Promise<void>;
     retry: (jobId: string) => Promise<void>;
     stop: (job: TJobStatus) => Promise<void>;
+    remove: (jobId: string) => Promise<void>;
+}
+
+function withPending(
+    comp: IStoreDownloadsState,
+    jobId: string,
+    action: TPendingAction,
+    run: () => Promise<void>,
+): Promise<void> {
+    return (async () => {
+        if (comp.pending.get().has(jobId)) return;
+        comp.pending.set(new Map(comp.pending.get()).set(jobId, action));
+        try {
+            await run();
+        } finally {
+            const next = new Map(comp.pending.get());
+            next.delete(jobId);
+            comp.pending.set(next);
+        }
+    })();
 }
 
 function stateByJobId(jobs: TJobStatus[]): TJobStates {
@@ -59,8 +79,7 @@ export function StoreDownloadsPage() {
         jobs: [] as TJobStatus[],
         error: '',
         loaded: false,
-        retryingIds: new Set<string>(),
-        stoppingIds: new Set<string>(),
+        pending: new Map() as TPendingJobs,
 
         load: async (comp: IStoreDownloadsState) => {
             try {
@@ -79,15 +98,10 @@ export function StoreDownloadsPage() {
         },
 
         retry: async (comp: IStoreDownloadsState, jobId: string) => {
-            comp.retryingIds.set(new Set(comp.retryingIds.get()).add(jobId));
-            try {
+            await withPending(comp, jobId, 'retrying', async () => {
                 await retryDownloadJob(jobId);
                 await comp.load();
-            } finally {
-                const next = new Set(comp.retryingIds.get());
-                next.delete(jobId);
-                comp.retryingIds.set(next);
-            }
+            });
         },
 
         stop: async (comp: IStoreDownloadsState, job: TJobStatus) => {
@@ -100,26 +114,33 @@ export function StoreDownloadsPage() {
                 });
                 if (!confirmed) return;
             }
-            comp.stoppingIds.set(new Set(comp.stoppingIds.get()).add(job.jobId));
-            try {
-                await cancelDownloadJob(job.jobId);
-                await comp.load();
-            } catch (e) {
-                toast.error(e instanceof Error ? e.message : 'Failed to stop the download.');
-            } finally {
-                const next = new Set(comp.stoppingIds.get());
-                next.delete(job.jobId);
-                comp.stoppingIds.set(next);
-            }
+            await withPending(comp, job.jobId, 'stopping', async () => {
+                try {
+                    await cancelDownloadJob(job.jobId);
+                    await comp.load();
+                } catch (e) {
+                    toast.error(e instanceof Error ? e.message : 'Failed to stop the download.');
+                }
+            });
+        },
+
+        remove: async (comp: IStoreDownloadsState, jobId: string) => {
+            await withPending(comp, jobId, 'deleting', async () => {
+                try {
+                    await cancelDownloadJob(jobId);
+                    await comp.load();
+                } catch (e) {
+                    toast.error(e instanceof Error ? e.message : 'Failed to delete the download.');
+                }
+            });
         },
     });
 
     function renderList($list: HTMLElement) {
         const jobs = store.jobs.get();
         if (!jobs.length) return;
-        const retryingIds = store.retryingIds.get();
-        const stoppingIds = store.stoppingIds.get();
-        ultraReplaceChildren($list, ...jobs.map((job) => JobRow(job, retryingIds, stoppingIds)));
+        const pending = store.pending.get();
+        ultraReplaceChildren($list, ...jobs.map((job) => JobRow(job, pending.get(job.jobId))));
     }
 
     function onListClick(event: Event) {
@@ -135,6 +156,12 @@ export function StoreDownloadsPage() {
             $target.closest<HTMLButtonElement>('[data-retry-job-id]')?.dataset.retryJobId;
         if (retryJobId) {
             store.retry(retryJobId);
+            return;
+        }
+        const deleteJobId =
+            $target.closest<HTMLButtonElement>('[data-delete-job-id]')?.dataset.deleteJobId;
+        if (deleteJobId) {
+            store.remove(deleteJobId);
             return;
         }
         const stopJobId =
@@ -203,8 +230,7 @@ export function StoreDownloadsPage() {
                     {
                         subscriber: [
                             store.jobs.subscribe,
-                            store.retryingIds.subscribe,
-                            store.stoppingIds.subscribe,
+                            store.pending.subscribe,
                         ],
                         triggerFunction: renderList,
                         defer: true,

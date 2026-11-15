@@ -43,11 +43,10 @@ const STATE_LABEL: Record<TJobStatus['state'], string> = {
     error: 'Failed',
 };
 
-export function JobRow(
-    job: TJobStatus,
-    retryingIds: Set<string>,
-    stoppingIds: Set<string>,
-): string {
+export type TPendingAction = 'retrying' | 'stopping' | 'deleting';
+export type TPendingJobs = Map<string, TPendingAction>;
+
+export function JobRow(job: TJobStatus, pending?: TPendingAction): string {
     const state = job.state;
     const percent = percentFor(job.progress);
     const detail = detailFor(job.progress);
@@ -62,12 +61,17 @@ export function JobRow(
 
     const retry =
         state === 'error'
-            ? `<button type="button" class="${styles.retry}" data-retry-job-id="${job.jobId}"${retryingIds.has(job.jobId) ? ' disabled' : ''}>Retry</button>`
+            ? `<button type="button" class="${styles.retry}" data-retry-job-id="${job.jobId}"${pending === 'retrying' ? ' disabled' : ''}>Retry</button>`
             : '';
 
     const stop = canStop(job)
-        ? `<button type="button" class="${styles.stop}" data-stop-job-id="${job.jobId}"${stoppingIds.has(job.jobId) ? ' disabled' : ''}>Stop</button>`
+        ? `<button type="button" class="${styles.stop}" data-stop-job-id="${job.jobId}"${pending === 'stopping' ? ' disabled' : ''}>Stop</button>`
         : '';
+
+    const remove =
+        state === 'done' || state === 'error'
+            ? `<button type="button" class="${styles.stop}" data-delete-job-id="${job.jobId}"${pending === 'deleting' ? ' disabled' : ''}>Delete</button>`
+            : '';
 
     return `<li class="${styles.row}" data-state="${state}">
         <div class="${styles.rowHead}">
@@ -84,6 +88,7 @@ export function JobRow(
                 : ''
         }
         ${retry}
+        ${remove}
         ${stop}
     </li>`;
 }
