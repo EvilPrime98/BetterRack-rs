@@ -124,6 +124,10 @@ fn start_failed(e: impl std::fmt::Display) -> ApiError {
     )
 }
 
+fn resource_key(id: &str, uuid: &str) -> String {
+    format!("{id}:{uuid}")
+}
+
 struct StartParams {
     id: Option<i64>,
     resource_key: String,
@@ -198,7 +202,7 @@ pub async fn download_by_query(
         &s,
         StartParams {
             id: leading_int(&id),
-            resource_key: id,
+            resource_key: resource_key(&id, &uuid),
             title,
             output_dir: q.get("outputDir").cloned(),
             uuid,
@@ -241,7 +245,7 @@ pub async fn download_by_body(
         &s,
         StartParams {
             id: Some(id),
-            resource_key: id.to_string(),
+            resource_key: resource_key(&id.to_string(), &uuid),
             title,
             output_dir: body["outputDir"].as_str().map(str::to_string),
             uuid,
