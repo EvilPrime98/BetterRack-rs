@@ -916,6 +916,44 @@ impl Library {
         self.rescan()
     }
 
+    pub fn flatten_folder(&self, folder_uid: Option<&str>) -> Result<()> {
+        let base = match folder_uid.filter(|u| !u.is_empty()) {
+            None => self
+                .roots()
+                .first()
+                .cloned()
+                .ok_or_else(|| CoreError::Invalid("No library folder configured.".into()))?,
+            Some(uid) => {
+                let folder = self
+                    .get(uid)
+                    .ok_or_else(|| CoreError::Invalid("Folder not found.".into()))?;
+                if !folder.did {
+                    return Err(CoreError::Invalid("Target is not a folder.".into()));
+                }
+                folder.path
+            }
+        };
+        let base = std::path::PathBuf::from(resolve_in(&base, &self.cwd));
+
+        let mut found = Vec::new();
+        walk(&base, &mut found);
+        found.sort_by_key(|(_, _, p)| std::cmp::Reverse(p.components().count()));
+
+        for (name, is_dir, path) in &found {
+            if *is_dir || path.parent() == Some(base.as_path()) {
+                continue;
+            }
+            let dest = crate::pack::dedupe(&base.join(name));
+            std::fs::rename(path, dest)?;
+        }
+        for (_, is_dir, path) in &found {
+            if *is_dir {
+                let _ = std::fs::remove_dir(path);
+            }
+        }
+        self.rescan()
+    }
+
     pub fn delete_folder(&self, uid: &str) -> Result<()> {
         let folder = self
             .get(uid)
@@ -1674,6 +1712,47 @@ mod tests {
                 .unwrap_err()
                 .to_string(),
             "Target is not a folder."
+        );
+    }
+
+    #[test]
+    fn flatten_hoists_renames_and_cleans_up() {
+        let f = fixture();
+        f.touch("top/a.cbz");
+        f.touch("top/sub/a.cbz");
+        f.touch("top/sub/b.cbz");
+        f.touch("top/sub/deep/c.cbz");
+        f.touch("top/other/a.cbz");
+        f.touch("top/keep/d.cbz");
+        std::fs::write(f.root.path().join("top/keep/notes.txt"), b"x").unwrap();
+        mkdir(&f, "top/empty/inner");
+        f.rescan();
+
+        f.lib.flatten_folder(Some(&f.uid("top"))).unwrap();
+        let top = f.root.path().join("top");
+        for n in ["a.cbz", "b.cbz", "c.cbz", "d.cbz"] {
+            assert!(top.join(n).is_file(), "{n}");
+        }
+        let hoisted_a = ["a (2).cbz", "a (3).cbz"]
+            .iter()
+            .filter(|n| top.join(n).is_file())
+            .count();
+        assert_eq!(hoisted_a, 2, "colliding names are suffixed");
+        assert!(!top.join("sub").exists() && !top.join("other").exists());
+        assert!(!top.join("empty").exists(), "empty tree removed");
+        assert!(top.join("keep/notes.txt").exists(), "non-empty folder kept");
+        assert!(f.lib.get(&f.uid("top/c.cbz")).is_some(), "rescanned");
+
+        f.lib.flatten_folder(None).unwrap();
+        assert!(f.root.path().join("a.cbz").is_file());
+        assert!(
+            top.join("keep/notes.txt").exists(),
+            "folder holding a non-library file stays, and so does its parent"
+        );
+        assert!(!top.join("c.cbz").exists());
+        assert_eq!(
+            f.lib.flatten_folder(Some("nope")).unwrap_err().to_string(),
+            "Folder not found."
         );
     }
 
