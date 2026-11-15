@@ -9,7 +9,9 @@ use gpui::{
 
 use crate::model::{JobState, JobStatus, StoreProgressEvent};
 use crate::state::Stores;
-use crate::state::downloads::{Pending, can_stop, detail_for, percent_for, state_label};
+use crate::state::downloads::{
+    Pending, can_delete, can_stop, detail_for, percent_for, state_label,
+};
 use crate::ui::components::items_grid::PAGE_PAD_X;
 use crate::ui::confirm::{self, ConfirmOptions};
 use crate::ui::pages::common::{header_bar, note, summary};
@@ -81,18 +83,25 @@ impl Render for DownloadsPage {
         } else {
             let rows = jobs.iter().map(|job| {
                 let retry_id = job.job_id.clone();
+                let delete_id = job.job_id.clone();
                 let stop_job = job.clone();
                 let pending = self.stores.downloads.read(cx).pending(&job.job_id);
                 job_row(
                     job,
                     pending == Some(Pending::Retrying),
                     pending == Some(Pending::Stopping),
+                    pending == Some(Pending::Deleting),
                     cx.listener(move |this, _, _, cx| {
                         this.stores
                             .downloads
                             .update(cx, |d, cx| d.retry(retry_id.clone(), cx))
                     }),
                     cx.listener(move |this, _, _, cx| this.stop(&stop_job, cx)),
+                    cx.listener(move |this, _, _, cx| {
+                        this.stores
+                            .downloads
+                            .update(cx, |d, cx| d.delete(delete_id.clone(), cx))
+                    }),
                 )
             });
             div()
@@ -192,8 +201,10 @@ fn job_row(
     job: &JobStatus,
     retrying: bool,
     stopping: bool,
+    deleting: bool,
     on_retry: impl Fn(&ClickEvent, &mut Window, &mut gpui::App) + 'static,
     on_stop: impl Fn(&ClickEvent, &mut Window, &mut gpui::App) + 'static,
+    on_delete: impl Fn(&ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
     let percent = percent_for(job.progress.as_ref());
     let detail = detail_for(job.progress.as_ref());
@@ -267,13 +278,28 @@ fn job_row(
                     .child(detail),
             )
         })
-        .when(failed, |s| {
-            s.child(div().flex().child(danger_button(
-                format!("retry-{}", job.job_id).into(),
-                "Retry",
-                retrying,
-                on_retry,
-            )))
+        .when(failed || can_delete(job), |s| {
+            s.child(
+                div()
+                    .flex()
+                    .gap(px(8.0))
+                    .when(failed, |s| {
+                        s.child(danger_button(
+                            format!("retry-{}", job.job_id).into(),
+                            "Retry",
+                            retrying,
+                            on_retry,
+                        ))
+                    })
+                    .when(can_delete(job), |s| {
+                        s.child(danger_button(
+                            format!("delete-{}", job.job_id).into(),
+                            "Delete",
+                            deleting,
+                            on_delete,
+                        ))
+                    }),
+            )
         })
         .children(page_url(job).map(|url| {
             div().flex().child(
