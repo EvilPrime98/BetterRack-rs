@@ -121,7 +121,7 @@ fn web_dir() -> Option<PathBuf> {
     [
         br_server::web_dir_from_env(),
         app_dir().map(|d| d.join("web")),
-        Some(PathBuf::from("web/dist")),
+        Some(PathBuf::from("web-react/dist")),
     ]
     .into_iter()
     .flatten()
