@@ -55,10 +55,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: web-react/pnpm-lock.yaml
 
       - name: Build the web client
-        working-directory: web
+        working-directory: web-react
         run: |
           pnpm install --frozen-lockfile
           pnpm build
@@ -124,7 +124,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: web-react/pnpm-lock.yaml
 
       - uses: actions/setup-java@v4
         with:
@@ -132,7 +132,7 @@ jobs:
           java-version: 21
 
       - name: Build the debug APK
-        working-directory: web
+        working-directory: web-react
         env:
           VITE_DEFAULT_API_URL: ${{ vars.ANDROID_DEFAULT_API_URL }}
         run: |

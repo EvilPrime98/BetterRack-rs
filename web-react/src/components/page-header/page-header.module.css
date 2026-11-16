@@ -1,0 +1,119 @@
+.pageHeader {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 20px 18px;
+    margin: 0 -20px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    position: sticky;
+    top: var(--header-height);
+    z-index: 2;
+    background-color: var(--bg-app);
+}
+
+.filtersRow {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    row-gap: 10px;
+}
+
+.left,
+.right {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.divider {
+    width: 1px;
+    height: 18px;
+    margin: 0 2px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.newFolderButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.left .sortDropdown {
+    flex: 0 1 218px;
+    width: 218px;
+    min-width: 0;
+}
+
+@media (max-width: 900px) {
+    .filtersRow {
+        flex-wrap: nowrap;
+        gap: 8px;
+    }
+
+    .left {
+        flex: 1 1 auto;
+        flex-wrap: nowrap;
+        min-width: 0;
+        gap: 8px;
+    }
+
+    .right {
+        flex: 0 0 auto;
+        flex-wrap: nowrap;
+        gap: 8px;
+    }
+
+    .left .sortDropdown {
+        flex: 1 1 0;
+        width: auto;
+        max-width: 218px;
+        min-width: 70px;
+    }
+}
+
+@media (max-width: 720px) {
+    .pageHeader {
+        padding: 10px 16px 12px;
+    }
+
+    .filtersRow {
+        flex-wrap: wrap;
+        row-gap: 8px;
+    }
+
+    .left {
+        flex-basis: 100%;
+    }
+
+    .left .sortDropdown {
+        flex: 0 1 160px;
+        width: 160px;
+        max-width: 160px;
+    }
+
+    .counter {
+        flex: 0 0 auto;
+        margin-left: auto;
+        white-space: nowrap;
+    }
+
+    .right {
+        flex: 1 1 100%;
+    }
+
+    .divider {
+        display: none;
+    }
+
+    .newFolderButton {
+        margin-left: auto;
+    }
+}
+
+.backButton {
+    min-width: 20px;
+}
