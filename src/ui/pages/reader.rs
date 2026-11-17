@@ -417,14 +417,17 @@ impl ReaderPage {
         let dt = last_frame
             .map_or(1.0 / 60.0, |t| (now - t).as_secs_f32())
             .min(0.05);
-        let step = if pending.abs() < 0.5 {
-            pending
-        } else {
-            pending * (1.0 - (-dt / SCROLL_TAU).exp())
-        };
+        let ideal = pending * (1.0 - (-dt / SCROLL_TAU).exp());
+        let mut step = ideal.round();
+        if step == 0.0 {
+            step = pending.signum();
+        }
+        if step.abs() > pending.abs() {
+            step = pending;
+        }
         let pending = pending - step;
         list.scroll_by(px(step));
-        self.scroll = if pending != 0.0 {
+        self.scroll = if pending.abs() >= 0.5 {
             window.request_animation_frame();
             Scroll::Easing {
                 pending,
