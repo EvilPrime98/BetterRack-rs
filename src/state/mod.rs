@@ -42,7 +42,7 @@ impl Stores {
         Self {
             library: cx.new(|_| library::LibraryStore::default()),
             bookmarks: cx.new(|_| bookmarks::BookmarksStore::load()),
-            pull_list: cx.new(|_| pull_list::PullListStore::load()),
+            pull_list: cx.new(|_| pull_list::PullListStore::default()),
             comics: cx.new(|_| comic_cache::ComicCacheStore::default()),
             thumbs: cx.new(|_| thumbnails::Thumbnails::default()),
             identify: cx.new(|_| identify::IdentifyStore::default()),
@@ -58,6 +58,8 @@ impl Stores {
         self.library
             .update(cx, |s, _| s.client = Some(client.clone()));
         self.comics
+            .update(cx, |s, _| s.client = Some(client.clone()));
+        self.pull_list
             .update(cx, |s, _| s.client = Some(client.clone()));
         self.thumbs
             .update(cx, |s, _| s.client = Some(client.clone()));

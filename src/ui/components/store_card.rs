@@ -207,14 +207,9 @@ fn follow_series(stores: &Stores, title: &str, cx: &mut gpui::App) {
         toast::error(cx, "Could not tell which series this is.");
         return;
     }
-    let followed = stores
+    stores
         .pull_list
         .update(cx, |s, cx| s.toggle(title, &keyword, cx));
-    if followed {
-        toast::success(cx, format!("Added “{keyword}” to your pull list."));
-    } else {
-        toast::success(cx, format!("Removed “{keyword}” from your pull list."));
-    }
 }
 
 fn toggle_bookmark(stores: &Stores, post: &StorePost, cx: &mut gpui::App) {

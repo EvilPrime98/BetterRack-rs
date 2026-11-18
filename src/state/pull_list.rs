@@ -1,14 +1,18 @@
-//! Pull-list: followed title keywords persisted to `pull-list.json` in the config dir (separate
-//! from the server's own file). Matching runs on the posts the Store has already loaded.
+//! Pull-list: followed title keywords, owned by the server (`/api/pull-list`). This store is a view
+//! of the server list; matching runs on the posts the Store has already loaded.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gpui::Context;
 
+use crate::api::ApiClient;
 use crate::model::PullEntry;
+use crate::runtime;
+use crate::ui::toast;
 
-fn path() -> Option<PathBuf> {
+/// The desktop's old local list, imported into the server once and then renamed.
+fn legacy_path() -> Option<PathBuf> {
     Some(
         dirs::config_dir()?
             .join("BetterRack")
@@ -16,21 +20,27 @@ fn path() -> Option<PathBuf> {
     )
 }
 
-fn load_file(path: &Path) -> Vec<PullEntry> {
+fn load_legacy(path: &Path) -> Vec<PullEntry> {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
 }
 
-fn save_file(path: &Path, items: &[PullEntry]) {
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    if let Ok(json) = serde_json::to_string_pretty(items) {
-        if let Err(e) = std::fs::write(path, json) {
-            tracing::warn!("could not save pull-list to {}: {e}", path.display());
+/// Pushes the old local entries to the server (which dedupes by keyword), then renames the file
+/// so it is not imported again. On any failure the file stays for the next start.
+async fn import_legacy(client: &ApiClient) {
+    let Some(path) = legacy_path().filter(|p| p.exists()) else {
+        return;
+    };
+    for e in load_legacy(&path) {
+        if let Err(err) = client.add_pull_entry(&e.keyword, e.last_seen_id).await {
+            tracing::warn!("pull-list import failed, keeping {}: {err}", path.display());
+            return;
         }
+    }
+    if let Err(e) = std::fs::rename(&path, path.with_extension("json.migrated")) {
+        tracing::warn!("could not rename {}: {e}", path.display());
     }
 }
 
@@ -55,51 +65,66 @@ pub fn keyword_from_title(title: &str) -> String {
         .to_string()
 }
 
+#[derive(Default)]
 pub struct PullListStore {
+    pub client: Option<ApiClient>,
     pub items: Rc<Vec<PullEntry>>,
-    file: Option<PathBuf>,
 }
 
 impl PullListStore {
-    pub fn load() -> Self {
-        let file = path();
-        let items = file.as_deref().map(load_file).unwrap_or_default();
-        Self {
-            items: Rc::new(items),
-            file,
-        }
+    /// Imports the legacy local file, then loads the server list. Failures are logged: the
+    /// list stays empty until the next start.
+    pub fn init(&mut self, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            let result = runtime::run(async move {
+                import_legacy(&client).await;
+                client.pull_list().await
+            })
+            .await;
+            this.update(cx, |s, cx| match result {
+                Ok(items) => {
+                    s.items = Rc::new(items);
+                    cx.notify();
+                }
+                Err(e) => tracing::warn!("loading the pull list failed: {e}"),
+            })
+            .ok();
+        })
+        .detach();
     }
 
-    fn commit(&mut self, cx: &mut Context<Self>) {
-        if let Some(file) = &self.file {
-            save_file(file, &self.items);
+    /// Follows `keyword` on the server; an already followed one comes back as the existing entry.
+    /// The list changes only on success, otherwise an error toast is shown.
+    pub fn add(&mut self, keyword: &str, cx: &mut Context<Self>) {
+        let keyword = keyword.trim().to_string();
+        if keyword.is_empty() {
+            return;
         }
-        cx.notify();
-    }
-
-    /// An already followed keyword (case-insensitive) is left alone.
-    pub fn add(&mut self, keyword: &str, cx: &mut Context<Self>) -> bool {
-        let keyword = keyword.trim();
-        if keyword.is_empty()
-            || self
-                .items
-                .iter()
-                .any(|e| e.keyword.to_lowercase() == keyword.to_lowercase())
-        {
-            return false;
-        }
-        let created_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_millis() as i64);
-        let id = format!("{created_at:x}-{}", self.items.len());
-        Rc::make_mut(&mut self.items).push(PullEntry {
-            id,
-            keyword: keyword.to_string(),
-            last_seen_id: 0,
-            created_at,
-        });
-        self.commit(cx);
-        true
+        let Some(client) = self.client.clone() else {
+            toast::error(cx, "The server is not running.");
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            let kw = keyword.clone();
+            let result = runtime::run(async move { client.add_pull_entry(&kw, 0).await }).await;
+            this.update(cx, |s, cx| match result {
+                Ok(entry) => {
+                    let items = Rc::make_mut(&mut s.items);
+                    match items.iter_mut().find(|e| e.id == entry.id) {
+                        Some(existing) => *existing = entry,
+                        None => items.push(entry),
+                    }
+                    cx.notify();
+                    toast::success(cx, format!("Added “{keyword}” to your pull list."));
+                }
+                Err(e) => toast::error(cx, format!("Could not update the pull list: {e}")),
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Whether any followed entry matches the post title.
@@ -108,15 +133,46 @@ impl PullListStore {
     }
 
     /// Unfollows every entry matching the title when there is one, else follows `keyword`.
-    /// Returns whether the title is followed now.
-    pub fn toggle(&mut self, title: &str, keyword: &str, cx: &mut Context<Self>) -> bool {
-        if self.follows(title) {
-            Rc::make_mut(&mut self.items).retain(|e| !matches(e, title));
-            self.commit(cx);
-            false
-        } else {
-            self.add(keyword, cx)
+    pub fn toggle(&mut self, title: &str, keyword: &str, cx: &mut Context<Self>) {
+        let ids: Vec<String> = self
+            .items
+            .iter()
+            .filter(|e| matches(e, title))
+            .map(|e| e.id.clone())
+            .collect();
+        if ids.is_empty() {
+            self.add(keyword, cx);
+            return;
         }
+        let Some(client) = self.client.clone() else {
+            toast::error(cx, "The server is not running.");
+            return;
+        };
+        let keyword = keyword.to_string();
+        cx.spawn(async move |this, cx| {
+            let mut removed = Vec::new();
+            let mut failure = None;
+            for id in ids {
+                let (c, i) = (client.clone(), id.clone());
+                match runtime::run(async move { c.delete_pull_entry(&i).await }).await {
+                    Ok(()) => removed.push(id),
+                    Err(e) => {
+                        failure = Some(e.to_string());
+                        break;
+                    }
+                }
+            }
+            this.update(cx, |s, cx| {
+                Rc::make_mut(&mut s.items).retain(|e| !removed.contains(&e.id));
+                cx.notify();
+                match failure {
+                    None => toast::success(cx, format!("Removed “{keyword}” from your pull list.")),
+                    Some(e) => toast::error(cx, format!("Could not update the pull list: {e}")),
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 }
 
@@ -154,13 +210,13 @@ mod tests {
     }
 
     #[test]
-    fn entries_round_trip_through_the_file() {
+    fn legacy_file_is_read_without_exclude() {
         let dir = std::env::temp_dir().join(format!("br-pull-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("pull-list.json");
-        let e = entry("Saga", 4);
-        save_file(&file, std::slice::from_ref(&e));
-        assert_eq!(load_file(&file), vec![e]);
+        std::fs::write(&file, r#"[{"keyword":"Saga","lastSeenId":4}]"#).unwrap();
+        assert_eq!(load_legacy(&file), vec![entry("Saga", 4)]);
         let _ = std::fs::remove_dir_all(&dir);
-        assert!(load_file(Path::new("/not/here.json")).is_empty());
+        assert!(load_legacy(Path::new("/not/here.json")).is_empty());
     }
 }
