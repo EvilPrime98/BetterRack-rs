@@ -413,6 +413,21 @@ impl ApiClient {
         .await
     }
 
+    pub async fn pull_list(&self) -> ApiResult<Vec<PullEntry>> {
+        self.json(self.get(&["api", "pull-list"])).await
+    }
+
+    /// An already followed keyword answers with the existing entry.
+    pub async fn add_pull_entry(&self, keyword: &str, last_seen_id: i64) -> ApiResult<PullEntry> {
+        let body = json!({ "keyword": keyword, "lastSeenId": last_seen_id });
+        self.json(self.post_json(&["api", "pull-list"], body)).await
+    }
+
+    pub async fn delete_pull_entry(&self, id: &str) -> ApiResult<()> {
+        self.done(self.request(Method::DELETE, &["api", "pull-list", id]))
+            .await
+    }
+
     pub async fn settings(&self) -> ApiResult<AppSettings> {
         self.json(self.get(&["api", "settings"])).await
     }

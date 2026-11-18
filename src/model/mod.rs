@@ -399,6 +399,7 @@ impl StoreBookmark {
 pub struct PullEntry {
     pub id: String,
     pub keyword: String,
+    pub exclude: String,
     pub last_seen_id: i64,
     pub created_at: i64,
 }
