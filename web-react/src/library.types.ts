@@ -69,12 +69,6 @@ export const RECENT_WINDOW_OPTIONS = [
 
 export type TRecentWindow = (typeof RECENT_WINDOW_OPTIONS)[number];
 
-/** Filter toggles for the library grid; owned by the `useFilters` hook (react/src/hooks/useFilters.ts). */
-export interface ILibraryFilters {
-    sortByCreation: boolean;
-    sortByReleaseDate: boolean;
-}
-
 export interface IReadResponse {
     error: boolean;
     message: string;

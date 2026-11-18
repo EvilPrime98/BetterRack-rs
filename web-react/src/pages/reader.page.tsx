@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { toggleFullscreen } from '@/services/fullscreen.service';
 import { setImmersiveMode } from '@/services/immersive.service';
@@ -6,7 +6,6 @@ import styles from './reader.page.module.css';
 import { RENDER_AHEAD, RENDER_BEHIND } from '../utils/reader.page.utils';
 import { ImageElement } from '@/components/reader-page-image/reader-page-image';
 import { ReaderPageHeader } from '@/components/reader-page-header/reader-page-header';
-import { ReaderContextMenu } from '@/components/reader-context-menu/reader-context-menu';
 import { ReaderPageProgressBar } from '@/components/reader-page-progress-bar/reader-page-progress-bar';
 import { useDocumentTitleStore } from '@/stores/documentTitle.store';
 import { ReaderNext } from '@/components/reader-next/reader-next';
@@ -15,8 +14,7 @@ import { useComicPages } from '@/hooks/useComicPages';
 import { useReaderPageTracking } from '@/hooks/useReaderPageTracking';
 import { useReaderProgress } from '@/hooks/useReaderProgress';
 import { useReaderZoom } from '@/hooks/useReaderZoom';
-import { useUserPrefStore } from '@/stores/userPref.store';
-import type { TReadingMode } from '@/stores/userPref.store';
+import { BRButton } from '@/components/br-button/br-button';
 import { useReaderKeys } from '@/hooks/useReaderKeys';
 import { useSettledValue } from '@/hooks/useSettledValue';
 
@@ -46,55 +44,7 @@ export function ReaderPage() {
     const { onWheel } = useReaderZoom(pageRef, viewerRef);
     useReaderProgress(uid, pages, currentPage);
 
-    const readingMode = useUserPrefStore((s) => s.pref.readingMode);
-    const isHorizontal = readingMode === 'horizontal';
-    useReaderKeys({
-        pageRef,
-        isHorizontal,
-        pageCount: pages.length,
-        currentPage,
-        goToPage,
-    });
-
-    const onReadingModeChange = useCallback((mode: TReadingMode) => {
-        useUserPrefStore.getState().setPref({ readingMode: mode });
-    }, []);
-
-    const currentPageRef = useRef(currentPage);
-    useLayoutEffect(() => {
-        currentPageRef.current = currentPage;
-    }, [currentPage]);
-    useLayoutEffect(() => {
-        const $page = viewerRef.current?.children[currentPageRef.current - 2] as
-            HTMLElement | undefined;
-        $page?.scrollIntoView({ block: 'start', inline: 'start' });
-    }, [readingMode]);
-
-    useEffect(() => {
-        if (!isHorizontal) return;
-        const realign = () => {
-            const $page = viewerRef.current?.children[currentPageRef.current - 2] as
-                HTMLElement | undefined;
-            $page?.scrollIntoView({ block: 'nearest', inline: 'start' });
-        };
-        window.addEventListener('resize', realign);
-        return () => window.removeEventListener('resize', realign);
-    }, [isHorizontal]);
-
-    const onPageWheel = useCallback(
-        (e: React.WheelEvent) => {
-            onWheel(e);
-            if (!isHorizontal || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-            const $figure = (e.target as HTMLElement).closest('figure');
-            const canScrollY =
-                $figure &&
-                (e.deltaY < 0
-                    ? $figure.scrollTop > 0
-                    : $figure.scrollTop + $figure.clientHeight < $figure.scrollHeight - 1);
-            if (!canScrollY && pageRef.current) pageRef.current.scrollLeft += e.deltaY;
-        },
-        [onWheel, isHorizontal],
-    );
+    useReaderKeys({ pageRef });
 
     const [isHeaderVisible, setIsHeaderVisible] = useState(true);
 
@@ -119,8 +69,7 @@ export function ReaderPage() {
     return (
         <section
             className={styles.page}
-            data-mode={readingMode}
-            onWheel={onPageWheel}
+            onWheel={onWheel}
             ref={pageRef}
         >
             <div className={`${styles.headerOverlay} ${isHeaderVisible ? '' : styles.hidden}`}>
@@ -130,8 +79,6 @@ export function ReaderPage() {
                     totalPages={pages.length}
                     bookmarks={bookmarks}
                     isRefreshing={isRefreshing}
-                    readingMode={readingMode}
-                    onReadingModeChange={onReadingModeChange}
                     goToPage={goToPage}
                     goBack={goBack}
                     onRefresh={refreshComic}
@@ -140,15 +87,12 @@ export function ReaderPage() {
             </div>
 
             <div className={styles.state} style={{ display: isLoading ? undefined : 'none' }}>
-                <div className={styles.spinner}></div>
                 <p>Loading pages…</p>
             </div>
 
             <div className={styles.state} style={{ display: hasError ? undefined : 'none' }}>
                 <p>Something went wrong while loading this comic.</p>
-                <button type="button" className={styles.retry} onClick={loadPages}>
-                    Retry
-                </button>
+                <BRButton text="Retry" onClick={loadPages} />
             </div>
 
             <button
@@ -177,16 +121,6 @@ export function ReaderPage() {
             </button>
 
             {next ? <ReaderNext uid={uid} navigate={navigate} /> : null}
-
-            <ReaderContextMenu
-                currentPage={currentPage}
-                bookmarks={bookmarks}
-                isRefreshing={isRefreshing}
-                readingMode={readingMode}
-                onReadingModeChange={onReadingModeChange}
-                goToPage={goToPage}
-                onRefresh={refreshComic}
-            />
         </section>
     );
 }

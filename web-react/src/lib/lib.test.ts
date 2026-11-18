@@ -193,12 +193,12 @@ describe('store bookmarks', () => {
             entry('a', false, 'Alpha 1'),
             entry('c', false, 'Charlie 1'),
         ];
-        const merged = mergeBookmarks(items, [bm('late', 'Zulu 9'), bm('mid', 'Bravo 2')], false);
+        const merged = mergeBookmarks(items, [bm('late', 'Zulu 9'), bm('mid', 'Bravo 2')], 'Alphabetically');
         expect(keys(merged)).toEqual(['f', 'a', 'mid', 'c', 'late']);
     });
 
     it('puts bookmarks last when sorted by release date', () => {
-        const merged = mergeBookmarks([entry('a', false, 'Alpha')], [bm('b', 'Aaa')], true);
+        const merged = mergeBookmarks([entry('a', false, 'Alpha')], [bm('b', 'Aaa')], 'Release Date');
         expect(keys(merged)).toEqual(['a', 'b']);
     });
 

@@ -5,6 +5,7 @@ import styles from './br-dropdown.module.css';
 export interface BRDropdownOption<T extends string> {
     value: T;
     label: string;
+    disabled?: boolean;
 }
 
 interface BRDropdownProps<T extends string> {
@@ -13,6 +14,8 @@ interface BRDropdownProps<T extends string> {
     onChange: (value: T) => void;
     id?: string;
     triggerLabel?: string;
+    alignRight?: boolean;
+    fit?: boolean;
     className?: string;
     'aria-label'?: string;
     'aria-labelledby'?: string;
@@ -24,6 +27,8 @@ export function BRDropdown<T extends string>({
     onChange,
     id,
     triggerLabel,
+    alignRight = false,
+    fit = false,
     className,
     ...aria
 }: BRDropdownProps<T>) {
@@ -53,6 +58,7 @@ export function BRDropdown<T extends string>({
     }
 
     function select(index: number) {
+        if (options[index].disabled) return;
         onChange(options[index].value);
         setIsOpen(false);
     }
@@ -98,11 +104,11 @@ export function BRDropdown<T extends string>({
     }
 
     return (
-        <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(' ')}>
+        <div ref={rootRef} className={[styles.root, fit ? styles.fit : '', className].filter(Boolean).join(' ')}>
             <button
                 id={id}
                 type="button"
-                className={styles.trigger}
+                className={[styles.trigger, isOpen ? styles.triggerOpen : ''].filter(Boolean).join(' ')}
                 role="combobox"
                 aria-haspopup="listbox"
                 aria-expanded={isOpen}
@@ -136,7 +142,13 @@ export function BRDropdown<T extends string>({
             </button>
 
             {isOpen && (
-                <ul id={listId} role="listbox" className={styles.list}>
+                <ul
+                    id={listId}
+                    role="listbox"
+                    className={[styles.list, alignRight ? styles.listRight : '']
+                        .filter(Boolean)
+                        .join(' ')}
+                >
                     {options.map((option, index) => (
                         <li
                             key={option.value}
@@ -148,10 +160,12 @@ export function BRDropdown<T extends string>({
                             }
                             role="option"
                             aria-selected={option.value === value}
+                            aria-disabled={option.disabled || undefined}
                             className={[
                                 styles.option,
                                 index === activeIndex ? styles.active : '',
                                 option.value === value ? styles.selected : '',
+                                option.disabled ? styles.disabled : '',
                             ]
                                 .filter(Boolean)
                                 .join(' ')}

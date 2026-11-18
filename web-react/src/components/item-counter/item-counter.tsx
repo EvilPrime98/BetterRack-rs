@@ -1,16 +1,17 @@
 import styles from './item-counter.module.css';
-import type { ILibraryResponseItem } from '@/library.types';
 
 export function ItemCounter({
-    items,
+    count,
+    label = 'comics',
     className,
 }: {
-    items: ILibraryResponseItem[];
+    count: number;
+    label?: string;
     className?: string;
 }) {
     return (
         <span className={[styles.counter, className].filter(Boolean).join(' ')}>
-            {items.length} comics
+            {count} {label}
         </span>
     );
 }

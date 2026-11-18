@@ -1,3 +1,5 @@
+import { useNavigate } from 'react-router-dom';
+import { useSettingsStore } from '@/stores/settings.store';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import styles from './store.page.module.css';
 import { Layout } from '@/layout';
@@ -16,7 +18,9 @@ function keyFor(item: IStorePost) {
 }
 
 export function StorePage() {
+    const navigate = useNavigate();
     const setTitle = useDocumentTitleStore((s) => s.setTitle);
+    const configured = useSettingsStore((s) => s.settings.apiUrl.trim() !== '');
 
     const query = useStorePageStore((s) => s.query);
     const results = useStorePageStore((s) => s.results);
@@ -25,6 +29,7 @@ export function StorePage() {
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [error, setError] = useState('');
+    const [moreFailed, setMoreFailed] = useState(false);
 
     const loadingRef = useRef({ isLoading, isLoadingMore });
     useEffect(() => {
@@ -41,6 +46,7 @@ export function StorePage() {
         async (term: string) => {
             setIsLoading(true);
             setError('');
+            setMoreFailed(false);
             try {
                 const items = await fetchPage(1, term);
                 setStoreState({
@@ -60,12 +66,13 @@ export function StorePage() {
         [fetchPage, setStoreState],
     );
 
-    const loadMore = useCallback(async () => {
+    const loadMore = useCallback(async (retry = false) => {
         const cached = useStorePageStore.getState();
         const { isLoading, isLoadingMore } = loadingRef.current;
-        if (!cached.hasMore || isLoading || isLoadingMore) return;
+        if (!cached.hasMore || isLoading || isLoadingMore || (moreFailed && !retry)) return;
         const nextPage = cached.page + 1;
         setIsLoadingMore(true);
+        setMoreFailed(false);
         try {
             const items = await fetchPage(nextPage, cached.activeSearch);
             setStoreState({
@@ -74,12 +81,12 @@ export function StorePage() {
                 hasMore: items.length === PAGE_SIZE,
             });
         } catch (e) {
-            const message = e instanceof Error ? e.message : 'Failed to load more comics.';
-            toast.error(message);
+            console.warn('loading more store comics failed', e);
+            setMoreFailed(true);
         } finally {
             setIsLoadingMore(false);
         }
-    }, [fetchPage, setStoreState]);
+    }, [fetchPage, setStoreState, moreFailed]);
 
     function runSearch() {
         const term = query.trim();
@@ -89,8 +96,8 @@ export function StorePage() {
 
     useEffect(() => {
         setTitle('Store');
-        if (!useStorePageStore.getState().hasLoaded) loadFirstPage('');
-    }, [setTitle, loadFirstPage]);
+        if (configured && !useStorePageStore.getState().hasLoaded) loadFirstPage('');
+    }, [setTitle, loadFirstPage, configured]);
 
     useLayoutEffect(() => {
         const savedScrollY = useStorePageStore.getState().scrollY;
@@ -139,17 +146,40 @@ export function StorePage() {
 
                 <p className={styles.errorText}>{error}</p>
 
-                <p className={styles.empty} style={{ display: isEmpty ? undefined : 'none' }}>
-                    {isLoading ? 'Loading…' : 'No comics found.'}
-                </p>
+                {!configured ? (
+                    <div className={styles.unconfigured}>
+                        <p className={styles.empty}>
+                            The store source is not configured. Set it in Settings to browse and
+                            download comics.
+                        </p>
+                        <BRButton
+                            text="Open Settings"
+                            variant="secondary"
+                            onClick={() => navigate('/settings')}
+                        />
+                    </div>
+                ) : (
+                    <>
+                        <p className={styles.empty} style={{ display: isEmpty ? undefined : 'none' }}>
+                            {isLoading ? 'Loading…' : 'No comics found.'}
+                        </p>
 
-                <section className={styles.grid}>
-                    {results.map((item) => (
-                        <StoreCard key={keyFor(item)} item={item} />
-                    ))}
-                    <div className={styles.sentinel} ref={sentinelRef} />
-                    {isLoadingMore && <p className={styles.loadingMore}>Loading more…</p>}
-                </section>
+                        <section className={styles.grid}>
+                            {results.map((item) => (
+                                <StoreCard key={keyFor(item)} item={item} />
+                            ))}
+                            <div className={styles.sentinel} ref={sentinelRef} />
+                        </section>
+
+                        {isLoadingMore && <p className={styles.loadingMore}>Loading more…</p>}
+                        {moreFailed && (
+                            <div className={styles.moreFailed}>
+                                <p className={styles.loadingMore}>Could not load more comics.</p>
+                                <BRButton text="Retry" variant="secondary" onClick={() => loadMore(true)} />
+                            </div>
+                        )}
+                    </>
+                )}
             </section>
         </Layout>
     );

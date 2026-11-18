@@ -1,10 +1,10 @@
+import { useEffect, useRef, useState } from 'react';
 import type { FocusEvent, KeyboardEvent } from 'react';
 import styles from '../../pages/reader.page.module.css';
 import { ArrowLeftIcon } from '../../icons/arrow-left.icon';
+import { BookmarkIcon } from '../../icons/bookmark.icon';
 import { RefreshIcon } from '../../icons/refresh-icon';
 import type { IBookmark } from '../../library.types';
-import type { TReadingMode } from '../../stores/userPref.store';
-import { BRDropdown } from '../br-dropdown/br-dropdown';
 
 export function ReaderPageHeader({
     title,
@@ -12,8 +12,6 @@ export function ReaderPageHeader({
     totalPages,
     bookmarks,
     isRefreshing,
-    readingMode,
-    onReadingModeChange,
     goToPage,
     goBack,
     onRefresh,
@@ -23,16 +21,21 @@ export function ReaderPageHeader({
     totalPages: number;
     bookmarks: IBookmark[];
     isRefreshing: boolean;
-    readingMode: TReadingMode;
-    onReadingModeChange: (mode: TReadingMode) => void;
     goToPage: (page: number) => void;
     goBack: () => void;
     onRefresh: () => void;
 }) {
-    const onBookmarkSelect = (value: string) => {
-        const page = Number(value);
-        if (Number.isInteger(page) && page >= 1) goToPage(page);
-    };
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!menuOpen) return;
+        function onPointerDown(event: PointerEvent) {
+            if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+        }
+        document.addEventListener('pointerdown', onPointerDown);
+        return () => document.removeEventListener('pointerdown', onPointerDown);
+    }, [menuOpen]);
 
     const onCounterKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
         if (event.key === 'Enter') {
@@ -55,67 +58,74 @@ export function ReaderPageHeader({
 
     return (
         <header className={styles.toolbar}>
-            <div className={styles.toolbarStart}>
-                <button type="button" className={styles.back} onClick={goBack}>
-                    <ArrowLeftIcon size={16} />
-                    <span>Library</span>
-                </button>
-                {bookmarks.length > 0 && (
-                    <BRDropdown
-                        className={styles.bookmarks}
-                        aria-label="Jump to bookmark"
-                        triggerLabel="Jump to bookmark…"
-                        value={String(currentPage)}
-                        options={bookmarks.map((bookmark) => ({
-                            value: String(bookmark.page),
-                            label: `${bookmark.label} · p.${bookmark.page}`,
-                        }))}
-                        onChange={onBookmarkSelect}
-                    />
-                )}
-            </div>
+            <button type="button" className={styles.toolButton} onClick={goBack}>
+                <ArrowLeftIcon size={16} />
+                <span>Library</span>
+            </button>
+
+            {bookmarks.length > 0 && (
+                <div ref={menuRef} className={styles.bookmarkWrap}>
+                    <button
+                        type="button"
+                        className={styles.toolButton}
+                        aria-expanded={menuOpen}
+                        onClick={() => setMenuOpen((open) => !open)}
+                    >
+                        <BookmarkIcon size={16} />
+                        <span>Bookmarks</span>
+                    </button>
+
+                    {menuOpen && (
+                        <div className={styles.bookmarkMenu}>
+                            {bookmarks.map((bookmark) => (
+                                <button
+                                    key={bookmark.page}
+                                    type="button"
+                                    className={styles.bookmarkItem}
+                                    onClick={() => {
+                                        goToPage(bookmark.page);
+                                        setMenuOpen(false);
+                                    }}
+                                >
+                                    {`${bookmark.label} · p.${bookmark.page}`}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
             <h1 className={styles.title} title={title}>
                 {title}
             </h1>
-            <div className={styles.toolbarEnd}>
-                <BRDropdown<TReadingMode>
-                    className={styles.bookmarks}
-                    aria-label="Reading mode"
-                    value={readingMode}
-                    options={[
-                        { value: 'vertical', label: 'Vertical' },
-                        { value: 'horizontal', label: 'Horizontal' },
-                    ]}
-                    onChange={onReadingModeChange}
+
+            <span className={styles.counter}>
+                <input
+                    key={currentPage}
+                    className={styles.counterInput}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    spellCheck={false}
+                    aria-label="Current page"
+                    defaultValue={currentPage}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onKeyDown={onCounterKeyDown}
+                    onBlur={onCounterBlur}
                 />
-                <span className={styles.counter}>
-                    <input
-                        key={currentPage}
-                        className={styles.counterInput}
-                        style={{ width: `${String(totalPages).length + 3}ch` }}
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        spellCheck={false}
-                        aria-label="Current page"
-                        defaultValue={currentPage}
-                        onFocus={(event) => event.currentTarget.select()}
-                        onKeyDown={onCounterKeyDown}
-                        onBlur={onCounterBlur}
-                    />{' '}
-                    / {totalPages}
-                </span>
-                <button
-                    type="button"
-                    className={[styles.refresh, isRefreshing ? styles.spinning : '']
-                        .filter(Boolean)
-                        .join(' ')}
-                    aria-label="Refresh scan"
-                    onClick={onRefresh}
-                >
-                    <RefreshIcon size={16} />
-                </button>
-            </div>
+                {`/ ${totalPages}`}
+            </span>
+
+            <button
+                type="button"
+                className={[styles.toolButton, isRefreshing ? styles.spinning : '']
+                    .filter(Boolean)
+                    .join(' ')}
+                aria-label="Refresh scan"
+                onClick={onRefresh}
+            >
+                <RefreshIcon size={16} />
+            </button>
         </header>
     );
 }

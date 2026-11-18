@@ -20,7 +20,6 @@ import { StoreDownloadsPage } from '@/pages/store-downloads.page';
 import { FilterPage } from '@/pages/filtered-page';
 import { RecentPage } from '@/pages/recent-page';
 import { ReadingPage } from '@/pages/reading-page';
-import { DetailsPage } from './pages/details-page';
 
 function ReaderRoute() {
     const { uid } = useParams<{ uid: string }>();
@@ -71,7 +70,6 @@ export function App() {
 
             {!isLoading && (
                 <Routes>
-                    <Route path="/details/:pageId" element={<DetailsPage />} />
                     <Route path="/:uid/reader" element={<ReaderRoute />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/store/downloads" element={<StoreDownloadsPage />} />

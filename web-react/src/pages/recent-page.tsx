@@ -62,6 +62,8 @@ export function RecentPage() {
                         <StateFilter />
                         <LayoutSelector />
                         <BRDropdown
+                            fit
+                            alignRight
                             options={WINDOW_DROPDOWN_OPTIONS}
                             value={selectedWindow.label}
                             onChange={onSelect}

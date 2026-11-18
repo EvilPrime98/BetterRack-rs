@@ -7,6 +7,8 @@ import { useComicFilters } from '@/hooks/useComicFilters';
 import { COMIC_FILTERS } from '@/library.types';
 import { ArrowLeftIcon } from '@/icons/arrow-left.icon';
 import { CloseIcon } from '@/icons/close.icon';
+import { LayoutSelector } from '@/components/layout/layout-selector';
+import { StateFilter } from '@/components/state-filter/state-filter';
 import styles from './filtered-page.module.css';
 
 export function FilterPage() {
@@ -23,30 +25,37 @@ export function FilterPage() {
         <Layout>
             <section className={styles.page}>
                 <header className={styles.header}>
-                    <button
-                        type="button"
-                        className={styles.backButton}
-                        onClick={() => navigate('/')}
-                        aria-label="Back to library"
-                    >
-                        <ArrowLeftIcon size={16} />
-                    </button>
-
-                    <div className={styles.summary}>
-                        <span className={styles.eyebrow}>Filtered by writer</span>
-                        <h1 className={styles.title}>{writer || 'All comics'}</h1>
-                    </div>
-
-                    {writer ? (
+                    <div className={styles.left}>
                         <button
                             type="button"
-                            className={styles.clearButton}
-                            onClick={() => navigate('/filters')}
+                            className={styles.backButton}
+                            onClick={() => navigate('/')}
+                            aria-label="Back to library"
                         >
-                            <CloseIcon size={12} />
-                            Clear filter
+                            <ArrowLeftIcon size={16} />
                         </button>
-                    ) : null}
+
+                        <div className={styles.summary}>
+                            <span className={styles.eyebrow}>Filtered by writer</span>
+                            <h1 className={styles.title}>{writer || 'All comics'}</h1>
+                        </div>
+
+                        {writer ? (
+                            <button
+                                type="button"
+                                className={styles.clearButton}
+                                onClick={() => navigate('/filters')}
+                            >
+                                <CloseIcon size={12} />
+                                Clear filter
+                            </button>
+                        ) : null}
+                    </div>
+
+                    <div className={styles.right}>
+                        <StateFilter />
+                        <LayoutSelector />
+                    </div>
                 </header>
 
                 {items.length === 0 ? (

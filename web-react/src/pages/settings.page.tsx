@@ -11,14 +11,11 @@ import { BRButton } from '@/components/br-button/br-button';
 import { BRCheckbox } from '@/components/br-checkbox/br-checkbox';
 import {
     clearRemoteServer,
-    getStoredApiKey,
     getStoredServerUrl,
     isRemoteModeEnabled,
-    setStoredApiKey,
 } from '@/services/server-config.service';
 import { useLibraryStore } from '@/stores/library.store';
 import { useServerModalStore } from '@/stores/serverModal.store';
-import { ServerInfo } from '@/components/server-info/server-info';
 import { useConfirmModalStore } from '@/stores/confirmModal.store';
 
 type SettingsDraft = Pick<
@@ -27,14 +24,19 @@ type SettingsDraft = Pick<
 >;
 type SetDraft = React.Dispatch<React.SetStateAction<SettingsDraft>>;
 
+const WIKI_SEARCH_TIP =
+    'Comics are always identified from ComicInfo.xml. When enabled, comics without it are looked up on the wiki.';
+
+const ROTATING_FETCH_TIP =
+    'Send every download through the rotating fetch (changing identity per attempt). When off, only PixelDrain hosts use it.';
+
 function ServerSection() {
-    const [apiKey, setApiKey] = useState(getStoredApiKey);
+    const remote = isRemoteModeEnabled();
 
     async function onUnlinkServer() {
         const confirmed = await useConfirmModalStore.getState().confirmDialog({
-            title: 'Unlink from remote server?',
-            message:
-                'The app will disconnect from the remote server and go back to your local library.',
+            title: 'Unlink server?',
+            message: 'BetterRack will go back to its own local server and restart.',
             confirmLabel: 'Unlink',
         });
         if (!confirmed) return;
@@ -46,36 +48,23 @@ function ServerSection() {
         <section className={styles.section}>
             <h2 className={styles.sectionTitle}>Server</h2>
 
-            <p className={styles.empty}>{getStoredServerUrl() || 'No server configured'}</p>
+            <p className={styles.serverUrl}>{getStoredServerUrl() || 'No server configured'}</p>
 
-            <div className={styles.field}>
-                <label className={styles.label} htmlFor="settings-server-api-key">
-                    Server API key
-                </label>
-                <input
-                    id="settings-server-api-key"
-                    type="password"
-                    autoComplete="off"
-                    className={styles.input}
-                    placeholder="Only needed if the server sets BR_API_KEY"
-                    value={apiKey}
-                    onChange={(e) => {
-                        setApiKey(e.target.value);
-                        setStoredApiKey(e.target.value.trim());
-                    }}
+            <p className={styles.serverKind}>
+                {remote ? 'Remote server' : 'Local server started by BetterRack'}
+            </p>
+
+            <div className={styles.buttonRow}>
+                <BRButton
+                    text="Change server"
+                    variant="secondary"
+                    onClick={() => useServerModalStore.getState().openServerModal()}
                 />
+
+                {remote && (
+                    <BRButton text="Unlink server" variant="secondary" onClick={onUnlinkServer} />
+                )}
             </div>
-
-            <ServerInfo />
-
-            <BRButton
-                text="Change server"
-                onClick={() => useServerModalStore.getState().openServerModal()}
-            />
-
-            {isRemoteModeEnabled() && (
-                <BRButton text="Unlink server" variant="secondary" onClick={onUnlinkServer} />
-            )}
         </section>
     );
 }
@@ -103,6 +92,17 @@ function DownloadsSection({ draft, setDraft }: { draft: SettingsDraft; setDraft:
                             }
                         />
                     </div>
+                </div>
+
+                <div className={styles.tipWrap} title={ROTATING_FETCH_TIP}>
+                    <BRCheckbox
+                        text="Rotate identity"
+                        checked={draft.rotatingFetch}
+                        onChange={(e) => {
+                            const checked = e.currentTarget.checked;
+                            setDraft((d) => ({ ...d, rotatingFetch: checked }));
+                        }}
+                    />
                 </div>
             </div>
         </section>
@@ -214,67 +214,35 @@ function IdentificationSection({ draft, setDraft }: { draft: SettingsDraft; setD
             <div className={styles.fieldGroup}>
                 <h2 className={styles.sectionTitle}>Identification</h2>
 
-                <div className={styles.toggleRow}>
-                    <BRCheckbox
-                        text="Search the wiki for metadata"
-                        checked={draft.wikiSearch}
-                        onChange={(e) => {
-                            const checked = e.currentTarget.checked;
-                            setDraft((d) => ({ ...d, wikiSearch: checked }));
-                        }}
-                    />
+                <div className={styles.fieldGroup}>
+                    <div className={styles.tipWrap} title={WIKI_SEARCH_TIP}>
+                        <BRCheckbox
+                            text="Search the wiki for metadata"
+                            checked={draft.wikiSearch}
+                            onChange={(e) => {
+                                const checked = e.currentTarget.checked;
+                                setDraft((d) => ({ ...d, wikiSearch: checked }));
+                            }}
+                        />
+                    </div>
 
-                    <button type="button" className={styles.infoIcon}>
-                        <svg
-                            width={16}
-                            height={16}
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="#fff"
-                            strokeWidth={1.5}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            xmlns="http://www.w3.org/2000/svg"
-                        >
-                            <circle cx={12} cy={12} r={10} />
-                            <line x1={12} y1={16} x2={12} y2={12} />
-                            <line x1={12} y1={8} x2={12.01} y2={8} />
-                        </svg>
-                        <span className={styles.infoTooltip} role="tooltip">
-                            Comics are always identified from ComicInfo.xml. When enabled, comics
-                            without it are looked up on the wiki.
-                        </span>
-                    </button>
-
-                    <BRButton
-                        className={styles.reidentifyBtn}
-                        variant="secondary"
-                        text="Re-identify all"
-                        onClick={onReidentifyAll}
-                    />
+                    <div className={styles.buttonRow}>
+                        <BRButton
+                            variant="secondary"
+                            text="Re-identify all"
+                            onClick={onReidentifyAll}
+                        />
+                    </div>
                 </div>
 
-                <div className={styles.toggleRow}>
-                    <BRCheckbox
-                        text="Re-scan on start up"
-                        checked={draft.rescanOnStartup}
-                        onChange={(e) => {
-                            const checked = e.currentTarget.checked;
-                            setDraft((d) => ({ ...d, rescanOnStartup: checked }));
-                        }}
-                    />
-                </div>
-
-                <div className={styles.toggleRow}>
-                    <BRCheckbox
-                        text="Rotate identity"
-                        checked={draft.rotatingFetch}
-                        onChange={(e) => {
-                            const checked = e.currentTarget.checked;
-                            setDraft((d) => ({ ...d, rotatingFetch: checked }));
-                        }}
-                    />
-                </div>
+                <BRCheckbox
+                    text="Re-scan on start up"
+                    checked={draft.rescanOnStartup}
+                    onChange={(e) => {
+                        const checked = e.currentTarget.checked;
+                        setDraft((d) => ({ ...d, rescanOnStartup: checked }));
+                    }}
+                />
             </div>
         </section>
     );

@@ -1,4 +1,4 @@
-import type { ILibraryGroup, ILibraryResponseItem } from '../library.types';
+import type { ILibraryGroup, ILibraryResponseItem, TFilterOptions } from '../library.types';
 import type { IStoreBookmark, IStorePost } from '../store.types';
 
 export type TGridCell =
@@ -21,19 +21,21 @@ export function bookmarksInFolder(
 export function mergeBookmarks(
     items: ILibraryResponseItem[],
     bookmarks: IStoreBookmark[],
-    sortByReleaseDate: boolean,
+    sort: TFilterOptions,
 ): TGridCell[] {
-    const pending = sortByReleaseDate
-        ? [...bookmarks]
-        : [...bookmarks].sort((a, b) => collator.compare(spaced(a.title), spaced(b.title)));
+    const pending = [...bookmarks];
+    if (sort === 'Alphabetically')
+        pending.sort((a, b) => collator.compare(spaced(a.title), spaced(b.title)));
+    if (sort === 'Creation Date') pending.sort((a, b) => b.createdAt - a.createdAt);
+    const before = (b: IStoreBookmark, item: ILibraryResponseItem) => {
+        if (sort === 'Alphabetically')
+            return !item.did && collator.compare(spaced(b.title), spaced(item.name)) < 0;
+        if (sort === 'Creation Date') return b.createdAt > item.createdAt;
+        return false;
+    };
     const out: TGridCell[] = [];
     for (const item of items) {
-        while (
-            !sortByReleaseDate &&
-            pending.length &&
-            !item.did &&
-            collator.compare(spaced(pending[0].title), spaced(item.name)) < 0
-        ) {
+        while (pending.length && before(pending[0], item)) {
             out.push({ type: 'bookmark', bookmark: pending.shift()! });
         }
         out.push({ type: 'item', item });

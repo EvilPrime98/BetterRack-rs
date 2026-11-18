@@ -5,10 +5,10 @@ import { useUserPrefStore } from './userPref.store';
 interface IComicsTypeStore {
     type: TComicsTypes;
     init: () => void;
-    next: () => void;
+    set: (type: TComicsTypes) => void;
 }
 
-export const useComicsTypeStore = create<IComicsTypeStore>((set, get) => ({
+export const useComicsTypeStore = create<IComicsTypeStore>((set) => ({
     type: 'detail',
 
     init: () => {
@@ -16,9 +16,8 @@ export const useComicsTypeStore = create<IComicsTypeStore>((set, get) => ({
         if (comicType) set({ type: comicType });
     },
 
-    next: () => {
-        const nextType = get().type === 'cover' ? 'detail' : 'cover';
-        set({ type: nextType });
-        useUserPrefStore.getState().setPref({ comicType: nextType });
+    set: (type) => {
+        set({ type });
+        useUserPrefStore.getState().setPref({ comicType: type });
     },
 }));

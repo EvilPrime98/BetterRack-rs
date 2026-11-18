@@ -7,7 +7,7 @@ import { ItemsGrid } from '@/components/items-grid/items-grid';
 import { Layout } from '@/layout';
 import { useComicsTypeStore } from '@/stores/comicsTypes.store';
 import type { ILibraryResponseItem } from '@/library.types';
-import { applyFilters, useFilters } from '@/hooks/useFilters';
+import { applySort, useSort } from '@/hooks/useFilters';
 import { SearchPage } from './search.page';
 import { useDocumentTitleStore } from '@/stores/documentTitle.store';
 import { matchesReadFilter, useReadTypesContext } from '@/context/ReadTypesContext.hooks';
@@ -24,7 +24,7 @@ export function LibraryPage() {
     const comicsType = useComicsTypeStore((s) => s.type);
     const setTitle = useDocumentTitleStore((s) => s.setTitle);
     const comicContainerRef = useRef<HTMLElement>(null);
-    const { filters, setFilters, resetFilters } = useFilters();
+    const { sort, setSort } = useSort();
     const { type: readFilter } = useReadTypesContext();
 
     const getLibraryItems = useCallback((): ILibraryResponseItem[] => {
@@ -42,7 +42,7 @@ export function LibraryPage() {
     }, [uid]);
 
     const rawItems = useMemo(() => getLibraryItems(), [groups, searchQuery, uid, getLibraryItems]);
-    const items = useMemo(() => applyFilters(rawItems, filters), [rawItems, filters]);
+    const items = useMemo(() => applySort(rawItems, sort), [rawItems, sort]);
 
     const structure = useLibraryStore((s) => s.structure);
     const allBookmarks = useBookmarksStore((s) => s.items);
@@ -56,14 +56,15 @@ export function LibraryPage() {
         );
     }, [allBookmarks, structure, uid, searchQuery, readFilter]);
 
-    const hasVisibleItems = useComicCacheStore(
+    const visibleCount = useComicCacheStore(
         (s) =>
-            bookmarks.length > 0 ||
-            items.some(
+            bookmarks.length +
+            items.filter(
                 (item) =>
                     item.did || matchesReadFilter(readFilter, s.cache[item.uid]?.readPer || 0),
-            ),
+            ).length,
     );
+    const hasVisibleItems = visibleCount > 0;
 
     useEffect(() => {
         setTitle('Library');
@@ -82,12 +83,12 @@ export function LibraryPage() {
         <Layout>
             <section className={styles.page}>
                 <PageHeader
-                    filters={filters}
                     uid={uid}
-                    items={items}
-                    setFilters={setFilters}
-                    resetFilters={resetFilters}
-                    showNewFolder
+                    comicUids={items.filter((i) => !i.did).map((i) => i.uid)}
+                    hasSubfolders={items.some((i) => i.did)}
+                    count={visibleCount}
+                    sort={sort}
+                    setSort={setSort}
                 />
 
                 {!hasVisibleItems ? (
@@ -106,7 +107,7 @@ export function LibraryPage() {
                             key={uid ?? 'root'}
                             items={items}
                             bookmarks={bookmarks}
-                            sortByReleaseDate={filters.sortByReleaseDate}
+                            sort={sort}
                         />
                     </section>
                 )}
