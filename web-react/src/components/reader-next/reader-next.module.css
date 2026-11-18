@@ -5,35 +5,19 @@
     z-index: 4;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 8px 8px 8px 18px;
-    background: rgba(16, 16, 16, 0.92);
-    border: 1px solid rgba(52, 195, 209, 0.35);
+    gap: 14px;
+    max-width: 360px;
+    padding: 10px 10px 10px 16px;
+    background: rgba(28, 28, 28, 0.95);
+    border: 1px solid rgba(52, 195, 209, 0.7);
     border-radius: 999px;
-    backdrop-filter: blur(8px);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
     cursor: pointer;
-    animation: reader-next-in 0.25s ease;
-    transition:
-        border-color 0.15s ease,
-        background-color 0.15s ease,
-        transform 0.15s ease;
 }
 
 @media (hover: hover) {
     .button:hover {
-        border-color: rgba(52, 195, 209, 0.7);
-        background: rgba(28, 28, 28, 0.95);
-        transform: translateY(-2px);
+        background: rgba(38, 38, 38, 0.95);
     }
-
-    .button:hover .icon {
-        transform: translateX(2px);
-    }
-}
-
-.button:active {
-    transform: translateY(0) scale(0.97);
 }
 
 .button:focus-visible {
@@ -45,24 +29,21 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    line-height: 1.25;
+    min-width: 0;
 }
 
 .label {
     font-family: var(--font-sans);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #7fdce6;
+    font-size: 11px;
+    color: var(--accent);
 }
 
 .title {
+    max-width: 100%;
     font-family: var(--font-sans);
     font-size: 13px;
     font-weight: 600;
     color: #fff;
-    max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -73,33 +54,8 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
-    background: #34c3d1;
-    transition: transform 0.15s ease;
-}
-
-@keyframes reader-next-in {
-    from {
-        opacity: 0;
-        transform: translateY(12px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@media (max-width: 480px) {
-    .button {
-        right: 12px;
-        bottom: max(12px, env(safe-area-inset-bottom));
-        gap: 8px;
-        padding: 6px 6px 6px 14px;
-    }
-
-    .title {
-        max-width: 140px;
-    }
+    background: var(--accent);
 }

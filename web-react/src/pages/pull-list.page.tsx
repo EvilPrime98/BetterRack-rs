@@ -9,6 +9,7 @@ import { useDocumentTitleStore } from '@/stores/documentTitle.store';
 import { usePullListStore } from '@/stores/pullList.store';
 import { postKey } from '@/lib/bookmarks';
 import { matches } from '@/lib/pull-list';
+import { useSettingsStore } from '@/stores/settings.store';
 import { dayStart, rangeLabel, today, weekStart } from '@/lib/week';
 
 const PAGE_SIZE = 100;
@@ -17,6 +18,8 @@ const MAX_PAGES = 10;
 export function PullListPage() {
     const setTitle = useDocumentTitleStore((s) => s.setTitle);
     const entries = usePullListStore((s) => s.items);
+    const configured = useSettingsStore((s) => s.settings.apiUrl.trim() !== '');
+    const [error, setError] = useState('');
     const currentWeek = useMemo(() => weekStart(today()), []);
     const [selectedWeek, setSelectedWeek] = useState(currentWeek);
     const [weekPosts, setWeekPosts] = useState<IStorePost[]>([]);
@@ -32,6 +35,11 @@ export function PullListPage() {
         const after = dayStart(selectedWeek);
         const before = dayStart(selectedWeek + 7);
         setWeekPosts([]);
+        setError('');
+        if (!configured) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         (async () => {
             try {
@@ -56,23 +64,26 @@ export function PullListPage() {
                 setWeekPosts(all);
             } catch (e) {
                 if (mine !== request.current) return;
-                toast.error(e instanceof Error ? e.message : 'Failed to load comics.');
+                const message = e instanceof Error ? e.message : 'Failed to load comics.';
+                setError(message);
+                toast.error(message);
             }
             if (mine === request.current) setLoading(false);
         })();
-    }, [selectedWeek]);
+    }, [selectedWeek, configured]);
 
     const posts = useMemo(
         () => weekPosts.filter((p) => entries.some((e) => matches(e, p.title))),
         [weekPosts, entries],
     );
 
-    const emptyText =
-        entries.length === 0
-            ? 'Use the pull-list button on a store card to follow a series.'
-            : loading
-              ? 'Loading…'
-              : 'No posts match this week.';
+    const emptyText = !configured
+        ? 'The store source is not configured. Set it in Settings.'
+        : entries.length === 0
+          ? 'Use the pin on a store card to follow a series.'
+          : loading
+            ? 'Loading…'
+            : 'No posts match this week.';
 
     const atCurrent = selectedWeek >= currentWeek;
 
@@ -80,24 +91,6 @@ export function PullListPage() {
         <Layout>
             <section className={styles.page}>
                 <h1 className={styles.title}>Pull list</h1>
-
-                {entries.length > 0 && (
-                    <ul className={styles.chips}>
-                        {entries.map((entry) => (
-                            <li key={entry.id} className={styles.chip}>
-                                <span>{entry.keyword}</span>
-                                <button
-                                    type="button"
-                                    className={styles.chipRemove}
-                                    aria-label={`Remove ${entry.keyword} from your pull list`}
-                                    onClick={() => usePullListStore.getState().remove(entry)}
-                                >
-                                    ×
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                )}
 
                 <div className={styles.weekNav}>
                     <button
@@ -129,9 +122,11 @@ export function PullListPage() {
                     </button>
                 </div>
 
+                <p className={styles.errorText}>{error}</p>
+
                 <section className={styles.grid}>
                     {posts.length === 0 && <p className={styles.empty}>{emptyText}</p>}
-                    {posts.map((post) => (
+                    {configured && posts.map((post) => (
                         <StoreCard key={postKey(post)} item={post} />
                     ))}
                 </section>

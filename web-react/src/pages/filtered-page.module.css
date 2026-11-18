@@ -23,8 +23,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 34px;
+    height: 34px;
     flex-shrink: 0;
     border: 1px solid var(--border-subtle);
     border-radius: 4px;
@@ -64,8 +64,8 @@
 .title {
     font-family: var(--font-sans);
     font-size: 18px;
-    font-weight: 700;
-    color: #f2f2f2;
+    font-weight: 600;
+    color: #fff;
     margin: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -76,17 +76,15 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin-left: auto;
     flex-shrink: 0;
-    height: 32px;
+    height: 30px;
     padding: 0 12px;
-    border: 1px solid var(--border-subtle);
-    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
     background: transparent;
-    color: #d0d0d0;
+    color: #fff;
     font-family: var(--font-sans);
     font-size: 12px;
-    font-weight: 600;
     cursor: pointer;
     transition:
         background-color 0.15s ease,
@@ -95,12 +93,22 @@
 
 .clearButton:hover {
     background: rgba(255, 255, 255, 0.06);
-    color: #f2f2f2;
 }
 
 .clearButton:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+}
+
+.left,
+.right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.right {
+    gap: 10px;
 }
 
 .comicContainer {

@@ -81,48 +81,55 @@ export function JobRow({
                 </>
             )}
 
-            {(detail || job.pageUrl) && (
+            {detail && (
                 <div className={styles.detailRow}>
-                    {detail && <span className={styles.detail}>{detail}</span>}
-                    {job.pageUrl && (
-                        <ExternalLink className={styles.pageLink} href={job.pageUrl}>
-                            Open comic page
-                        </ExternalLink>
-                    )}
+                    <span className={styles.detail}>{detail}</span>
                 </div>
             )}
 
-            {job.state === 'error' && (
-                <button
-                    type="button"
-                    className={styles.retry}
-                    disabled={pending === 'retrying'}
-                    onClick={() => onRetry(job.jobId)}
-                >
-                    Retry
-                </button>
+            {(job.state === 'error' || job.state === 'done') && (
+                <div className={styles.actions}>
+                    {job.state === 'error' && (
+                        <button
+                            type="button"
+                            className={styles.stop}
+                            disabled={pending === 'retrying'}
+                            onClick={() => onRetry(job.jobId)}
+                        >
+                            Retry
+                        </button>
+                    )}
+
+                    <button
+                        type="button"
+                        className={styles.stop}
+                        disabled={pending === 'deleting'}
+                        onClick={() => onDelete(job.jobId)}
+                    >
+                        Delete
+                    </button>
+                </div>
+            )}
+
+            {job.state === 'error' && job.pageUrl && /^https?:\/\//.test(job.pageUrl) && (
+                <div className={styles.actions}>
+                    <ExternalLink className={styles.pageLink} href={job.pageUrl}>
+                        Open comic page
+                    </ExternalLink>
+                </div>
             )}
 
             {canStop(job) && (
-                <button
-                    type="button"
-                    className={styles.stop}
-                    disabled={pending === 'stopping'}
-                    onClick={() => onStop(job)}
-                >
-                    Stop
-                </button>
-            )}
-
-            {(job.state === 'done' || job.state === 'error') && (
-                <button
-                    type="button"
-                    className={styles.stop}
-                    disabled={pending === 'deleting'}
-                    onClick={() => onDelete(job.jobId)}
-                >
-                    Delete
-                </button>
+                <div className={styles.actions}>
+                    <button
+                        type="button"
+                        className={styles.stop}
+                        disabled={pending === 'stopping'}
+                        onClick={() => onStop(job)}
+                    >
+                        Stop
+                    </button>
+                </div>
             )}
         </li>
     );

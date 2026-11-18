@@ -26,13 +26,13 @@
     flex: 1;
     box-sizing: border-box;
     height: 36px;
-    padding: 11px 14px;
+    padding: 0 14px;
     background: var(--bg-panel);
     border: 1px solid var(--border-subtle);
     border-radius: 6px;
-    color: #f2f2f2;
-    font-family: var(--font-mono);
-    font-size: 12px;
+    color: #fff;
+    font-family: var(--font-sans);
+    font-size: 13px;
 }
 
 .searchInput:focus-visible {
@@ -122,17 +122,17 @@
     text-align: center;
     font-family: var(--font-sans);
     font-size: 13px;
-    color: #f2f2f2;
+    color: #fff;
 }
 
 .weekBtn {
     padding: 4px 10px;
-    border: 1px solid #ffffff1f;
+    border: 1px solid var(--border-subtle);
     border-radius: 6px;
     background: none;
     font-family: var(--font-sans);
     font-size: 12px;
-    color: #f2f2f2;
+    color: #fff;
     cursor: pointer;
 }
 
@@ -141,39 +141,22 @@
     cursor: default;
 }
 
-.chips {
+.unconfigured {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 20px 0;
 }
 
-.chip {
-    display: inline-flex;
+.unconfigured .empty {
+    color: #9a9a9a;
+}
+
+.moreFailed {
+    display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 4px 3px 10px;
-    border: 1px solid #ffffff1f;
-    border-radius: 999px;
-    font-family: var(--font-sans);
-    font-size: 12px;
-    color: #f2f2f2;
-}
-
-.chipRemove {
-    width: 18px;
-    height: 18px;
-    padding: 0;
-    border: none;
-    border-radius: 999px;
-    background: none;
-    color: #c7c7c7;
-    cursor: pointer;
-    line-height: 1;
-}
-
-.chipRemove:hover {
-    color: #f2f2f2;
+    justify-content: center;
+    gap: 10px;
+    padding: 8px 0;
 }

@@ -10,7 +10,7 @@ export function matchesReadFilter(readFilter: TReadTypes, readPer: number): bool
 
 export interface IReadTypesContextValue {
     type: TReadTypes;
-    next: () => void;
+    set: (type: TReadTypes) => void;
 }
 
 export const ReadTypesContext = createContext<IReadTypesContextValue | null>(null);

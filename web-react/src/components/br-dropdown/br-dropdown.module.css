@@ -3,6 +3,10 @@
     width: 100%;
 }
 
+.fit {
+    width: auto;
+}
+
 .trigger {
     display: flex;
     align-items: center;
@@ -15,7 +19,7 @@
     background-color: rgba(255, 255, 255, 0.04);
     color: #d8d8d8;
     font-family: var(--font-sans);
-    font-size: 14px;
+    font-size: 13px;
     text-align: left;
     cursor: pointer;
     transition:
@@ -25,6 +29,11 @@
 
 .trigger:hover {
     background-color: rgba(255, 255, 255, 0.06);
+}
+
+.triggerOpen,
+.triggerOpen:hover {
+    border-color: var(--accent);
 }
 
 .trigger:focus-visible {
@@ -43,14 +52,12 @@
 }
 
 .sizer {
-    text-transform: capitalize;
     visibility: hidden;
     height: 0;
     overflow: hidden;
 }
 
 .current {
-    text-transform: capitalize;
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -72,9 +79,10 @@
 
 .list {
     position: absolute;
-    top: calc(100% + 4px);
+    top: calc(100% + 2px);
     left: 0;
     width: max-content;
+    min-width: 150px;
     max-width: calc(100vw - 32px);
     max-height: min(320px, 50vh);
     overflow-y: auto;
@@ -83,10 +91,15 @@
     margin: 0;
     padding: 4px;
     list-style: none;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 6px;
-    background-color: #1a1a1a;
+    background-color: var(--bg-panel);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.listRight {
+    left: auto;
+    right: 0;
 }
 
 .option {
@@ -94,23 +107,25 @@
     border-radius: 4px;
     color: #d8d8d8;
     font-family: var(--font-sans);
-    font-size: 14px;
+    font-size: 13px;
     white-space: nowrap;
-    text-transform: capitalize;
     cursor: pointer;
     user-select: none;
 }
 
 .active {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: rgba(255, 255, 255, 0.06);
 }
 
 .selected {
     color: var(--accent);
-    font-weight: 600;
-    background-color: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
-.selected.active {
-    background-color: color-mix(in srgb, var(--accent) 24%, transparent);
+.disabled {
+    color: #6a6a6a;
+    cursor: default;
+}
+
+.disabled.active {
+    background-color: transparent;
 }

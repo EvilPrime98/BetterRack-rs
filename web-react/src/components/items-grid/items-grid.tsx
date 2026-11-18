@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FolderCard } from '@/components/folder-card/folder-card';
 import { ComicCard } from '@/components/comic-card/comic-card';
 import { BookmarkCard } from '@/components/bookmark-card/bookmark-card';
-import type { IComicFilters, ILibraryResponseItem } from '@/library.types';
+import type { IComicFilters, ILibraryResponseItem, TFilterOptions } from '@/library.types';
 import type { IStoreBookmark } from '@/store.types';
 import { cellKey, mergeBookmarks } from '@/lib/bookmarks';
 
@@ -12,16 +12,16 @@ export function ItemsGrid({
     items,
     filters,
     bookmarks,
-    sortByReleaseDate = false,
+    sort = 'Alphabetically',
 }: {
     items: ILibraryResponseItem[];
     filters?: IComicFilters;
     bookmarks?: IStoreBookmark[];
-    sortByReleaseDate?: boolean;
+    sort?: TFilterOptions;
 }) {
     const cells = useMemo(
-        () => mergeBookmarks(items, bookmarks ?? [], sortByReleaseDate),
-        [items, bookmarks, sortByReleaseDate],
+        () => mergeBookmarks(items, bookmarks ?? [], sort),
+        [items, bookmarks, sort],
     );
     const [count, setCount] = useState(PAGE_SIZE);
 
