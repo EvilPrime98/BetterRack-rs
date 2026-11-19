@@ -28,6 +28,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config,
         std::sync::Arc::new(LiveWiki::new(br_wiki::WikiService::default())),
     )?;
+    let mut args = std::env::args().skip(1);
+    if args.next().as_deref() == Some("migrate-downloaded") {
+        let apply = args.any(|a| a == "--apply");
+        return br_server::migrate::run(&state, apply).await;
+    }
     // Scan in the background. Library requests wait for it; the scan is registered before the port opens.
     state.spawn_rescan();
 

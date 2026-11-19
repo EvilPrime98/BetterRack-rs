@@ -59,10 +59,25 @@ impl Downloaded {
         if !new_id && !new_path {
             return;
         }
+        self.save(&state);
+    }
+
+    /// Add the id and set its path only when it has none; an existing path is kept.
+    /// Returns whether anything changed. Saves only on change.
+    pub fn fill(&self, id: i64, path: &Path) -> bool {
+        let mut state = self.lock();
+        if !fill_snapshot(&mut state, id, &path.to_string_lossy()) {
+            return false;
+        }
+        self.save(&state);
+        true
+    }
+
+    fn save(&self, state: &Snapshot) {
         if let Some(dir) = self.file.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        let written = serde_json::to_string(&*state)
+        let written = serde_json::to_string(state)
             .map_err(|e| e.to_string())
             .and_then(|json| std::fs::write(&self.file, json).map_err(|e| e.to_string()));
         if let Err(e) = written {
@@ -72,6 +87,16 @@ impl Downloaded {
             );
         }
     }
+}
+
+/// The fill-only rule on a snapshot. Returns whether it changed.
+fn fill_snapshot(state: &mut Snapshot, id: i64, path: &str) -> bool {
+    let new_id = state.ids.insert(id);
+    let new_path = !state.paths.contains_key(&id);
+    if new_path {
+        state.paths.insert(id, path.to_string());
+    }
+    new_id || new_path
 }
 
 pub async fn list(State(s): State<AppState>) -> Json<Snapshot> {
@@ -98,6 +123,27 @@ mod tests {
             Some("/lib/a.cbz")
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fill_adds_ids_and_keeps_existing_paths() {
+        let mut s = Snapshot {
+            ids: BTreeSet::from([1, 2]),
+            paths: BTreeMap::from([(2, "/real.cbz".to_string())]),
+        };
+        assert!(
+            fill_snapshot(&mut s, 1, "/lib/a.cbz"),
+            "legacy id gains a path"
+        );
+        assert!(
+            !fill_snapshot(&mut s, 2, "/other.cbz"),
+            "existing path kept"
+        );
+        assert!(fill_snapshot(&mut s, 3, "/lib/c.cbz"), "new id added");
+        assert!(!fill_snapshot(&mut s, 3, "/lib/c.cbz"), "idempotent");
+        assert_eq!(s.ids, BTreeSet::from([1, 2, 3]));
+        assert_eq!(s.paths[&1], "/lib/a.cbz");
+        assert_eq!(s.paths[&2], "/real.cbz");
     }
 
     fn tempfile_dir() -> PathBuf {
