@@ -8,6 +8,7 @@ import {
     isRemoteModeEnabled,
     getStoredApiKey,
 } from '@/services/server-config.service';
+import { useModalDialog } from '@/hooks/useModalDialog';
 
 export function ServerModal() {
     const isVisible = useServerModalStore((s) => s.isVisible);
@@ -31,7 +32,6 @@ export function ServerModal() {
     // Effect Event so the listener always reads the latest text/remoteMode/apiKey
     // without re-registering on every keystroke.
     const onKeydown = useEffectEvent((e: KeyboardEvent) => {
-        if (e.key === 'Escape') useServerModalStore.getState().closeServerModal();
         if (e.key === 'Enter') useServerModalStore.getState().submitServer(text, buildRemoteOpts());
     });
 
@@ -52,21 +52,21 @@ export function ServerModal() {
         inputRef.current?.focus();
     }, [isVisible]);
 
+    const dialogProps = useModalDialog(isVisible, () =>
+        useServerModalStore.getState().closeServerModal(),
+    );
+
     return (
-        <div className={styles.overlay} style={{ display: isVisible ? undefined : 'none' }}>
+        <dialog className={styles.overlay} {...dialogProps} aria-label="Connect to server">
             <button
                 type="button"
                 className={styles.backdrop}
+                tabIndex={-1}
                 aria-label="Close dialog"
                 onClick={cancel}
             />
 
-            <div
-                className={styles.modal}
-                role="dialog"
-                aria-modal="true"
-                aria-label="Connect to server"
-            >
+            <div className={styles.modal}>
                 <p className={styles.title}>Connect to your server</p>
 
                 <p className={styles.hint}>
@@ -113,6 +113,6 @@ export function ServerModal() {
                     <BRButton text="Connect" variant="classic" onClick={submit} />
                 </div>
             </div>
-        </div>
+        </dialog>
     );
 }

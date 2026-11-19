@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import styles from './new-folder-modal.module.css';
 import { BRButton } from '@/components/br-button/br-button';
 import { useNewFolderModalContext } from '@/context/NewFolderModalContext.hooks';
+import { useModalDialog } from '@/hooks/useModalDialog';
 
 export function NewFolderModal() {
     const { isVisible, closeNewFolderModal, submitNewFolder } = useNewFolderModalContext();
@@ -21,7 +22,6 @@ export function NewFolderModal() {
     useEffect(() => {
         if (!isVisible) return;
         const onKeydown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') closeNewFolderModal();
             if (e.key === 'Enter') submitNewFolder(textRef.current);
         };
         document.addEventListener('keydown', onKeydown);
@@ -35,21 +35,19 @@ export function NewFolderModal() {
         inputRef.current.focus();
     }, [isVisible]);
 
+    const dialogProps = useModalDialog(isVisible, closeNewFolderModal);
+
     return (
-        <div className={styles.overlay} style={{ display: isVisible ? undefined : 'none' }}>
+        <dialog className={styles.overlay} {...dialogProps} aria-label="Create folder">
             <button
                 type="button"
                 className={styles.backdrop}
+                tabIndex={-1}
                 aria-label="Close dialog"
                 onClick={cancel}
             />
 
-            <div
-                role="dialog"
-                aria-modal="true"
-                aria-label="Create folder"
-                className={styles.modal}
-            >
+            <div className={styles.modal}>
                 <p className={styles.title}>New folder</p>
 
                 <input
@@ -66,6 +64,6 @@ export function NewFolderModal() {
                     <BRButton text="Create" variant="classic" onClick={submit} />
                 </div>
             </div>
-        </div>
+        </dialog>
     );
 }

@@ -10,6 +10,7 @@ import {
     getCachedDirectories,
     refreshDirectories,
 } from '@/services/fs.service';
+import { useModalDialog } from '@/hooks/useModalDialog';
 
 type TListState =
     | { status: 'loading' }
@@ -34,14 +35,6 @@ function DownloadDirModalContent() {
     const [showSubfolders, setShowSubfolders] = useState(true);
 
     const cancel = () => closeDownloadDirModal();
-
-    useEffect(() => {
-        const onKeydown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') closeDownloadDirModal();
-        };
-        document.addEventListener('keydown', onKeydown);
-        return () => document.removeEventListener('keydown', onKeydown);
-    }, [closeDownloadDirModal]);
 
     useEffect(() => {
         let cancelled = false;
@@ -79,21 +72,19 @@ function DownloadDirModalContent() {
         [allDirs, showSubfolders, query],
     );
 
+    const dialogProps = useModalDialog(true, closeDownloadDirModal);
+
     return (
-        <div className={styles.overlay}>
+        <dialog className={styles.overlay} {...dialogProps} aria-label="Choose directory">
             <button
                 type="button"
                 className={styles.backdrop}
+                tabIndex={-1}
                 aria-label="Close dialog"
                 onClick={cancel}
             />
 
-            <div
-                role="dialog"
-                aria-modal="true"
-                aria-label="Choose directory"
-                className={styles.modal}
-            >
+            <div className={styles.modal}>
                 <p className={styles.title}>{heading}</p>
 
                 <div className={styles.searchRow}>
@@ -156,6 +147,6 @@ function DownloadDirModalContent() {
                     })}
                 </ul>
             </div>
-        </div>
+        </dialog>
     );
 }

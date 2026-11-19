@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import styles from './move-file-modal.module.css';
 import { FolderIcon } from '@/icons/folder.icon';
 import { BRCheckbox } from '@/components/br-checkbox/br-checkbox';
 import { useLibraryStore } from '@/stores/library.store';
 import { useMoveFileModalContext } from '@/context/MoveFileModalContext.hooks';
 import type { ILibraryGroup } from '@/library.types';
+import { useModalDialog } from '@/hooks/useModalDialog';
 
 function buildFolderPath(uid: string, groups: ILibraryGroup[]): string {
     const group = groups.find((g) => g.uid === uid);
@@ -87,29 +88,19 @@ function MoveFileModalContent() {
 
     const cancel = () => closeMoveFileModal();
 
-    useEffect(() => {
-        const onKeydown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') closeMoveFileModal();
-        };
-        document.addEventListener('keydown', onKeydown);
-        return () => document.removeEventListener('keydown', onKeydown);
-    }, [closeMoveFileModal]);
+    const dialogProps = useModalDialog(true, closeMoveFileModal);
 
     return (
-        <div className={styles.overlay}>
+        <dialog className={styles.overlay} {...dialogProps} aria-label="Move to another folder">
             <button
                 type="button"
                 className={styles.backdrop}
+                tabIndex={-1}
                 aria-label="Close dialog"
                 onClick={cancel}
             />
 
-            <div
-                role="dialog"
-                aria-modal="true"
-                aria-label="Move to another folder"
-                className={styles.modal}
-            >
+            <div className={styles.modal}>
                 <p className={styles.title}>Move to: </p>
 
                 <div className={styles.searchRow}>
@@ -167,6 +158,6 @@ function MoveFileModalContent() {
                     )}
                 </ul>
             </div>
-        </div>
+        </dialog>
     );
 }

@@ -10,6 +10,7 @@ import { fetchComics } from '../../services/wiki.service';
 import { CrButton } from '../cr-button/cr-button';
 import { useLibraryStore } from '@/stores/library.store';
 import { useConfirmModalStore } from '@/stores/confirmModal.store';
+import { useModalDialog } from '@/hooks/useModalDialog';
 
 const DEBOUNCING_DELAY = 500;
 
@@ -61,32 +62,22 @@ export function ComicIdentifier() {
     }, [search]);
 
     useEffect(() => {
-        const onKeydown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') close();
-        };
-        document.addEventListener('keydown', onKeydown);
-        return () => document.removeEventListener('keydown', onKeydown);
-    }, []);
-
-    useEffect(() => {
         inputRef.current?.focus();
     }, []);
 
+    const dialogProps = useModalDialog(isVisible, close);
+
     return (
-        <div className={styles.overlay} style={{ display: isVisible ? undefined : 'none' }}>
+        <dialog className={styles.overlay} {...dialogProps} aria-label="Search comics">
             <button
                 type="button"
                 className={styles.backdrop}
+                tabIndex={-1}
                 aria-label="Close dialog"
                 onClick={close}
             />
 
-            <div
-                className={styles.modal}
-                role="dialog"
-                aria-modal="true"
-                aria-label="Search comics"
-            >
+            <div className={styles.modal}>
                 <div className={styles.searchBar}>
                     <SearchIcon size={16} color="#8f8f8f" />
 
@@ -125,6 +116,6 @@ export function ComicIdentifier() {
                     )}
                 </section>
             </div>
-        </div>
+        </dialog>
     );
 }

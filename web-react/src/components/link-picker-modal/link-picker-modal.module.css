@@ -2,10 +2,25 @@
     position: fixed;
     inset: 0;
     z-index: 30;
-    display: flex;
     align-items: flex-start;
     justify-content: center;
     padding: 12vh 16px 16px;
+}
+
+.overlay {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    display: none;
+}
+
+.overlay[open] {
+    display: flex;
 }
 
 .backdrop {
