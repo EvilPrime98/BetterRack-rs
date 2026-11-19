@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
 import styles from './link-picker-modal.module.css';
 import { useLinkPickerModalContext } from '@/context/LinkPickerModalContext.hooks';
+import { useModalDialog } from '@/hooks/useModalDialog';
 
 export function LinkPickerModal() {
     const { isVisible, comicTitle, links, closeLinkPickerModal, pickLink } =
@@ -8,30 +8,19 @@ export function LinkPickerModal() {
 
     const cancel = () => closeLinkPickerModal();
 
-    useEffect(() => {
-        const onKeydown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') cancel();
-        };
-        document.addEventListener('keydown', onKeydown);
-        return () => document.removeEventListener('keydown', onKeydown);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    const dialogProps = useModalDialog(isVisible, cancel);
 
     return (
-        <div className={styles.overlay} style={{ display: isVisible ? undefined : 'none' }}>
+        <dialog className={styles.overlay} {...dialogProps} aria-label="Choose a download link">
             <button
                 type="button"
                 className={styles.backdrop}
+                tabIndex={-1}
                 aria-label="Close dialog"
                 onClick={cancel}
             />
 
-            <div
-                role="dialog"
-                aria-modal="true"
-                aria-label="Choose a download link"
-                className={styles.modal}
-            >
+            <div className={styles.modal}>
                 <div className={styles.header}>
                     <p className={styles.title}>Choose a link</p>
                     {comicTitle && (
@@ -64,6 +53,6 @@ export function LinkPickerModal() {
                     ))}
                 </ul>
             </div>
-        </div>
+        </dialog>
     );
 }
