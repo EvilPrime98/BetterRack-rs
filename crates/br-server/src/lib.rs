@@ -7,6 +7,7 @@ pub mod error;
 pub mod http_cache;
 pub mod library;
 pub mod middleware;
+pub mod migrate;
 pub mod pull_list;
 pub mod reader;
 pub mod routes;
