@@ -38,6 +38,7 @@ pub fn store_card<V: 'static>(
         None => Some(Thumb::Missing),
     };
     let state = stores.store.read(cx).card(&key);
+    let downloaded = stores.store.read(cx).is_downloaded(post);
 
     let group: SharedString = format!("store-card-{key}").into();
     let frame = div()
@@ -73,6 +74,7 @@ pub fn store_card<V: 'static>(
     let (label, glyph, loading, failed) = match &state {
         CardState::Error(_) => ("Retry", Icon::Refresh, false, true),
         CardState::LinksLoading => ("Download", Icon::Download, true, false),
+        CardState::Idle if downloaded => ("Downloaded", Icon::Check, false, false),
         CardState::Idle => ("Download", Icon::Download, false, false),
     };
     let pinned = loading || failed;
@@ -151,7 +153,22 @@ pub fn store_card<V: 'static>(
             .opacity(0.0)
             .group_hover(group.clone(), |s| s.opacity(1.0))
     };
-    let cover = cover.child(overlay);
+    let cover = cover.child(overlay).when(downloaded, |c| {
+        c.child(
+            div()
+                .absolute()
+                .top(px(6.0))
+                .right(px(6.0))
+                .size(px(22.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .bg(rgb(0x34c3d1))
+                .shadow_md()
+                .child(icon(Icon::Check, px(14.0)).text_color(rgb(0x0b0b0b))),
+        )
+    });
 
     div()
         .id(SharedString::from(format!("store-card-{key}")))

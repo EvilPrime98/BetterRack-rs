@@ -413,6 +413,11 @@ impl ApiClient {
         .await
     }
 
+    /// Post ids whose download was started.
+    pub async fn downloaded_ids(&self) -> ApiResult<Vec<i64>> {
+        self.json(self.get(&["api", "downloaded"])).await
+    }
+
     pub async fn pull_list(&self) -> ApiResult<Vec<PullEntry>> {
         self.json(self.get(&["api", "pull-list"])).await
     }
