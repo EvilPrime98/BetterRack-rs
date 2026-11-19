@@ -4,7 +4,7 @@
 //! Per-card download state also lives here: GPUI rebuilds cards as they scroll in and out of the
 //! virtualized list, so a card cannot own it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use gpui::{App, Context, UniformListScrollHandle};
@@ -67,6 +67,8 @@ pub struct StoreState {
     pub feed: Feed,
     pub scroll: UniformListScrollHandle,
     cards: HashMap<String, CardState>,
+    /// Post ids whose download was started, as recorded by the server.
+    downloaded: HashSet<i64>,
     /// Bumped by every new search so late answers for an older one are dropped.
     epoch: Epoch,
 }
@@ -82,6 +84,7 @@ impl Default for StoreState {
             feed: Feed::Unloaded,
             scroll: UniformListScrollHandle::new(),
             cards: HashMap::new(),
+            downloaded: HashSet::new(),
             epoch: Epoch::default(),
         }
     }
@@ -136,6 +139,29 @@ impl StoreState {
             Feed::Failed(m) => Some(m),
             _ => None,
         }
+    }
+
+    pub fn is_downloaded(&self, post: &StorePost) -> bool {
+        post.id.is_some_and(|id| self.downloaded.contains(&id))
+    }
+
+    /// Loads the downloaded ids once the client is set. A failure leaves the cards unmarked.
+    pub fn init(&mut self, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            let ids = runtime::run(async move { client.downloaded_ids().await }).await;
+            this.update(cx, |s, cx| match ids {
+                Ok(ids) => {
+                    s.downloaded.extend(ids);
+                    cx.notify();
+                }
+                Err(e) => tracing::warn!("could not load downloaded ids: {e}"),
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub fn card(&self, key: &str) -> CardState {
@@ -309,6 +335,7 @@ impl StoreState {
             this.update(cx, |s, cx| {
                 let job = match outcome {
                     Flow::Started(job) => {
+                        s.downloaded.insert(id);
                         s.set_card(&key, CardState::Idle, cx);
                         toast::success(cx, "Download in progress");
                         job

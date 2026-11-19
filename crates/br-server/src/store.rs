@@ -173,6 +173,7 @@ async fn start_download(
         .downloads
         .start(&p.resource_key, &p.title, request, link)
         .map_err(start_failed)?;
+    s.downloaded.record(id);
     let status = if created {
         StatusCode::CREATED
     } else {

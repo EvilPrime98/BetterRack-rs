@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/stores/settings.store';
 import { useServerModalStore } from '@/stores/serverModal.store';
 import { useBookmarksStore } from '@/stores/bookmarks.store';
 import { usePullListStore } from '@/stores/pullList.store';
+import { useDownloadedStore } from '@/stores/downloaded.store';
 import { PullListPage } from '@/pages/pull-list.page';
 import { useUserPrefStore } from '@/stores/userPref.store';
 import { AppLoader } from '@/components/app-loader/app-loader';
@@ -47,6 +48,7 @@ export function App() {
                     useSettingsStore.getState().fetchSettings(),
                     useBookmarksStore.getState().load(),
                     usePullListStore.getState().load(),
+                    useDownloadedStore.getState().load(),
                 ]);
 
                 if (

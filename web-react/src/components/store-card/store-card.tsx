@@ -12,6 +12,7 @@ import { DOWNLOAD_TRACKER } from '@/services/download-guard.service';
 import { BookmarkIcon } from '@/icons/bookmark.icon';
 import { useBookmarksStore } from '@/stores/bookmarks.store';
 import { usePullListStore } from '@/stores/pullList.store';
+import { useDownloadedStore } from '@/stores/downloaded.store';
 import { useBookmarkActions } from '@/hooks/useBookmarkActions';
 import { postKey } from '@/lib/bookmarks';
 import { matches } from '@/lib/pull-list';
@@ -22,6 +23,7 @@ export function StoreCard({ item }: { item: IStorePost }) {
 
     const { toggle: toggleBookmark } = useBookmarkActions();
     const bookmarked = useBookmarksStore((s) => s.items.some((b) => b.key === postKey(item)));
+    const downloaded = useDownloadedStore((s) => item.id != null && s.ids.has(item.id));
     const followed = usePullListStore((s) => s.items.some((e) => matches(e, item.title)));
 
     const [state, setState] = useState<TCardState>({ status: 'idle' });
@@ -48,6 +50,7 @@ export function StoreCard({ item }: { item: IStorePost }) {
                 strat: STRAT,
             });
             DOWNLOAD_TRACKER.started();
+            useDownloadedStore.getState().mark(item.id);
             setState({ status: 'idle' });
             toast.success('Download in progress');
         } catch (e) {
@@ -105,7 +108,7 @@ export function StoreCard({ item }: { item: IStorePost }) {
         if (curr.status === 'idle') {
             return (
                 <BRButton text="" onClick={onDownloadClick} variant="classic">
-                    <span>Download</span>
+                    <span>{downloaded ? '✓ Downloaded' : 'Download'}</span>
                 </BRButton>
             );
         }
@@ -146,6 +149,16 @@ export function StoreCard({ item }: { item: IStorePost }) {
                     onLoad={onCoverLoad}
                     onError={onCoverError}
                 />
+
+                {downloaded && (
+                    <span
+                        className={styles.downloadedBadge}
+                        title="Downloaded"
+                        aria-label="Downloaded"
+                    >
+                        ✓
+                    </span>
+                )}
 
                 <button
                     type="button"
