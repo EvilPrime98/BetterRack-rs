@@ -514,6 +514,14 @@ impl LibraryStore {
             .find(|e| e.uid == uid)
     }
 
+    pub fn find_file_by_path(&self, path: &str) -> Option<&LibraryEntry> {
+        let key = path_key(path);
+        self.groups
+            .iter()
+            .flat_map(|g| g.entries.iter())
+            .find(|e| !e.did && path_key(&e.path) == key)
+    }
+
     pub fn title_for(&self, uid: Option<&str>) -> String {
         let Some(uid) = uid else { return "Root".into() };
         self.find_entry(uid)
@@ -534,6 +542,10 @@ fn clear_identify_states(cx: &mut gpui::App) {
     if let Some(stores) = cx.try_global::<crate::state::Stores>().cloned() {
         stores.identify.update(cx, |s, cx| s.clear(cx));
     }
+}
+
+fn path_key(path: &str) -> String {
+    path.replace('\\', "/").trim_end_matches('/').to_lowercase()
 }
 
 /// `getLibraryItems({onlyDir, uid})`: the core of navigation.

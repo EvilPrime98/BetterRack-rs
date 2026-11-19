@@ -67,8 +67,8 @@ pub struct StoreState {
     pub feed: Feed,
     pub scroll: UniformListScrollHandle,
     cards: HashMap<String, CardState>,
-    /// Post ids whose download was started, as recorded by the server.
     downloaded: HashSet<i64>,
+    downloaded_paths: HashMap<i64, String>,
     /// Bumped by every new search so late answers for an older one are dropped.
     epoch: Epoch,
 }
@@ -85,6 +85,7 @@ impl Default for StoreState {
             scroll: UniformListScrollHandle::new(),
             cards: HashMap::new(),
             downloaded: HashSet::new(),
+            downloaded_paths: HashMap::new(),
             epoch: Epoch::default(),
         }
     }
@@ -145,19 +146,25 @@ impl StoreState {
         post.id.is_some_and(|id| self.downloaded.contains(&id))
     }
 
-    /// Loads the downloaded ids once the client is set. A failure leaves the cards unmarked.
-    pub fn init(&mut self, cx: &mut Context<Self>) {
+    pub fn downloaded_path(&self, post: &StorePost) -> Option<&str> {
+        let id = post.id?;
+        self.downloaded_paths.get(&id).map(String::as_str)
+    }
+
+    pub fn refresh_downloaded(&mut self, cx: &mut Context<Self>) {
         let Some(client) = self.client.clone() else {
             return;
         };
         cx.spawn(async move |this, cx| {
-            let ids = runtime::run(async move { client.downloaded_ids().await }).await;
-            this.update(cx, |s, cx| match ids {
-                Ok(ids) => {
-                    s.downloaded.extend(ids);
+            let loaded = runtime::run(async move { client.downloaded().await }).await;
+            this.update(cx, |s, cx| match loaded {
+                Ok(d) => {
+                    s.downloaded = d.ids.into_iter().collect();
+                    s.downloaded.extend(d.paths.keys().copied());
+                    s.downloaded_paths = d.paths.into_iter().collect();
                     cx.notify();
                 }
-                Err(e) => tracing::warn!("could not load downloaded ids: {e}"),
+                Err(e) => tracing::warn!("could not load downloaded posts: {e}"),
             })
             .ok();
         })
@@ -335,7 +342,6 @@ impl StoreState {
             this.update(cx, |s, cx| {
                 let job = match outcome {
                     Flow::Started(job) => {
-                        s.downloaded.insert(id);
                         s.set_card(&key, CardState::Idle, cx);
                         toast::success(cx, "Download in progress");
                         job

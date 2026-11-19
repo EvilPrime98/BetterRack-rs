@@ -275,7 +275,9 @@ impl AppRoot {
     fn begin_startup(&mut self, client: ApiClient, cx: &mut Context<Self>) {
         self.stores.set_client(client.clone(), cx);
         self.stores.pull_list.update(cx, |s, cx| s.init(cx));
-        self.stores.store.update(cx, |s, cx| s.init(cx));
+        self.stores
+            .store
+            .update(cx, |s, cx| s.refresh_downloaded(cx));
         let stores = self.stores.clone();
         cx.spawn(async move |this, cx| {
             let (library, comics) = cx.update(|cx| {

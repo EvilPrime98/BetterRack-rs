@@ -3,12 +3,13 @@ use gpui::{
     linear_gradient, prelude::*, px, relative, rgb, rgba,
 };
 
-use crate::model::StorePost;
+use crate::model::{ComicsType, StorePost};
+use crate::route::Navigate;
 use crate::state::Stores;
 use crate::state::pull_list::keyword_from_title;
 use crate::state::store::{CardState, display_date, post_key};
 use crate::state::thumbnails::Thumb;
-use crate::ui::components::comic_card::action_button;
+use crate::ui::components::comic_card::{CardEnv, action_button, comic_card};
 use crate::ui::icons::{Icon, icon};
 use crate::ui::{theme, toast};
 
@@ -22,7 +23,51 @@ pub fn card_height(col_w: f32) -> f32 {
     CARD_PAD * 2.0 + cover_h + 6.0 + TITLE_H + 4.0 + DATE_H
 }
 
-pub fn store_card<V: 'static>(
+fn downloaded_comic<V: gpui::EventEmitter<Navigate> + 'static>(
+    post: &StorePost,
+    col_w: f32,
+    stores: &Stores,
+    cx: &mut Context<V>,
+) -> Option<gpui::AnyElement> {
+    let path = stores.store.read(cx).downloaded_path(post)?.to_string();
+    let item = stores.library.read(cx).find_file_by_path(&path)?.clone();
+    stores.thumbs.update(cx, |t, cx| t.ensure(&item.uid, cx));
+    stores.identify.update(cx, |s, cx| s.ensure(&item, cx));
+    let thumb = stores.thumbs.read(cx).get(&item.uid).cloned();
+    let info = stores.identify.read(cx).info(&item);
+    let cache = stores
+        .comics
+        .read(cx)
+        .get(&item.uid)
+        .cloned()
+        .unwrap_or_default();
+    let fresh = stores.thumbs.read(cx).is_fresh(&item.uid);
+    let env = CardEnv {
+        stores: stores.clone(),
+        kind: ComicsType::Cover,
+    };
+    let card = comic_card(&item, &info, thumb, cache, &env, col_w, fresh, cx);
+    Some(
+        div()
+            .flex_none()
+            .w(px(col_w))
+            .h(px(card_height(col_w)))
+            .child(card)
+            .into_any_element(),
+    )
+}
+
+pub fn store_card<V: gpui::EventEmitter<Navigate> + 'static>(
+    post: &StorePost,
+    col_w: f32,
+    stores: &Stores,
+    cx: &mut Context<V>,
+) -> gpui::AnyElement {
+    downloaded_comic(post, col_w, stores, cx)
+        .unwrap_or_else(|| plain_store_card(post, col_w, stores, cx).into_any_element())
+}
+
+fn plain_store_card<V: 'static>(
     post: &StorePost,
     col_w: f32,
     stores: &Stores,

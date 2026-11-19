@@ -337,6 +337,14 @@ impl IdentifyLibraryStatus {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct Downloaded {
+    #[serde(default)]
+    pub ids: Vec<i64>,
+    #[serde(default)]
+    pub paths: BTreeMap<i64, String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorePost {

@@ -65,6 +65,9 @@ impl StorePage {
             cx.observe(&stores.store, |_, _, cx| cx.notify()),
             cx.observe(&stores.thumbs, |_, _, cx| cx.notify()),
             cx.observe(&stores.bookmarks, |_, _, cx| cx.notify()),
+            cx.observe(&stores.library, |_, _, cx| cx.notify()),
+            cx.observe(&stores.identify, |_, _, cx| cx.notify()),
+            cx.observe(&stores.comics, |_, _, cx| cx.notify()),
             // The source URL may be set in Settings while this page is open.
             cx.observe(&stores.settings, |this, _, cx| {
                 this.load_if_configured(cx);
@@ -77,6 +80,9 @@ impl StorePage {
             _subs: subs,
         };
         this.load_if_configured(cx);
+        this.stores
+            .store
+            .update(cx, |s, cx| s.refresh_downloaded(cx));
         this
     }
 
