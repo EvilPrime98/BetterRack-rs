@@ -413,8 +413,7 @@ impl ApiClient {
         .await
     }
 
-    /// Post ids whose download was started.
-    pub async fn downloaded_ids(&self) -> ApiResult<Vec<i64>> {
+    pub async fn downloaded(&self) -> ApiResult<crate::model::Downloaded> {
         self.json(self.get(&["api", "downloaded"])).await
     }
 

@@ -156,6 +156,7 @@ impl DownloadsStore {
                     }
                     if let Some(stores) = cx.try_global::<Stores>().cloned() {
                         stores.library.update(cx, |l, cx| l.refresh(true, cx));
+                        stores.store.update(cx, |s, cx| s.refresh_downloaded(cx));
                     }
                 }
             }

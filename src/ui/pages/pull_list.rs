@@ -58,7 +58,11 @@ impl PullListPage {
             cx.observe(&stores.store, |_, _, cx| cx.notify()),
             cx.observe(&stores.thumbs, |_, _, cx| cx.notify()),
             cx.observe(&stores.bookmarks, |_, _, cx| cx.notify()),
+            cx.observe(&stores.library, |_, _, cx| cx.notify()),
+            cx.observe(&stores.identify, |_, _, cx| cx.notify()),
+            cx.observe(&stores.comics, |_, _, cx| cx.notify()),
         ];
+        stores.store.update(cx, |s, cx| s.refresh_downloaded(cx));
         let mut page = Self {
             stores,
             scroll: UniformListScrollHandle::new(),

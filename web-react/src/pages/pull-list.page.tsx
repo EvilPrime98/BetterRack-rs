@@ -7,6 +7,7 @@ import { toast } from '@/services/toast.service';
 import type { IStorePost } from '@/store.types';
 import { useDocumentTitleStore } from '@/stores/documentTitle.store';
 import { usePullListStore } from '@/stores/pullList.store';
+import { useDownloadedStore } from '@/stores/downloaded.store';
 import { postKey } from '@/lib/bookmarks';
 import { matches } from '@/lib/pull-list';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -24,6 +25,10 @@ export function PullListPage() {
     const [selectedWeek, setSelectedWeek] = useState(currentWeek);
     const [weekPosts, setWeekPosts] = useState<IStorePost[]>([]);
     const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        useDownloadedStore.getState().load().catch(() => undefined);
+    }, []);
 
     useEffect(() => {
         setTitle('Pull list');

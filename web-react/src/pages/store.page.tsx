@@ -9,6 +9,7 @@ import { toast } from '@/services/toast.service';
 import type { IStorePost } from '@/store.types';
 import { useDocumentTitleStore } from '@/stores/documentTitle.store';
 import { useStorePageStore } from '@/stores/store.store';
+import { useDownloadedStore } from '@/stores/downloaded.store';
 import { BRButton } from '@/components/br-button/br-button';
 
 const PAGE_SIZE = 30;
@@ -30,6 +31,10 @@ export function StorePage() {
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [error, setError] = useState('');
     const [moreFailed, setMoreFailed] = useState(false);
+
+    useEffect(() => {
+        useDownloadedStore.getState().load().catch(() => undefined);
+    }, []);
 
     const loadingRef = useRef({ isLoading, isLoadingMore });
     useEffect(() => {
