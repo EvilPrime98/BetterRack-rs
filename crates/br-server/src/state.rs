@@ -117,16 +117,22 @@ impl AppState {
         );
         let jobs = Arc::new(jobs);
         let library = Arc::new(library);
-        let downloads = Arc::new(DownloadService::new(
-            jobs.clone(),
-            store.clone(),
-            downloader,
-            library.clone(),
-            cwd,
-        ));
+        let downloaded = Arc::new(Downloaded::open(&config.data_dir));
+        let downloads = Arc::new(
+            DownloadService::new(
+                jobs.clone(),
+                store.clone(),
+                downloader,
+                library.clone(),
+                cwd,
+            )
+            .with_on_downloaded({
+                let downloaded = downloaded.clone();
+                Arc::new(move |id, path| downloaded.record(id, &path))
+            }),
+        );
         let bookmarks = Arc::new(Bookmarks::open(&config.data_dir));
         let pull_list = Arc::new(PullList::open(&config.data_dir));
-        let downloaded = Arc::new(Downloaded::open(&config.data_dir));
         Ok(Self {
             config: Arc::new(config),
             prefs,

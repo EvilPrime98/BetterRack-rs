@@ -23,7 +23,10 @@ pub struct DownloadService {
     library: Arc<Library>,
     cwd: String,
     active: Mutex<HashMap<String, CancellationToken>>,
+    on_downloaded: Option<DownloadedHook>,
 }
+
+pub type DownloadedHook = Arc<dyn Fn(i64, PathBuf) + Send + Sync>;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CancelOutcome {
@@ -95,7 +98,13 @@ impl DownloadService {
             library,
             cwd,
             active: Mutex::new(HashMap::new()),
+            on_downloaded: None,
         }
+    }
+
+    pub fn with_on_downloaded(mut self, hook: DownloadedHook) -> Self {
+        self.on_downloaded = Some(hook);
+        self
     }
 
     pub fn jobs(&self) -> &Arc<JobStore> {
@@ -273,20 +282,29 @@ impl DownloadService {
             download_link: link,
             output_dir,
             no_retry: false,
-            cancel,
+            cancel: cancel.clone(),
         };
         let task_id = job_id.clone();
         let downloader = self.downloader.clone();
+        let comic_id = self.jobs.get(&job_id).map(|j| j.request.comic_id);
         let handle =
             tokio::spawn(async move { downloader.download_comic(request, on_progress).await });
         tokio::spawn(async move {
-            if let Err(e) = handle.await {
-                tracing::error!(err = %e, "download job failed");
-                let _ = svc.jobs.update(
-                    &task_id,
-                    JobState::Error,
-                    Some(json!({"type": "error", "message": "Failed to download"})),
-                );
+            match handle.await {
+                Ok(Some(dest)) if !cancel.is_cancelled() => {
+                    if let (Some(hook), Some(id)) = (&svc.on_downloaded, comic_id) {
+                        hook(id, dest);
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!(err = %e, "download job failed");
+                    let _ = svc.jobs.update(
+                        &task_id,
+                        JobState::Error,
+                        Some(json!({"type": "error", "message": "Failed to download"})),
+                    );
+                }
             }
             svc.active().remove(&task_id);
         });
