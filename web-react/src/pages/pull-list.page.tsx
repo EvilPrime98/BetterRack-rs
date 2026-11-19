@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import styles from './store.page.module.css';
 import { Layout } from '@/layout';
 import { StoreCard } from '@/components/store-card/store-card';
@@ -24,14 +24,13 @@ export function PullListPage() {
     const [selectedWeek, setSelectedWeek] = useState(currentWeek);
     const [weekPosts, setWeekPosts] = useState<IStorePost[]>([]);
     const [loading, setLoading] = useState(true);
-    const request = useRef(0);
 
     useEffect(() => {
         setTitle('Pull list');
     }, [setTitle]);
 
     useEffect(() => {
-        const mine = ++request.current;
+        let cancelled = false;
         const after = dayStart(selectedWeek);
         const before = dayStart(selectedWeek + 7);
         setWeekPosts([]);
@@ -52,7 +51,7 @@ export function PullListPage() {
                         after,
                         before,
                     });
-                    if (mine !== request.current) return;
+                    if (cancelled) return;
                     for (const item of items) {
                         const key = postKey(item);
                         if (seen.has(key)) continue;
@@ -61,15 +60,18 @@ export function PullListPage() {
                     }
                     if (items.length < PAGE_SIZE) break;
                 }
-                setWeekPosts(all);
+                if (!cancelled) setWeekPosts(all);
             } catch (e) {
-                if (mine !== request.current) return;
+                if (cancelled) return;
                 const message = e instanceof Error ? e.message : 'Failed to load comics.';
                 setError(message);
                 toast.error(message);
             }
-            if (mine === request.current) setLoading(false);
+            if (!cancelled) setLoading(false);
         })();
+        return () => {
+            cancelled = true;
+        };
     }, [selectedWeek, configured]);
 
     const posts = useMemo(
