@@ -22,15 +22,18 @@ import { COMIC_FILTERS, type IComicFilters } from '@/library.types';
 export const ComicCard = memo(function ComicCard({
     item,
     filters,
+    forceCover = false,
 }: {
     filters?: IComicFilters;
     item: ILibraryResponseItem;
+    forceCover?: boolean;
 }) {
     const navigate = useNavigate();
     const { comic, metaSource, isLoadingInfo, articleRef } = useComicIdentification(item, filters);
     const [coverVersion, setCoverVersion] = useState(0);
     const readerHref = `/${item.uid}/reader`;
-    const comicsType = useComicsTypeStore((s) => s.type);
+    const storedType = useComicsTypeStore((s) => s.type);
+    const comicsType = forceCover ? 'cover' : storedType;
     const { type: readFilter } = useReadTypesContext();
     const itemCache = useComicCacheStore((s) => s.cache[item.uid] ?? null);
     const isRead = itemCache?.read === true;
@@ -43,7 +46,7 @@ export const ComicCard = memo(function ComicCard({
         const matchesWriter =
             !writerFilter || comic?.credits.writers?.some((w) => w === writerFilter) === true;
 
-        return matchesWriter && readFilterMatches(readFilter, currReadPer);
+        return forceCover || (matchesWriter && readFilterMatches(readFilter, currReadPer));
     })();
 
     const articleClassName = [

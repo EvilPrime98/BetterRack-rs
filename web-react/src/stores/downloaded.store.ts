@@ -1,21 +1,19 @@
 import { create } from 'zustand';
-import { getDownloadedIds } from '../services/downloaded.service';
+import { getDownloaded } from '../services/downloaded.service';
 
 interface IDownloadedStore {
     ids: Set<number>;
+    paths: Map<number, string>;
     load: () => Promise<void>;
-    mark: (id: number) => void;
 }
 
-export const useDownloadedStore = create<IDownloadedStore>((set, get) => ({
+export const useDownloadedStore = create<IDownloadedStore>((set) => ({
     ids: new Set(),
+    paths: new Map(),
 
     load: async () => {
-        const loaded = await getDownloadedIds();
-        set({ ids: new Set([...get().ids, ...loaded]) });
-    },
-
-    mark: (id) => {
-        if (!get().ids.has(id)) set({ ids: new Set(get().ids).add(id) });
+        const { ids, paths } = await getDownloaded();
+        const byId = new Map(Object.entries(paths).map(([id, path]) => [Number(id), path]));
+        set({ ids: new Set([...ids, ...byId.keys()]), paths: byId });
     },
 }));

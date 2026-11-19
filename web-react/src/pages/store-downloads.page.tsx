@@ -8,6 +8,7 @@ import {
 } from '@/services/store.service';
 import { useDocumentTitleStore } from '@/stores/documentTitle.store';
 import { useLibraryStore } from '@/stores/library.store';
+import { useDownloadedStore } from '@/stores/downloaded.store';
 import { useConfirmModalStore } from '@/stores/confirmModal.store';
 import { DOWNLOAD_TRACKER } from '@/services/download-guard.service';
 import { countActiveJobs } from '@/lib/active-downloads';
@@ -44,6 +45,7 @@ export function StoreDownloadsPage() {
     async function notifyFinished(finished: TJobStatus[]) {
         if (finished.length === 0) return;
         finished.forEach((job) => toast.success(`${job.label} downloaded`));
+        await useDownloadedStore.getState().load();
         await useLibraryStore.getState().refreshLibrary({ silent: true });
     }
 
