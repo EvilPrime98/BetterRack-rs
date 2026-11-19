@@ -7,9 +7,11 @@ use gpui::{
     StatefulInteractiveElement, Styled, Task, Window, div, prelude::*, px, relative, rgb, rgba,
 };
 
-use crate::model::{JobState, JobStatus};
+use crate::model::{JobState, JobStatus, StoreProgressEvent};
 use crate::state::Stores;
-use crate::state::downloads::{can_stop, detail_for, percent_for, state_label};
+use crate::state::downloads::{
+    Pending, can_delete, can_stop, detail_for, percent_for, state_label,
+};
 use crate::ui::components::items_grid::PAGE_PAD_X;
 use crate::ui::confirm::{self, ConfirmOptions};
 use crate::ui::pages::common::{header_bar, note, summary};
@@ -64,15 +66,9 @@ impl DownloadsPage {
 
 impl Render for DownloadsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (jobs, error, loaded, retrying, stopping) = {
+        let (jobs, error, loaded) = {
             let d = self.stores.downloads.read(cx);
-            (
-                d.jobs.clone(),
-                d.error.clone(),
-                d.loaded,
-                d.retrying.clone(),
-                d.stopping.clone(),
-            )
+            (d.jobs.clone(), d.error.clone(), d.loaded)
         };
 
         let body = if jobs.is_empty() {
@@ -87,17 +83,25 @@ impl Render for DownloadsPage {
         } else {
             let rows = jobs.iter().map(|job| {
                 let retry_id = job.job_id.clone();
+                let delete_id = job.job_id.clone();
                 let stop_job = job.clone();
+                let pending = self.stores.downloads.read(cx).pending(&job.job_id);
                 job_row(
                     job,
-                    retrying.contains(&job.job_id),
-                    stopping.contains(&job.job_id),
+                    pending == Some(Pending::Retrying),
+                    pending == Some(Pending::Stopping),
+                    pending == Some(Pending::Deleting),
                     cx.listener(move |this, _, _, cx| {
                         this.stores
                             .downloads
                             .update(cx, |d, cx| d.retry(retry_id.clone(), cx))
                     }),
                     cx.listener(move |this, _, _, cx| this.stop(&stop_job, cx)),
+                    cx.listener(move |this, _, _, cx| {
+                        this.stores
+                            .downloads
+                            .update(cx, |d, cx| d.delete(delete_id.clone(), cx))
+                    }),
                 )
             });
             div()
@@ -179,12 +183,28 @@ fn danger_button(
     }
 }
 
+fn page_url(job: &JobStatus) -> Option<String> {
+    match &job.progress {
+        Some(StoreProgressEvent::Error {
+            page_url: Some(url),
+            ..
+        }) if job.state == JobState::Error
+            && (url.starts_with("https://") || url.starts_with("http://")) =>
+        {
+            Some(url.clone())
+        }
+        _ => None,
+    }
+}
+
 fn job_row(
     job: &JobStatus,
     retrying: bool,
     stopping: bool,
+    deleting: bool,
     on_retry: impl Fn(&ClickEvent, &mut Window, &mut gpui::App) + 'static,
     on_stop: impl Fn(&ClickEvent, &mut Window, &mut gpui::App) + 'static,
+    on_delete: impl Fn(&ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
     let percent = percent_for(job.progress.as_ref());
     let detail = detail_for(job.progress.as_ref());
@@ -258,14 +278,53 @@ fn job_row(
                     .child(detail),
             )
         })
-        .when(failed, |s| {
-            s.child(div().flex().child(danger_button(
-                format!("retry-{}", job.job_id).into(),
-                "Retry",
-                retrying,
-                on_retry,
-            )))
+        .when(failed || can_delete(job), |s| {
+            s.child(
+                div()
+                    .flex()
+                    .gap(px(8.0))
+                    .when(failed, |s| {
+                        s.child(danger_button(
+                            format!("retry-{}", job.job_id).into(),
+                            "Retry",
+                            retrying,
+                            on_retry,
+                        ))
+                    })
+                    .when(can_delete(job), |s| {
+                        s.child(danger_button(
+                            format!("delete-{}", job.job_id).into(),
+                            "Delete",
+                            deleting,
+                            on_delete,
+                        ))
+                    }),
+            )
         })
+        .children(page_url(job).map(|url| {
+            div().flex().child(
+                div()
+                    .id(SharedString::from(format!("open-page-{}", job.job_id)))
+                    .flex()
+                    .items_center()
+                    .px(px(10.0))
+                    .py(px(5.0))
+                    .rounded(px(6.0))
+                    .border_1()
+                    .border_color(theme::border_subtle())
+                    .text_size(px(11.0))
+                    .font_weight(gpui::FontWeight::BOLD)
+                    .text_color(theme::accent())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::hover()))
+                    .on_click(move |_, _, _| {
+                        if let Err(e) = open::that(&url) {
+                            tracing::warn!(err = %e, "could not open the comic page");
+                        }
+                    })
+                    .child("OPEN COMIC PAGE"),
+            )
+        }))
         .when(can_stop(job), |s| {
             s.child(div().flex().child(danger_button(
                 format!("stop-{}", job.job_id).into(),

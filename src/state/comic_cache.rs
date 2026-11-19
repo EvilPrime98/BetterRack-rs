@@ -13,6 +13,14 @@ use crate::runtime;
 
 const DEBOUNCE: Duration = Duration::from_millis(400);
 
+fn apply_read(c: &mut ComicCache, read: bool) {
+    c.read = read;
+    c.read_per = if read { 100.0 } else { 0.0 };
+    if !read {
+        c.current_page = 0;
+    }
+}
+
 #[derive(Default)]
 pub struct ComicCacheStore {
     pub client: Option<ApiClient>,
@@ -65,7 +73,10 @@ impl ComicCacheStore {
         let entry = self.cache.entry(uid.to_string()).or_default();
         change(entry);
         cx.notify();
+        self.schedule_patch(uid, cx);
+    }
 
+    fn schedule_patch(&mut self, uid: &str, cx: &mut Context<Self>) {
         let uid = uid.to_string();
         let key = uid.clone();
         let task = cx.spawn(async move |this, cx| {
@@ -95,13 +106,22 @@ impl ComicCacheStore {
 
     /// Mark read/unread (`mark-as-read-button`): read pins progress to 100, unread resets it.
     pub fn set_read(&mut self, uid: &str, read: bool, cx: &mut Context<Self>) {
-        self.update(uid, cx, |c| {
-            c.read = read;
-            c.read_per = if read { 100.0 } else { 0.0 };
-            if !read {
-                c.current_page = 0;
+        self.update(uid, cx, |c| apply_read(c, read));
+    }
+
+    pub fn set_read_many(&mut self, uids: &[String], read: bool, cx: &mut Context<Self>) {
+        let mut changed = false;
+        for uid in uids {
+            if self.cache.get(uid).is_some_and(|c| c.read == read) {
+                continue;
             }
-        });
+            apply_read(self.cache.entry(uid.clone()).or_default(), read);
+            self.schedule_patch(uid, cx);
+            changed = true;
+        }
+        if changed {
+            cx.notify();
+        }
     }
 
     /// Send everything still waiting on a debounce timer. The returned task completes when the

@@ -1,0 +1,18 @@
+export function FolderPlusIcon({
+    size = 16,
+    color = '#c7c7c7',
+}: {
+    size?: number;
+    color?: string;
+} = {}) {
+    return `<svg
+        width="${size}"
+        height="${size}"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+    >
+        <path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h4.379a1.5 1.5 0 0 1 1.06.44l1.122 1.12a1.5 1.5 0 0 0 1.06.44H19.5A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-11Z" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M12 10.5v5M9.5 13h5" stroke="${color}" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>`;
+}

@@ -15,6 +15,7 @@ pub struct AppSettings {
     pub download_dir: String,
     pub wiki_search: bool,
     pub rescan_on_startup: bool,
+    pub rotating_fetch: bool,
 }
 
 impl Default for AppSettings {
@@ -25,6 +26,7 @@ impl Default for AppSettings {
             download_dir: String::new(),
             wiki_search: false,
             rescan_on_startup: false,
+            rotating_fetch: false,
         }
     }
 }
@@ -85,6 +87,9 @@ impl Preferences {
             rescan_on_startup: values
                 .get("rescanOnStartup")
                 .map_or(d.rescan_on_startup, |v| v == "true"),
+            rotating_fetch: values
+                .get("rotatingFetch")
+                .map_or(d.rotating_fetch, |v| v == "true"),
         })
     }
 
@@ -95,7 +100,12 @@ impl Preferences {
             for (key, value) in partial {
                 if !matches!(
                     key.as_str(),
-                    "outputDirs" | "apiUrl" | "downloadDir" | "wikiSearch" | "rescanOnStartup"
+                    "outputDirs"
+                        | "apiUrl"
+                        | "downloadDir"
+                        | "wikiSearch"
+                        | "rescanOnStartup"
+                        | "rotatingFetch"
                 ) {
                     continue;
                 }
@@ -203,7 +213,7 @@ mod tests {
         let v = serde_json::to_value(AppSettings::default()).unwrap();
         assert_eq!(
             v,
-            json!({"outputDirs": [], "apiUrl": "", "downloadDir": "", "wikiSearch": false, "rescanOnStartup": false})
+            json!({"outputDirs": [], "apiUrl": "", "downloadDir": "", "wikiSearch": false, "rescanOnStartup": false, "rotatingFetch": false})
         );
     }
 

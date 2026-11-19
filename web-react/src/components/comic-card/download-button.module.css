@@ -1,0 +1,47 @@
+.downloadComicButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: rgba(255, 255, 255, 0.5);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        color 160ms ease,
+        transform 160ms ease;
+}
+
+.downloadComicButton svg {
+    pointer-events: none;
+}
+
+@media (hover: hover) {
+    .downloadComicButton:hover {
+        background: rgba(52, 195, 209, 0.12);
+        border-color: rgba(52, 195, 209, 0.35);
+        color: #34c3d1;
+    }
+}
+
+.downloadComicButton:active {
+    transform: scale(0.96);
+}
+
+.downloadComicButton:focus-visible {
+    outline: 2px solid #34c3d1;
+    outline-offset: 2px;
+}
+
+.downloadComicButton[aria-busy='true'] {
+    cursor: progress;
+    opacity: 0.5;
+}

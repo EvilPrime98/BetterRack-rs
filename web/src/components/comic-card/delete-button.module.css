@@ -1,0 +1,38 @@
+.deleteButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: rgba(255, 255, 255, 0.5);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        color 160ms ease,
+        transform 160ms ease;
+}
+
+.deleteButton svg {
+    pointer-events: none;
+}
+
+@media (hover: hover) {
+    .deleteButton:hover {
+        background: rgba(232, 93, 93, 0.12);
+        border-color: rgba(232, 93, 93, 0.35);
+        color: #e85d5d;
+    }
+}
+
+.deleteButton:active {
+    transform: scale(0.96);
+}
+
+.deleteButton:focus-visible {
+    outline: 2px solid #e85d5d;
+    outline-offset: 2px;
+}

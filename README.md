@@ -46,6 +46,41 @@ cargo run --release
 
 CBR/RAR/7z archives are extracted with [7-Zip](https://www.7-zip.org). Release packages bundle it; when running from source it falls back to `7z` on your `PATH`, or to the binary named by `SEVEN_ZIP_PATH`.
 
+### Run headless (server only)
+
+`br-server` is a standalone HTTP backend with no GUI dependency, so building it skips the GUI libraries. It needs Rust 1.85 or newer and 7-Zip on the host.
+
+```bash
+BR_BIND_ADDR=0.0.0.0 BR_API_KEY=change-me cargo run --release -p br-server
+```
+
+| Variable | Purpose |
+|---|---|
+| `PORT` | Port to listen on. Default `3000`; `0` lets the OS pick. |
+| `BR_BIND_ADDR` | Host or IP to listen on (no port). Default `127.0.0.1`. |
+| `BR_API_KEY` | Required for `/api/*` and `/read/*` (header `x-br-api-key` or `?key=`). |
+| `BR_DATA_DIR` | Base directory for the SQLite data. Defaults to the working directory. |
+| `LOG_LEVEL` | Tracing filter. Default `info`. |
+| `SEVEN_ZIP_PATH` | Path to the 7-Zip executable if it is not on `PATH`. |
+| `BR_WEB_DIR` | Folder of the built web client (see below). Unset or missing: API only. |
+
+A non-loopback `BR_BIND_ADDR` (such as `0.0.0.0` or `::`) without `BR_API_KEY` makes the server refuse to start, and so does an invalid address. The server does not do TLS; put a reverse proxy in front of it.
+
+### Web client and Android
+
+`web-react/` is the browser client of `br-server` (Vite + React, pnpm). Build it and point the server at the output:
+
+```bash
+cd web-react && pnpm install && pnpm build
+BR_WEB_DIR=web-react/dist BR_BIND_ADDR=0.0.0.0 BR_API_KEY=change-me cargo run --release -p br-server
+```
+
+The server then serves the app at `/` on the same origin, so the client needs no URL configuration. The static files are served without the key; `/api/*` and `/read/*` still require it. In the browser, open the server dialog, enable remote mode, enter the server's own address and the API key.
+
+The desktop app serves the web client itself, over the same library and data as its own window, at `http://127.0.0.1:3000/` (`PORT`, `BR_BIND_ADDR` and `BR_API_KEY` apply as for the headless server). It looks for the client in `BR_WEB_DIR`, then in a `web/` folder next to the app (where release packages put it), then in `web-react/dist` of the working directory. If none exists, or the port is taken, the app starts without it.
+
+The Android app uses Capacitor and talks to a remote `br-server`. The server address is set in the app; to preset it, build with `VITE_DEFAULT_API_URL` (see `web-react/.env.example`). From `web-react/`: `pnpm android:apk` builds a debug APK (needs JDK 21 and the Android SDK). Releases attach the debug APK.
+
 ### Build distributables
 
 ```bash

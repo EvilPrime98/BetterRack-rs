@@ -31,7 +31,6 @@ pub fn bg_modal() -> Rgba {
 pub fn border_subtle() -> Rgba {
     rgba(0xffffff14)
 }
-#[allow(dead_code)] // design token
 pub fn scrollbar_thumb() -> Rgba {
     rgb(0x4a4a4a)
 }

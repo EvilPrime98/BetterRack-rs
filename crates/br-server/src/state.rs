@@ -1,3 +1,6 @@
+use crate::bookmarks::Bookmarks;
+use crate::downloaded::Downloaded;
+use crate::pull_list::PullList;
 use br_core::archive::Archives;
 use br_core::comic_data::ComicDataStore;
 use br_core::config::Config;
@@ -26,6 +29,9 @@ pub struct AppState {
     pub store: Arc<StoreApi>,
     pub downloads: Arc<DownloadService>,
     pub wiki: Arc<dyn WikiLookup>,
+    pub bookmarks: Arc<Bookmarks>,
+    pub pull_list: Arc<PullList>,
+    pub downloaded: Arc<Downloaded>,
 }
 
 /// Network behaviour of the store client and the download engine. The defaults are the
@@ -99,22 +105,34 @@ impl AppState {
         ));
         let pack = Arc::new(PackExtractor::new(archives.clone()));
         let pd_hostname = pd_host.split(':').next().unwrap_or(&pd_host).to_string();
-        let downloader = Arc::new(Downloader::new(
-            client,
-            rotating,
-            Some(pack),
-            net.download_retry,
-            &pd_hostname,
-        ));
+        let downloader = Arc::new(
+            Downloader::new(
+                client,
+                rotating,
+                Some(pack),
+                net.download_retry,
+                &pd_hostname,
+            )
+            .with_prefs(prefs.clone()),
+        );
         let jobs = Arc::new(jobs);
         let library = Arc::new(library);
-        let downloads = Arc::new(DownloadService::new(
-            jobs.clone(),
-            store.clone(),
-            downloader,
-            library.clone(),
-            cwd,
-        ));
+        let downloaded = Arc::new(Downloaded::open(&config.data_dir));
+        let downloads = Arc::new(
+            DownloadService::new(
+                jobs.clone(),
+                store.clone(),
+                downloader,
+                library.clone(),
+                cwd,
+            )
+            .with_on_downloaded({
+                let downloaded = downloaded.clone();
+                Arc::new(move |id, path| downloaded.record(id, &path))
+            }),
+        );
+        let bookmarks = Arc::new(Bookmarks::open(&config.data_dir));
+        let pull_list = Arc::new(PullList::open(&config.data_dir));
         Ok(Self {
             config: Arc::new(config),
             prefs,
@@ -126,6 +144,9 @@ impl AppState {
             store,
             downloads,
             wiki,
+            bookmarks,
+            pull_list,
+            downloaded,
         })
     }
 

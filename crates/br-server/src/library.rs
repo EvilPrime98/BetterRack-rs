@@ -273,6 +273,21 @@ pub async fn move_file(State(s): State<AppState>, body: Bytes) -> Response {
     .await
 }
 
+pub async fn flatten_folder(State(s): State<AppState>, body: Bytes) -> Response {
+    mutate(
+        s,
+        body,
+        "flatten folder",
+        "Folder flattened successfully.",
+        "There was an issue flattening the folder. Please, try again later.",
+        |s, f| {
+            s.library
+                .flatten_folder(f.get("folderUid").and_then(Value::as_str))
+        },
+    )
+    .await
+}
+
 pub async fn delete_folder(State(s): State<AppState>, body: Bytes) -> Response {
     mutate(
         s,

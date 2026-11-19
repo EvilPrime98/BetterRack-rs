@@ -2,11 +2,11 @@
 //! cancel and list jobs, run the [`Downloader`] for each and keep the [`JobStore`] and the library
 //! index in step.
 
-use crate::download::{DownloadRequest, Downloader, ProgressCb, ProgressEvent};
+use crate::download::{CLOUDFLARE_MESSAGE, DownloadRequest, Downloader, ProgressCb, ProgressEvent};
 use crate::jobs::{Job, JobRequest, JobState, JobStore};
 use crate::library::Library;
 use crate::store::StoreApi;
-use crate::uid::resolve_windows;
+use crate::uid::resolve_in;
 use crate::{CoreError, Result};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -23,14 +23,15 @@ pub struct DownloadService {
     library: Arc<Library>,
     cwd: String,
     active: Mutex<HashMap<String, CancellationToken>>,
+    on_downloaded: Option<DownloadedHook>,
 }
+
+pub type DownloadedHook = Arc<dyn Fn(i64, PathBuf) + Send + Sync>;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CancelOutcome {
     Cancelled,
     NotFound,
-    /// Finished already (`done`/`error`).
-    NotActive,
     /// The pack is being unpacked, which cannot be interrupted safely.
     Extracting,
 }
@@ -97,7 +98,13 @@ impl DownloadService {
             library,
             cwd,
             active: Mutex::new(HashMap::new()),
+            on_downloaded: None,
         }
+    }
+
+    pub fn with_on_downloaded(mut self, hook: DownloadedHook) -> Self {
+        self.on_downloaded = Some(hook);
+        self
     }
 
     pub fn jobs(&self) -> &Arc<JobStore> {
@@ -110,7 +117,7 @@ impl DownloadService {
 
     /// `fsModel.getFullPath(outputDir || '/')`.
     pub fn full_path(&self, output_dir: Option<&str>) -> String {
-        resolve_windows(
+        resolve_in(
             output_dir.filter(|d| !d.is_empty()).unwrap_or("/"),
             &self.cwd,
         )
@@ -188,14 +195,14 @@ impl DownloadService {
         let Some(job) = self.jobs.get(job_id) else {
             return Ok(CancelOutcome::NotFound);
         };
-        if !matches!(job.state, JobState::Queued | JobState::Running) {
-            return Ok(CancelOutcome::NotActive);
-        }
-        if job.progress.as_ref().and_then(|p| p["type"].as_str()) == Some("extracting") {
-            return Ok(CancelOutcome::Extracting);
-        }
-        if let Some(token) = self.active().get(job_id) {
-            token.cancel();
+        let active = matches!(job.state, JobState::Queued | JobState::Running);
+        if active {
+            if job.progress.as_ref().and_then(|p| p["type"].as_str()) == Some("extracting") {
+                return Ok(CancelOutcome::Extracting);
+            }
+            if let Some(token) = self.active().get(job_id) {
+                token.cancel();
+            }
         }
         self.jobs.remove(job_id)?;
         Ok(CancelOutcome::Cancelled)
@@ -237,6 +244,23 @@ impl DownloadService {
                     return;
                 }
                 let state = event_state(&event);
+                if let ProgressEvent::Error {
+                    message,
+                    page_url: None,
+                } = &event
+                    && message == CLOUDFLARE_MESSAGE
+                    && let Some(comic_id) = svc.jobs.get(&job_id).map(|j| j.request.comic_id)
+                {
+                    let (svc, job_id, message) = (svc.clone(), job_id.clone(), message.clone());
+                    tokio::spawn(async move {
+                        let page_url = svc.store.get_post_page_url(comic_id).await.ok().flatten();
+                        let value = ProgressEvent::Error { message, page_url }.to_value();
+                        if let Err(e) = svc.jobs.update(&job_id, JobState::Error, Some(value)) {
+                            tracing::error!(err = %e, "could not update the download job");
+                        }
+                    });
+                    return;
+                }
                 let value = event.to_value();
                 if state == JobState::Done {
                     // The job turns `done` only once the library knows the new file.
@@ -258,20 +282,29 @@ impl DownloadService {
             download_link: link,
             output_dir,
             no_retry: false,
-            cancel,
+            cancel: cancel.clone(),
         };
         let task_id = job_id.clone();
         let downloader = self.downloader.clone();
+        let comic_id = self.jobs.get(&job_id).map(|j| j.request.comic_id);
         let handle =
             tokio::spawn(async move { downloader.download_comic(request, on_progress).await });
         tokio::spawn(async move {
-            if let Err(e) = handle.await {
-                tracing::error!(err = %e, "download job failed");
-                let _ = svc.jobs.update(
-                    &task_id,
-                    JobState::Error,
-                    Some(json!({"type": "error", "message": "Failed to download"})),
-                );
+            match handle.await {
+                Ok(Some(dest)) if !cancel.is_cancelled() => {
+                    if let (Some(hook), Some(id)) = (&svc.on_downloaded, comic_id) {
+                        hook(id, dest);
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!(err = %e, "download job failed");
+                    let _ = svc.jobs.update(
+                        &task_id,
+                        JobState::Error,
+                        Some(json!({"type": "error", "message": "Failed to download"})),
+                    );
+                }
             }
             svc.active().remove(&task_id);
         });

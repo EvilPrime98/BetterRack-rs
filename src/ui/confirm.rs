@@ -2,13 +2,13 @@
 //! `Some(true)` confirmed, `Some(false)` cancelled, `None` dismissed (Esc / backdrop).
 
 use gpui::{
-    App, AppContext as _, Context, Entity, FocusHandle, Focusable, Global, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, Window, actions, div, px,
+    AnimationExt as _, App, AppContext as _, Context, Entity, FocusHandle, Focusable, Global,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Window, actions, div, px,
 };
 
 use crate::ui::components::button::{ButtonVariant, button};
-use crate::ui::theme;
+use crate::ui::{motion, theme};
 
 actions!(confirm, [Dismiss]);
 
@@ -42,13 +42,16 @@ impl ConfirmOptions {
 type Callback = Box<dyn FnOnce(Option<bool>, bool, &mut App)>;
 
 struct Pending {
+    id: u64,
     options: ConfirmOptions,
     dont_ask: bool,
-    on_answer: Callback,
+    on_answer: Option<Callback>,
+    leaving: bool,
 }
 
 pub struct ConfirmHost {
     pending: Option<Pending>,
+    next_id: u64,
     focus: FocusHandle,
 }
 
@@ -63,6 +66,7 @@ pub fn init(cx: &mut App) -> Entity<ConfirmHost> {
     )]);
     let host = cx.new(|cx| ConfirmHost {
         pending: None,
+        next_id: 0,
         focus: cx.focus_handle(),
     });
     cx.set_global(ConfirmGlobal(host.clone()));
@@ -81,27 +85,44 @@ pub fn ask(
     };
     let previous = host.update(cx, |host, cx| {
         let previous = host.pending.take();
+        let id = host.next_id;
+        host.next_id += 1;
         host.pending = Some(Pending {
+            id,
             options,
             dont_ask: false,
-            on_answer: Box::new(on_answer),
+            on_answer: Some(Box::new(on_answer)),
+            leaving: false,
         });
         cx.notify();
         previous
     });
-    if let Some(p) = previous {
-        (p.on_answer)(None, false, cx);
+    if let Some(on_answer) = previous.and_then(|p| p.on_answer) {
+        on_answer(None, false, cx);
     }
 }
 
 impl ConfirmHost {
     fn resolve(&mut self, answer: Option<bool>, cx: &mut Context<Self>) {
-        if let Some(p) = self.pending.take() {
-            let dont_ask = p.dont_ask;
-            cx.notify();
-            // Run after this update so the callback may call `ask` again.
-            cx.defer(move |cx| (p.on_answer)(answer, dont_ask, cx));
-        }
+        let Some(p) = &mut self.pending else { return };
+        let Some(on_answer) = p.on_answer.take() else {
+            return;
+        };
+        let (id, dont_ask) = (p.id, p.dont_ask);
+        p.leaving = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(motion::FAST).await;
+            this.update(cx, |host, cx| {
+                if host.pending.as_ref().is_some_and(|p| p.id == id) {
+                    host.pending = None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+        cx.defer(move |cx| on_answer(answer, dont_ask, cx));
     }
 }
 
@@ -119,7 +140,7 @@ impl Render for ConfirmHost {
         if !self.focus.is_focused(window) {
             window.focus(&self.focus, cx);
         }
-        let dont_ask = p.dont_ask;
+        let (dont_ask, leaving) = (p.dont_ask, p.leaving);
         let checkbox = p.options.dont_ask_again.then(|| {
             let mut tick = div()
                 .size(px(16.0))
@@ -213,6 +234,15 @@ impl Render for ConfirmHost {
                                 cx.listener(|this, _, _, cx| this.resolve(Some(true), cx)),
                             )),
                     ),
+            )
+            .with_animation(
+                if leaving {
+                    "confirm-out"
+                } else {
+                    "confirm-fade"
+                },
+                motion::once(motion::FAST),
+                move |el, t| el.opacity(if leaving { 1.0 - t } else { t }),
             )
             .into_any_element()
     }

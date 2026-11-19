@@ -4,7 +4,7 @@ members = [".", "crates/*"]
 [workspace.package]
 edition = "2024"
 license = "GPL-3.0-or-later"
-version = "0.1.0"
+version = "0.2.0"
 
 [package]
 name = "better-rack-rus"
@@ -34,7 +34,7 @@ rust-embed = "8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "process", "time", "io-util", "macros", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "process", "time", "io-util", "fs", "macros", "sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"

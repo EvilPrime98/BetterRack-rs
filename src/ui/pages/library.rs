@@ -8,19 +8,21 @@
 use std::rc::Rc;
 
 use gpui::{
-    Context, EventEmitter, InteractiveElement, IntoElement, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Window, div, prelude::*, px, rgb,
+    AnimationExt as _, Context, EventEmitter, InteractiveElement, IntoElement, ParentElement,
+    Render, StatefulInteractiveElement, Styled, Window, div, prelude::*, px, rgb,
 };
 
-use crate::model::{FilterOption, LibraryEntry};
+use crate::model::{FilterOption, LibraryEntry, ReadFilter, StoreBookmark};
 use crate::route::{GoBack, Navigate};
 use crate::state::Stores;
 use crate::state::library::apply_sort;
 use crate::ui::components::button::{ButtonVariant, button};
-use crate::ui::components::items_grid::{GridScroll, PAGE_PAD_X, available_width, items_grid};
+use crate::ui::components::items_grid::{
+    GridScroll, PAGE_PAD_X, available_width, items_grid, merge_bookmarks,
+};
 use crate::ui::components::smooth_scroll::{SmoothScroll, wheel_capture};
 use crate::ui::icons::{Icon, icon};
-use crate::ui::pages::common::{note, prefs_dropdown, view_controls};
+use crate::ui::pages::common::{actions_menu, note, prefs_dropdown, view_controls};
 use crate::ui::text::capitalize_words;
 use crate::ui::theme;
 
@@ -29,12 +31,19 @@ struct Memo {
     items: Rc<Vec<LibraryEntry>>,
 }
 
+struct VisibleMemo {
+    base: Rc<Vec<LibraryEntry>>,
+    read_filter: ReadFilter,
+    indices: Rc<Vec<usize>>,
+}
+
 pub struct LibraryPage {
     uid: Option<String>,
     stores: Stores,
     scroll: GridScroll,
     smooth: SmoothScroll,
     memo: Option<Memo>,
+    visible_memo: Option<VisibleMemo>,
 }
 
 impl EventEmitter<Navigate> for LibraryPage {}
@@ -43,8 +52,14 @@ impl EventEmitter<GoBack> for LibraryPage {}
 impl LibraryPage {
     pub fn new(uid: Option<String>, stores: Stores, cx: &mut Context<Self>) -> Self {
         cx.observe(&stores.library, |_, _, cx| cx.notify()).detach();
-        cx.observe(&stores.comics, |_, _, cx| cx.notify()).detach();
+        cx.observe(&stores.comics, |this, _, cx| {
+            this.visible_memo = None;
+            cx.notify();
+        })
+        .detach();
         cx.observe(&stores.thumbs, |_, _, cx| cx.notify()).detach();
+        cx.observe(&stores.bookmarks, |_, _, cx| cx.notify())
+            .detach();
         cx.observe(&stores.identify, |_, _, cx| cx.notify())
             .detach();
         cx.observe(&stores.prefs, |_, _, cx| cx.notify()).detach();
@@ -55,7 +70,53 @@ impl LibraryPage {
             scroll: GridScroll::new(),
             smooth: SmoothScroll::default(),
             memo: None,
+            visible_memo: None,
         }
+    }
+
+    fn visible_items(
+        &mut self,
+        base: &Rc<Vec<LibraryEntry>>,
+        read_filter: ReadFilter,
+        cx: &gpui::App,
+    ) -> Rc<Vec<usize>> {
+        if let Some(m) = &self.visible_memo {
+            if Rc::ptr_eq(&m.base, base) && m.read_filter == read_filter {
+                return m.indices.clone();
+            }
+        }
+        let comics = self.stores.comics.read(cx);
+        let indices = Rc::new(
+            base.iter()
+                .enumerate()
+                .filter(|(_, i)| i.did || read_filter.matches(comics.read_per(&i.uid)))
+                .map(|(ix, _)| ix)
+                .collect::<Vec<_>>(),
+        );
+        self.visible_memo = Some(VisibleMemo {
+            base: base.clone(),
+            read_filter,
+            indices: indices.clone(),
+        });
+        indices
+    }
+
+    fn bookmarks_here(&self, read_filter: ReadFilter, cx: &gpui::App) -> Vec<StoreBookmark> {
+        let query = self
+            .stores
+            .library
+            .read(cx)
+            .search_query
+            .trim()
+            .to_lowercase();
+        self.stores
+            .bookmarks
+            .read(cx)
+            .in_folder(self.uid.as_deref())
+            .into_iter()
+            .filter(|b| read_filter.matches(if b.read { 100.0 } else { 0.0 }))
+            .filter(|b| query.is_empty() || b.title.to_lowercase().contains(&query))
+            .collect()
     }
 
     /// Sorted page items, recomputed only when the library, folder or sort changes.
@@ -84,34 +145,36 @@ impl Render for LibraryPage {
         let base = self.base_items(cx);
         let scroll = self.scroll.clone();
         self.smooth.step(window, |dy| scroll.scroll_by(dy));
-        let (read_filter, kind, sidebar_collapsed, sort) = {
+        let (read_filter, kind, sidebar_docked, sort) = {
             let p = self.stores.prefs.read(cx);
             (
                 p.read_filter,
                 p.prefs.comic_type,
-                p.prefs.sidebar_collapsed,
+                p.prefs.sidebar_docked(),
                 p.prefs.filter,
             )
         };
 
         // Folders always show; comics only when they pass the read filter.
-        let visible: Rc<Vec<usize>> = {
-            let comics = self.stores.comics.read(cx);
-            Rc::new(
-                base.iter()
-                    .enumerate()
-                    .filter(|(_, i)| i.did || read_filter.matches(comics.read_per(&i.uid)))
-                    .map(|(ix, _)| ix)
-                    .collect(),
-            )
-        };
+        let visible = self.visible_items(&base, read_filter, cx);
 
         let (loading, title) = {
             let lib = self.stores.library.read(cx);
-            (lib.loading, lib.title_for(self.uid.as_deref()))
+            (lib.loading(), lib.title_for(self.uid.as_deref()))
         };
-        let count = visible.len();
+        let bookmarks = Rc::new(self.bookmarks_here(read_filter, cx));
+        let count = visible.len() + bookmarks.len();
 
+        let unread: Vec<String> = {
+            let comics = self.stores.comics.read(cx);
+            base.iter()
+                .filter(|i| !i.did && comics.read_per(&i.uid) < 100.0)
+                .map(|i| i.uid.clone())
+                .collect()
+        };
+
+        let has_subfolders = base.iter().any(|i| i.did);
+        let flatten_uid = self.uid.clone();
         let has_uid = self.uid.is_some();
         let header = div()
             .flex()
@@ -183,6 +246,41 @@ impl Render for LibraryPage {
                     .flex()
                     .items_center()
                     .gap(px(10.0))
+                    .child(actions_menu(
+                        "actions",
+                        "Actions",
+                        vec![
+                            (
+                                "Mark entire folder as read",
+                                !unread.is_empty(),
+                                Rc::new(move |cx: &mut gpui::App| {
+                                    crate::ui::modals::open_mark_folder_read(cx, unread.clone())
+                                }) as Rc<dyn Fn(&mut gpui::App)>,
+                            ),
+                            (
+                                "Flatten folder",
+                                has_subfolders,
+                                Rc::new(move |cx: &mut gpui::App| {
+                                    let (comics, folders) = cx
+                                        .try_global::<Stores>()
+                                        .map(|s| {
+                                            s.library
+                                                .read(cx)
+                                                .flatten_counts(flatten_uid.as_deref())
+                                        })
+                                        .unwrap_or_default();
+                                    crate::ui::modals::open_flatten_folder(
+                                        cx,
+                                        flatten_uid.clone(),
+                                        comics,
+                                        folders,
+                                    )
+                                }) as Rc<dyn Fn(&mut gpui::App)>,
+                            ),
+                        ],
+                        &self.stores.prefs,
+                        cx,
+                    ))
                     .child(button(
                         "new-folder",
                         "New Folder",
@@ -201,7 +299,7 @@ impl Render for LibraryPage {
                     )),
             );
 
-        let body = if visible.is_empty() {
+        let body = if visible.is_empty() && bookmarks.is_empty() {
             let msg = if loading && base.is_empty() {
                 "Loading library…"
             } else {
@@ -209,16 +307,25 @@ impl Render for LibraryPage {
             };
             note(msg).into_any_element()
         } else {
-            let avail = available_width(window, !sidebar_collapsed);
-            items_grid(
-                base.clone(),
-                visible.clone(),
-                kind,
-                &self.stores,
-                &self.scroll,
-                avail,
-                cx,
-            )
+            let avail = available_width(window, sidebar_docked);
+            div()
+                .size_full()
+                .child(items_grid(
+                    base.clone(),
+                    Rc::new(merge_bookmarks(&base, &visible, &bookmarks, sort)),
+                    bookmarks,
+                    kind,
+                    &self.stores,
+                    &self.scroll,
+                    avail,
+                    cx,
+                ))
+                .with_animation(
+                    "library-grid-in",
+                    crate::ui::motion::once(crate::ui::motion::BASE),
+                    |el, t| el.opacity(t),
+                )
+                .into_any_element()
         };
 
         div()

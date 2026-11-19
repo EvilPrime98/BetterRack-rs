@@ -16,6 +16,7 @@ pub enum Route {
     Settings,
     Store,
     StoreDownloads,
+    PullList,
     /// `/filters?writer=<name>`
     Filtered {
         writer: String,
@@ -44,6 +45,7 @@ impl Route {
             Self::Settings => "Settings",
             Self::Store => "Store",
             Self::StoreDownloads => "Downloads",
+            Self::PullList => "Pull list",
             Self::Filtered { .. } => "Filtered",
             Self::Recent => "Recently added",
             Self::Reading => "Reading",

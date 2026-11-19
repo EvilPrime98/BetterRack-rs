@@ -16,7 +16,7 @@ use crate::directories::natural_cmp;
 use crate::series::series_of;
 use crate::settings::Preferences;
 use crate::sync::{Semaphore, SingleFlight};
-use crate::uid::{resolve_windows, uid_from_path};
+use crate::uid::{resolve_in, uid_from_path};
 use crate::wiki::WikiLookup;
 use crate::{CoreError, Result};
 use serde_json::{Map, Number, Value, json};
@@ -139,7 +139,7 @@ fn walk(dir: &Path, out: &mut Vec<(String, bool, std::path::PathBuf)>) {
 pub fn scan(roots: &[String], cwd: &str) -> Vec<LibraryEntry> {
     let mut found: Vec<(LibraryEntry, String)> = Vec::new(); // (entry, parent path)
     for (library_index, root) in roots.iter().enumerate() {
-        let root = resolve_windows(root, cwd);
+        let root = resolve_in(root, cwd);
         if !Path::new(&root).is_dir() {
             tracing::error!(lib_path = %root, "skipping unreachable library folder");
             continue;
@@ -147,13 +147,13 @@ pub fn scan(roots: &[String], cwd: &str) -> Vec<LibraryEntry> {
         let mut raw = Vec::new();
         walk(Path::new(&root), &mut raw);
         for (name, did, path) in raw {
-            let abs = resolve_windows(&path.to_string_lossy(), cwd);
+            let abs = resolve_in(&path.to_string_lossy(), cwd);
             let Ok(meta) = std::fs::metadata(&path) else {
                 continue;
             };
             let parent = path
                 .parent()
-                .map(|p| resolve_windows(&p.to_string_lossy(), cwd))
+                .map(|p| resolve_in(&p.to_string_lossy(), cwd))
                 .unwrap_or_default();
             found.push((
                 LibraryEntry {
@@ -326,7 +326,7 @@ impl Library {
             .get_app_settings()?
             .output_dirs
             .iter()
-            .map(|p| resolve_windows(p, &self.cwd))
+            .map(|p| resolve_in(p, &self.cwd))
             .collect();
         let prefs: HashMap<String, _> = self
             .prefs
@@ -859,8 +859,8 @@ impl Library {
                 }
             },
         };
-        std::fs::create_dir_all(resolve_windows(name, &base))?;
-        Ok(())
+        std::fs::create_dir_all(resolve_in(name, &base))?;
+        self.rescan()
     }
 
     pub fn move_file(&self, file_uid: &str, target_folder_uid: &str) -> Result<()> {
@@ -882,11 +882,11 @@ impl Library {
             target.path
         };
         let name = basename(&file.path);
-        let new_path = resolve_windows(&name, &target_path);
+        let new_path = resolve_in(&name, &target_path);
 
         if file.did {
-            let source = resolve_windows(&file.path, &self.cwd);
-            let target = resolve_windows(&target_path, &self.cwd);
+            let source = resolve_in(&file.path, &self.cwd);
+            let target = resolve_in(&target_path, &self.cwd);
             let source_parent = Path::new(&source)
                 .parent()
                 .map(|p| p.to_string_lossy().into_owned())
@@ -913,6 +913,44 @@ impl Library {
             )));
         }
         std::fs::rename(&file.path, &new_path)?;
+        self.rescan()
+    }
+
+    pub fn flatten_folder(&self, folder_uid: Option<&str>) -> Result<()> {
+        let base = match folder_uid.filter(|u| !u.is_empty()) {
+            None => self
+                .roots()
+                .first()
+                .cloned()
+                .ok_or_else(|| CoreError::Invalid("No library folder configured.".into()))?,
+            Some(uid) => {
+                let folder = self
+                    .get(uid)
+                    .ok_or_else(|| CoreError::Invalid("Folder not found.".into()))?;
+                if !folder.did {
+                    return Err(CoreError::Invalid("Target is not a folder.".into()));
+                }
+                folder.path
+            }
+        };
+        let base = std::path::PathBuf::from(resolve_in(&base, &self.cwd));
+
+        let mut found = Vec::new();
+        walk(&base, &mut found);
+        found.sort_by_key(|(_, _, p)| std::cmp::Reverse(p.components().count()));
+
+        for (name, is_dir, path) in &found {
+            if *is_dir || path.parent() == Some(base.as_path()) {
+                continue;
+            }
+            let dest = crate::pack::dedupe(&base.join(name));
+            std::fs::rename(path, dest)?;
+        }
+        for (_, is_dir, path) in &found {
+            if *is_dir {
+                let _ = std::fs::remove_dir(path);
+            }
+        }
         self.rescan()
     }
 
@@ -990,7 +1028,7 @@ mod tests {
 
     impl Fixture {
         fn path(&self, rel: &str) -> String {
-            resolve_windows(
+            resolve_in(
                 &self.root.path().join(rel).to_string_lossy(),
                 &self.root.path().to_string_lossy(),
             )
@@ -1678,6 +1716,47 @@ mod tests {
     }
 
     #[test]
+    fn flatten_hoists_renames_and_cleans_up() {
+        let f = fixture();
+        f.touch("top/a.cbz");
+        f.touch("top/sub/a.cbz");
+        f.touch("top/sub/b.cbz");
+        f.touch("top/sub/deep/c.cbz");
+        f.touch("top/other/a.cbz");
+        f.touch("top/keep/d.cbz");
+        std::fs::write(f.root.path().join("top/keep/notes.txt"), b"x").unwrap();
+        mkdir(&f, "top/empty/inner");
+        f.rescan();
+
+        f.lib.flatten_folder(Some(&f.uid("top"))).unwrap();
+        let top = f.root.path().join("top");
+        for n in ["a.cbz", "b.cbz", "c.cbz", "d.cbz"] {
+            assert!(top.join(n).is_file(), "{n}");
+        }
+        let hoisted_a = ["a (2).cbz", "a (3).cbz"]
+            .iter()
+            .filter(|n| top.join(n).is_file())
+            .count();
+        assert_eq!(hoisted_a, 2, "colliding names are suffixed");
+        assert!(!top.join("sub").exists() && !top.join("other").exists());
+        assert!(!top.join("empty").exists(), "empty tree removed");
+        assert!(top.join("keep/notes.txt").exists(), "non-empty folder kept");
+        assert!(f.lib.get(&f.uid("top/c.cbz")).is_some(), "rescanned");
+
+        f.lib.flatten_folder(None).unwrap();
+        assert!(f.root.path().join("a.cbz").is_file());
+        assert!(
+            top.join("keep/notes.txt").exists(),
+            "folder holding a non-library file stays, and so does its parent"
+        );
+        assert!(!top.join("c.cbz").exists());
+        assert_eq!(
+            f.lib.flatten_folder(Some("nope")).unwrap_err().to_string(),
+            "Folder not found."
+        );
+    }
+
+    #[test]
     fn create_and_delete() {
         let f = fixture();
         f.touch("Keep/a.cbz");
@@ -1685,6 +1764,7 @@ mod tests {
         f.rescan();
         f.lib.create_folder("New/Deep", None).unwrap();
         assert!(f.root.path().join("New/Deep").is_dir());
+        assert!(f.lib.get(&f.uid("New/Deep")).is_some_and(|e| e.did));
         f.lib
             .create_folder("In Keep", Some(&f.uid("Keep")))
             .unwrap();

@@ -279,6 +279,27 @@ impl ApiClient {
         self.done(rb).await
     }
 
+    pub async fn download_comic(&self, uid: &str, dest: &std::path::Path) -> ApiResult<()> {
+        use tokio::io::AsyncWriteExt;
+        let mut resp = self
+            .check(self.get(&["api", "library", uid, "file"]))
+            .await?;
+        let io = |e: std::io::Error| ApiError::Decode(e.to_string());
+        let mut file = tokio::fs::File::create(dest).await.map_err(io)?;
+        let result: ApiResult<()> = async {
+            while let Some(chunk) = resp.chunk().await? {
+                file.write_all(&chunk).await.map_err(io)?;
+            }
+            file.flush().await.map_err(io)
+        }
+        .await;
+        if result.is_err() {
+            drop(file);
+            let _ = tokio::fs::remove_file(dest).await;
+        }
+        result
+    }
+
     pub async fn move_file(
         &self,
         file_uid: &str,
@@ -286,6 +307,12 @@ impl ApiClient {
     ) -> ApiResult<()> {
         let body = json!({ "fileUid": file_uid, "targetFolderUid": target_folder_uid });
         self.done(self.post_json(&["api", "library", "file", "move"], body))
+            .await
+    }
+
+    pub async fn flatten_folder(&self, folder_uid: Option<&str>) -> ApiResult<()> {
+        let body = json!({ "folderUid": folder_uid });
+        self.done(self.post_json(&["api", "library", "folder", "flatten"], body))
             .await
     }
 
@@ -386,6 +413,25 @@ impl ApiClient {
         .await
     }
 
+    pub async fn downloaded(&self) -> ApiResult<crate::model::Downloaded> {
+        self.json(self.get(&["api", "downloaded"])).await
+    }
+
+    pub async fn pull_list(&self) -> ApiResult<Vec<PullEntry>> {
+        self.json(self.get(&["api", "pull-list"])).await
+    }
+
+    /// An already followed keyword answers with the existing entry.
+    pub async fn add_pull_entry(&self, keyword: &str, last_seen_id: i64) -> ApiResult<PullEntry> {
+        let body = json!({ "keyword": keyword, "lastSeenId": last_seen_id });
+        self.json(self.post_json(&["api", "pull-list"], body)).await
+    }
+
+    pub async fn delete_pull_entry(&self, id: &str) -> ApiResult<()> {
+        self.done(self.request(Method::DELETE, &["api", "pull-list", id]))
+            .await
+    }
+
     pub async fn settings(&self) -> ApiResult<AppSettings> {
         self.json(self.get(&["api", "settings"])).await
     }
@@ -473,20 +519,44 @@ impl ApiClient {
         page: u32,
         per_page: usize,
     ) -> ApiResult<Vec<StorePost>> {
+        let mut q: Vec<(&str, String)> = vec![];
+        match search {
+            Some(s) if !s.trim().is_empty() => q.push(("search", s.to_string())),
+            _ => q.push(("latest", "true".into())),
+        }
+        self.comics_page(q, page, per_page).await
+    }
+
+    /// The latest posts dated strictly between `after` and `before` (full local datetimes).
+    pub async fn store_posts_between(
+        &self,
+        after: &str,
+        before: &str,
+        page: u32,
+        per_page: usize,
+    ) -> ApiResult<Vec<StorePost>> {
+        let q = vec![
+            ("latest", "true".to_string()),
+            ("after", after.to_string()),
+            ("before", before.to_string()),
+        ];
+        self.comics_page(q, page, per_page).await
+    }
+
+    async fn comics_page(
+        &self,
+        mut q: Vec<(&str, String)>,
+        page: u32,
+        per_page: usize,
+    ) -> ApiResult<Vec<StorePost>> {
         #[derive(serde::Deserialize)]
         #[serde(untagged)]
         enum Resp {
             List(Vec<StorePost>),
             Wrapped { items: Vec<StorePost> },
         }
-        let mut q: Vec<(&str, String)> = vec![
-            ("page", page.to_string()),
-            ("perPage", per_page.to_string()),
-        ];
-        match search {
-            Some(s) if !s.trim().is_empty() => q.push(("search", s.to_string())),
-            _ => q.push(("latest", "true".into())),
-        }
+        q.push(("page", page.to_string()));
+        q.push(("perPage", per_page.to_string()));
         Ok(
             match self
                 .json::<Resp>(self.get(&["api", "comics"]).query(&q))
@@ -510,9 +580,24 @@ impl ApiClient {
     }
 
     /// Queue a download job (the server de-dupes by comic id). The jobs list is polled for progress.
-    pub async fn start_download(&self, req: &StartDownload) -> ApiResult<()> {
-        self.done(self.request(Method::POST, &["api", "downloads"]).json(req))
-            .await
+    pub async fn start_download(&self, req: &StartDownload) -> ApiResult<Option<String>> {
+        let value: serde_json::Value = self
+            .json(self.request(Method::POST, &["api", "downloads"]).json(req))
+            .await?;
+        if value.get("error").and_then(|e| e.as_bool()) == Some(true) {
+            let message = value
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("request failed");
+            return Err(ApiError::Server {
+                status: 200,
+                message: message.to_string(),
+            });
+        }
+        Ok(value
+            .get("jobId")
+            .and_then(|j| j.as_str())
+            .map(str::to_owned))
     }
 
     pub async fn download_jobs(&self) -> ApiResult<Vec<JobStatus>> {
@@ -589,6 +674,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let config = br_core::config::Config {
             port: 0,
+            bind_addr: br_core::config::DEFAULT_BIND_ADDR.into(),
             api_key: None,
             log_level: "info".into(),
             seven_zip_path: None,

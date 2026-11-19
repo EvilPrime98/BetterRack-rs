@@ -14,9 +14,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
     tracing_subscriber::fmt()
         .with_env_filter(config.log_level.as_str())
-        .with_writer(std::io::stderr)
+        .with_ansi(false)
+        .with_writer(br_server::server_info::LogTee)
         .init();
 
+    let bind_ip = config.validated_bind_ip()?;
     let (port, data_dir, auth) = (
         config.port,
         config.data_dir.clone(),
@@ -26,10 +28,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config,
         std::sync::Arc::new(LiveWiki::new(br_wiki::WikiService::default())),
     )?;
+    let mut args = std::env::args().skip(1);
+    if args.next().as_deref() == Some("migrate-downloaded") {
+        let apply = args.any(|a| a == "--apply");
+        return br_server::migrate::run(&state, apply).await;
+    }
     // Scan in the background. Library requests wait for it; the scan is registered before the port opens.
     state.spawn_rescan();
 
-    let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).await?;
+    let listener = tokio::net::TcpListener::bind(SocketAddr::new(bind_ip, port)).await?;
     let bound = listener.local_addr()?.port();
     println!("BR_SERVER_LISTENING {bound}");
     tracing::info!(data_dir = %data_dir.display(), auth, "br-server up");

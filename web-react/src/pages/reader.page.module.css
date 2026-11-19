@@ -1,0 +1,246 @@
+.page {
+    position: relative;
+    height: 100dvh;
+    overflow-y: auto;
+    background-color: var(--bg-canvas);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    touch-action: pan-y;
+}
+
+.page::-webkit-scrollbar {
+    display: none;
+}
+
+.headerOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    transition:
+        opacity 0.2s ease,
+        transform 0.2s ease;
+}
+
+.headerOverlay.hidden {
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+}
+
+.toolbar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
+    height: 56px;
+    padding-left: 8px;
+    background-color: rgba(49, 50, 56, 0.94);
+    border-bottom: 1px solid var(--border-subtle);
+    position: relative;
+}
+
+.toolButton {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    height: 36px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 8px;
+    background: none;
+    color: #fff;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.toolButton:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.toolButton:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.toolButton.spinning {
+    pointer-events: none;
+    opacity: 0.4;
+}
+
+.toolButton.spinning svg {
+    animation: spin 0.8s linear infinite;
+}
+
+.bookmarkWrap {
+    position: relative;
+}
+
+.bookmarkMenu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    min-width: 220px;
+    max-height: 360px;
+    padding: 4px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 8px;
+    background: var(--bg-modal);
+}
+
+.bookmarkItem {
+    flex: none;
+    padding: 7px 10px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: #fff;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.bookmarkItem:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.title {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.counter {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.counterInput {
+    box-sizing: border-box;
+    width: 44px;
+    height: 28px;
+    padding: 0 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    outline: none;
+    background: transparent;
+    color: #fff;
+    font: inherit;
+    cursor: text;
+    user-select: text;
+}
+
+.counterInput:focus {
+    border-color: var(--accent);
+}
+
+.progressTrack {
+    height: 3px;
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.progressFill {
+    height: 100%;
+    width: 0%;
+    background-color: var(--accent);
+    transition: width 0.2s ease;
+}
+
+.viewer {
+    display: flex;
+    width: 100%;
+    max-width: calc(900px * var(--reader-zoom, 1));
+    margin-inline: auto;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: default;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    padding: 0;
+}
+
+.pageWrapper {
+    position: relative;
+    width: 100%;
+    margin: 0;
+    overflow: hidden;
+    aspect-ratio: var(--page-ratio, 0.667);
+    contain: layout paint;
+    background: var(--bg-panel);
+    touch-action: pan-y;
+}
+
+.pageWrapper.loaded {
+    background: none;
+}
+
+.pageWrapper img {
+    display: block;
+    width: 100%;
+    height: auto;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.pageWrapper.loaded img {
+    opacity: 1;
+}
+
+.state {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    min-height: 70vh;
+    overflow: hidden;
+    color: #fff;
+    font-family: var(--font-sans);
+    text-align: center;
+    padding: 0 24px;
+}
+
+.state p {
+    margin: 0;
+    color: #c7c7c7;
+    font-size: 14px;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

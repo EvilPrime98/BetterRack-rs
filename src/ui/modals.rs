@@ -9,10 +9,10 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
-    App, AppContext as _, Context, Entity, FocusHandle, Focusable, Global, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, StyledImage as _, Subscription, Window, actions, div, img, prelude::*, px, rgb,
-    uniform_list,
+    AnimationExt as _, App, AppContext as _, Context, Entity, FocusHandle, Focusable, Global,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, StyledImage as _, Subscription, UniformListScrollHandle,
+    Window, actions, div, img, prelude::*, px, rgb, uniform_list,
 };
 
 use crate::model::{DEFAULT_IMAGE_SIZE, LibraryGroup, MetaSource, StoreLink, WikiComic, json_text};
@@ -20,13 +20,14 @@ use crate::platform::server_config;
 use crate::runtime;
 use crate::state::Stores;
 use crate::state::directories::filter_dirs;
+use crate::state::epoch::{Epoch, Ticket};
 use crate::state::thumbnails::Thumb;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::checkbox::checkbox;
 use crate::ui::components::text_input::{TextInput, TextInputEvent};
 use crate::ui::confirm::{self, ConfirmOptions};
 use crate::ui::icons::{Icon, icon};
-use crate::ui::theme;
+use crate::ui::{motion, theme};
 
 actions!(modals, [CloseModal]);
 
@@ -139,7 +140,8 @@ enum Modal {
         input: Entity<TextInput>,
     },
     MoveFile {
-        uid: String,
+        title: &'static str,
+        on_pick: Rc<dyn Fn(Option<String>, &mut App)>,
         all: Rc<Vec<Destination>>,
         search: Entity<TextInput>,
         subfolders: bool,
@@ -165,19 +167,28 @@ enum Modal {
         url: Entity<TextInput>,
         key: Entity<TextInput>,
         remote: bool,
-        error: String,
-        busy: bool,
+        form: ServerForm,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ServerForm {
+    Idle,
+    Busy,
+    Failed(String),
 }
 
 pub struct ModalHost {
     modal: Option<Modal>,
+    leaving: Option<Modal>,
+    leave_token: u64,
     /// Focus the modal's text input on the next render (needs a `Window`).
     needs_focus: bool,
     /// Discards a directory list that arrives after its modal was closed or replaced.
-    dir_request: u64,
+    dir_request: Epoch,
     /// Same idea for identify searches (also the debounce token).
-    ident_request: u64,
+    ident_request: Epoch,
+    dir_scroll: UniformListScrollHandle,
     focus: FocusHandle,
     _subs: Vec<Subscription>,
 }
@@ -189,9 +200,12 @@ pub fn init(cx: &mut App) -> Entity<ModalHost> {
     cx.bind_keys([gpui::KeyBinding::new("escape", CloseModal, Some("Modal"))]);
     let host = cx.new(|cx| ModalHost {
         modal: None,
+        leaving: None,
+        leave_token: 0,
         needs_focus: false,
-        dir_request: 0,
-        ident_request: 0,
+        dir_request: Epoch::default(),
+        ident_request: Epoch::default(),
+        dir_scroll: UniformListScrollHandle::new(),
         focus: cx.focus_handle(),
         _subs: Vec::new(),
     });
@@ -222,13 +236,75 @@ pub fn open_new_folder(cx: &mut App, parent: Option<String>) {
     });
 }
 
+pub fn open_mark_folder_read(cx: &mut App, uids: Vec<String>) {
+    let message = format!(
+        "{} comic{} in this folder will be marked as read, replacing any reading progress.",
+        uids.len(),
+        if uids.len() == 1 { "" } else { "s" }
+    );
+    confirm::ask(
+        cx,
+        ConfirmOptions::new("Mark entire folder as read?", message)
+            .labels("Mark as read", "Cancel"),
+        move |answer, _, cx| {
+            if answer != Some(true) {
+                return;
+            }
+            if let Some(stores) = cx.try_global::<Stores>().cloned() {
+                stores
+                    .comics
+                    .update(cx, |s, cx| s.set_read_many(&uids, true, cx));
+            }
+        },
+    );
+}
+
+pub fn open_flatten_folder(cx: &mut App, uid: Option<String>, comics: usize, folders: usize) {
+    let message = format!(
+        "{comics} comic{} will be moved into this folder and up to {folders} subfolder{} removed once empty.",
+        if comics == 1 { "" } else { "s" },
+        if folders == 1 { "" } else { "s" }
+    );
+    confirm::ask(
+        cx,
+        ConfirmOptions::new("Flatten folder?", message).labels("Flatten", "Cancel"),
+        move |answer, _, cx| {
+            if answer != Some(true) {
+                return;
+            }
+            if let Some(stores) = cx.try_global::<Stores>().cloned() {
+                stores
+                    .library
+                    .update(cx, |s, cx| s.flatten_folder(uid.clone(), cx));
+            }
+        },
+    );
+}
+
 /// `openMoveFileModal(uid, name)`.
 pub fn open_move_file(cx: &mut App, uid: String) {
+    let moving = uid.clone();
+    open_pick_folder(cx, "Move to:", &uid, move |target, cx| {
+        if let Some(stores) = cx.try_global::<Stores>().cloned() {
+            let uid = moving.clone();
+            stores
+                .library
+                .update(cx, |s, cx| s.move_file(uid, target, cx));
+        }
+    });
+}
+
+pub fn open_pick_folder(
+    cx: &mut App,
+    title: &'static str,
+    exclude: &str,
+    on_pick: impl Fn(Option<String>, &mut App) + 'static,
+) {
     let Some(host) = host(cx) else { return };
     let Some(stores) = cx.try_global::<Stores>().cloned() else {
         return;
     };
-    let all = Rc::new(move_destinations(&stores.library.read(cx).groups, &uid));
+    let all = Rc::new(move_destinations(&stores.library.read(cx).groups, exclude));
     host.update(cx, |h, cx| {
         h.close(cx);
         let search = cx.new(|cx| TextInput::new("Search folders...", cx));
@@ -240,7 +316,8 @@ pub fn open_move_file(cx: &mut App, uid: String) {
             }),
         ];
         h.modal = Some(Modal::MoveFile {
-            uid,
+            title,
+            on_pick: Rc::new(on_pick),
             all,
             search,
             subfolders: true,
@@ -278,8 +355,7 @@ pub fn open_server(cx: &mut App, _mandatory: bool) {
             url,
             key,
             remote: config.remote,
-            error: String::new(),
-            busy: false,
+            form: ServerForm::Idle,
         });
         h.needs_focus = true;
         cx.notify();
@@ -337,8 +413,7 @@ pub fn open_download_dir(cx: &mut App, on_done: impl FnOnce(Option<String>, &mut
             on_done: Some(Box::new(on_done)),
         });
         h.needs_focus = true;
-        h.dir_request += 1;
-        let request = h.dir_request;
+        let request = h.dir_request.next();
         cx.spawn(async move |this, cx| {
             let result = refresh.await;
             this.update(cx, |h, cx| h.set_dirs(request, result, cx))
@@ -396,8 +471,7 @@ impl ModalHost {
             return;
         };
         let query = input.read(cx).value().trim().to_string();
-        self.ident_request += 1;
-        let request = self.ident_request;
+        let request = self.ident_request.next();
         if query.is_empty() {
             *results = Suggestions::Idle;
             cx.notify();
@@ -415,7 +489,7 @@ impl ModalHost {
                 .await;
             let current = this
                 .update(cx, |h, cx| {
-                    if h.ident_request != request {
+                    if !h.ident_request.is_current(request) {
                         return false;
                     }
                     if let Some(Modal::Identify { results, .. }) = &mut h.modal {
@@ -442,11 +516,11 @@ impl ModalHost {
 
     fn set_suggestions(
         &mut self,
-        request: u64,
+        request: Ticket,
         found: Result<Vec<WikiComic>, String>,
         cx: &mut Context<Self>,
     ) {
-        if request != self.ident_request {
+        if !self.ident_request.is_current(request) {
             return;
         }
         let Some(Modal::Identify { results, .. }) = &mut self.modal else {
@@ -534,32 +608,50 @@ impl ModalHost {
     }
 
     fn close(&mut self, cx: &mut Context<Self>) {
-        let modal = self.modal.take();
-        self.ident_request += 1;
+        let mut modal = self.modal.take();
+        self.ident_request.next();
         self._subs.clear();
         cx.notify();
         // A dismissed picker answers `None` so the flow waiting on it can end. Deferred, so the
         // callback may open another modal.
-        match modal {
-            Some(Modal::LinkPicker {
-                on_done: Some(done),
-                ..
-            }) => cx.defer(move |cx| done(None, cx)),
-            Some(Modal::DownloadDir {
-                on_done: Some(done),
-                ..
-            }) => cx.defer(move |cx| done(None, cx)),
+        match &mut modal {
+            Some(Modal::LinkPicker { on_done, .. }) => {
+                if let Some(done) = on_done.take() {
+                    cx.defer(move |cx| done(None, cx));
+                }
+            }
+            Some(Modal::DownloadDir { on_done, .. }) => {
+                if let Some(done) = on_done.take() {
+                    cx.defer(move |cx| done(None, cx));
+                }
+            }
             _ => {}
+        }
+        if modal.is_some() {
+            self.leaving = modal;
+            self.leave_token += 1;
+            let token = self.leave_token;
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(motion::FAST).await;
+                this.update(cx, |h, cx| {
+                    if h.leave_token == token {
+                        h.leaving = None;
+                        cx.notify();
+                    }
+                })
+                .ok();
+            })
+            .detach();
         }
     }
 
     fn set_dirs(
         &mut self,
-        request: u64,
+        request: Ticket,
         result: Result<Vec<String>, String>,
         cx: &mut Context<Self>,
     ) {
-        if request != self.dir_request {
+        if !self.dir_request.is_current(request) {
             return;
         }
         let Some(Modal::DownloadDir { dirs, .. }) = &mut self.modal else {
@@ -621,13 +713,12 @@ impl ModalHost {
             url,
             key,
             remote,
-            error,
-            busy,
+            form,
         }) = &mut self.modal
         else {
             return;
         };
-        if *busy {
+        if *form == ServerForm::Busy {
             return;
         }
         if !*remote {
@@ -640,12 +731,11 @@ impl ModalHost {
             key.read(cx).value().trim().to_string(),
         );
         if url.is_empty() {
-            *error = "Enter the server address.".into();
+            *form = ServerForm::Failed("Enter the server address.".into());
             cx.notify();
             return;
         }
-        error.clear();
-        *busy = true;
+        *form = ServerForm::Busy;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let check = {
@@ -668,9 +758,8 @@ impl ModalHost {
                     cx.defer(|cx| crate::app::relaunch(cx));
                 }
                 Err(message) => {
-                    if let Some(Modal::Server { error, busy, .. }) = &mut this.modal {
-                        *error = message;
-                        *busy = false;
+                    if let Some(Modal::Server { form, .. }) = &mut this.modal {
+                        *form = ServerForm::Failed(message);
                     }
                     cx.notify();
                 }
@@ -680,13 +769,13 @@ impl ModalHost {
         .detach();
     }
 
-    fn move_to(&mut self, uid: String, target: Option<String>, cx: &mut Context<Self>) {
+    fn pick_folder(&mut self, target: Option<String>, cx: &mut Context<Self>) {
+        let Some(Modal::MoveFile { on_pick, .. }) = &self.modal else {
+            return;
+        };
+        let on_pick = on_pick.clone();
         self.close(cx);
-        if let Some(stores) = cx.try_global::<Stores>().cloned() {
-            stores
-                .library
-                .update(cx, |s, cx| s.move_file(uid, target, cx));
-        }
+        cx.defer(move |cx| on_pick(target, cx));
     }
 
     fn frame(&self, title: &'static str, cx: &mut Context<Self>) -> gpui::Div {
@@ -742,7 +831,8 @@ impl Focusable for ModalHost {
 
 impl Render for ModalHost {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(modal) = &self.modal else {
+        let leaving = self.modal.is_none();
+        let Some(modal) = self.modal.as_ref().or(self.leaving.as_ref()) else {
             return div().into_any_element();
         };
         if self.needs_focus {
@@ -776,8 +866,7 @@ impl Render for ModalHost {
                 url,
                 key,
                 remote,
-                error,
-                busy,
+                form,
             } => {
                 let this = cx.entity();
                 self.frame("Connect to your server", cx)
@@ -806,7 +895,10 @@ impl Render for ModalHost {
                         div()
                             .text_size(px(12.0))
                             .text_color(theme::error())
-                            .child(error.clone()),
+                            .child(match form {
+                                ServerForm::Failed(message) => message.clone(),
+                                _ => String::new(),
+                            }),
                     )
                     .child(
                         div()
@@ -821,7 +913,11 @@ impl Render for ModalHost {
                             ))
                             .child(button(
                                 "srv-connect",
-                                if *busy { "Connecting…" } else { "Connect" },
+                                if *form == ServerForm::Busy {
+                                    "Connecting…"
+                                } else {
+                                    "Connect"
+                                },
                                 ButtonVariant::Classic,
                                 cx.listener(|this, _, _, cx| this.submit_server(cx)),
                             )),
@@ -851,10 +947,11 @@ impl Render for ModalHost {
                 )
                 .into_any_element(),
             Modal::MoveFile {
-                uid,
+                title,
                 all,
                 search,
                 subfolders,
+                ..
             } => {
                 let query = search.read(cx).value().to_string();
                 let shown: Rc<Vec<Destination>> = Rc::new(
@@ -874,7 +971,6 @@ impl Render for ModalHost {
                 });
                 // Row 0 is "Library root" when it matches, then the folders.
                 let total = shown.len() + usize::from(show_root);
-                let moving = uid.clone();
                 let rows = shown.clone();
 
                 let list = uniform_list(
@@ -893,7 +989,6 @@ impl Render for ModalHost {
                                     let d = &rows[ix - usize::from(show_root)];
                                     (Some(d.uid.clone()), d.path.clone().into(), rgb(0xc7c7c7))
                                 };
-                                let moving = moving.clone();
                                 div()
                                     .id(SharedString::from(format!("move-target-{ix}")))
                                     .w_full()
@@ -908,7 +1003,7 @@ impl Render for ModalHost {
                                     .text_color(rgb(0xe6e6e6))
                                     .hover(|s| s.bg(gpui::rgba(0xffffff0f)))
                                     .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.move_to(moving.clone(), target.clone(), cx)
+                                        this.pick_folder(target.clone(), cx)
                                     }))
                                     .child(icon(Icon::Folder, px(14.0)).text_color(glyph_color))
                                     .child(div().min_w_0().truncate().child(label))
@@ -918,7 +1013,7 @@ impl Render for ModalHost {
                 )
                 .h(px(ITEM_H * 8.0));
 
-                self.frame("Move to:", cx)
+                self.frame(title, cx)
                     .child(
                         div()
                             .flex()
@@ -1092,7 +1187,26 @@ impl Render for ModalHost {
                             .collect()
                     }),
                 )
+                .track_scroll(&self.dir_scroll)
                 .h(px(ITEM_H * shown.len().min(8) as f32));
+
+                let view_h = ITEM_H * shown.len().min(8) as f32;
+                let content_h = ITEM_H * shown.len() as f32;
+                let thumb = (content_h > view_h).then(|| {
+                    let scrolled = -f32::from(self.dir_scroll.0.borrow().base_handle.offset().y);
+                    let thumb_h = (view_h * view_h / content_h).max(24.0);
+                    let top =
+                        (scrolled / (content_h - view_h)).clamp(0.0, 1.0) * (view_h - thumb_h);
+                    div()
+                        .absolute()
+                        .right(px(2.0))
+                        .top(px(top))
+                        .w(px(4.0))
+                        .h(px(thumb_h))
+                        .rounded_full()
+                        .bg(theme::scrollbar_thumb())
+                });
+                let list = div().relative().child(list).children(thumb);
 
                 self.frame("Download to:", cx)
                     .w(px(460.0))
@@ -1307,6 +1421,11 @@ impl Render for ModalHost {
                     // Clicks inside must not reach the dismissing backdrop.
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(body),
+            )
+            .with_animation(
+                if leaving { "modal-out" } else { "modal-fade" },
+                motion::once(motion::FAST),
+                move |el, t| el.opacity(if leaving { 1.0 - t } else { t }),
             )
             .into_any_element()
     }

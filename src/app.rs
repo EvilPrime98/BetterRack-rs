@@ -2,8 +2,9 @@
 //! the global overlays (toasts, confirm dialog, app loader).
 
 use gpui::{
-    AnyView, App, AppContext as _, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, ParentElement, Render, Styled, Subscription, Window, actions, div, prelude::*, px,
+    AnimationExt as _, AnyView, App, AppContext as _, Context, Entity, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, ParentElement, Render, Styled, Subscription, Window, actions,
+    deferred, div, prelude::*, px,
 };
 
 use crate::api::ApiClient;
@@ -16,9 +17,11 @@ use crate::ui::app_loader::app_loader;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::confirm::{self, ConfirmHost, ConfirmOptions};
 use crate::ui::modals::{self, ModalHost};
+use crate::ui::motion;
 use crate::ui::pages::downloads::DownloadsPage;
 use crate::ui::pages::library::LibraryPage;
 use crate::ui::pages::lists::{ListPage, Source};
+use crate::ui::pages::pull_list::PullListPage;
 use crate::ui::pages::reader::ReaderPage;
 use crate::ui::pages::settings::SettingsPage;
 use crate::ui::pages::store::StorePage;
@@ -40,10 +43,33 @@ pub fn bind_keys(cx: &mut App) {
     ]);
 }
 
-pub enum ServerStatus {
-    Starting,
-    Ready,
+enum Boot {
+    StartingServer,
     Failed(String),
+    LoadingData,
+    Identifying,
+    LoaderLeaving,
+    Running,
+}
+
+impl Boot {
+    fn loader_up(&self) -> bool {
+        matches!(
+            self,
+            Boot::StartingServer | Boot::Failed(_) | Boot::LoadingData | Boot::Identifying
+        )
+    }
+
+    fn failed(&self) -> bool {
+        matches!(self, Boot::Failed(_))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Close {
+    Idle,
+    Checking,
+    Confirmed,
 }
 
 /// What the content area shows. Pages arrive phase by phase; the rest render a placeholder.
@@ -54,13 +80,14 @@ enum Page {
     Settings(Entity<SettingsPage>),
     Store(Entity<StorePage>),
     Downloads(Entity<DownloadsPage>),
+    PullList(Entity<PullListPage>),
     Placeholder,
 }
 
 pub struct AppRoot {
     history: History,
-    pub server_status: ServerStatus,
-    /// `Some` once the server is up. Pages clone this and call it through [`runtime::run`].
+    boot: Boot,
+    /// `Some` once the server is up, set on the `StartingServer -> LoadingData` transition. Pages clone this and call it through [`runtime::run`].
     pub client: Option<ApiClient>,
     /// Keeps the sidecar alive; dropping it kills the child.
     _server: Option<ServerProcess>,
@@ -72,15 +99,12 @@ pub struct AppRoot {
     page: Page,
     _page_subs: Vec<Subscription>,
     _subs: Vec<Subscription>,
-    /// The startup sequence (§5.4) is still running: show the AppLoader.
-    loading: bool,
+    page_gen: u64,
     /// Dev aid: `BETTERRACK_OPEN` (see [`dev_route`]) opens a page once startup finishes.
     pending_route: Option<Route>,
     dev_identify_opened: Option<bool>,
     focus: FocusHandle,
-    /// The close guard has been answered: the next close request goes through.
-    close_confirmed: bool,
-    close_check_pending: bool,
+    close: Close,
 }
 
 impl AppRoot {
@@ -97,6 +121,9 @@ impl AppRoot {
         let sidebar = cx.new(|cx| Sidebar::new(stores.clone(), cx));
         let mut subs = vec![
             cx.subscribe_in(&sidebar, window, |this, _, ev: &Navigate, window, cx| {
+                if !this.stores.prefs.read(cx).prefs.sidebar_pinned {
+                    this.close_sidebar_overlay(cx);
+                }
                 this.navigate(ev.0.clone(), window, cx)
             }),
             // The loader message follows the identify-all progress.
@@ -113,7 +140,7 @@ impl AppRoot {
 
         let mut this = Self {
             history: History::default(),
-            server_status: ServerStatus::Starting,
+            boot: Boot::StartingServer,
             client: None,
             _server: None,
             stores,
@@ -124,12 +151,11 @@ impl AppRoot {
             page: Page::Placeholder,
             _page_subs: Vec::new(),
             _subs: subs,
-            loading: true,
+            page_gen: 0,
             pending_route: dev_route(),
             dev_identify_opened: None,
             focus,
-            close_confirmed: false,
-            close_check_pending: false,
+            close: Close::Idle,
         };
         // Closing cancels running downloads: ask first (`on_window_should_close` is synchronous, so
         // the check runs in the background and the window closes itself once it is answered).
@@ -176,14 +202,14 @@ impl AppRoot {
                     tracing::info!("server ready at {}", client.base_url());
                     this._server = Some(server);
                     this.client = Some(client.clone());
-                    this.server_status = ServerStatus::Ready;
+                    this.boot = Boot::LoadingData;
                     this.begin_startup(client, cx);
                     this.check_for_updates(cx);
                     cx.notify();
                 }
                 Err(msg) => {
                     tracing::error!("server startup failed: {msg}");
-                    this.server_status = ServerStatus::Failed(msg);
+                    this.boot = Boot::Failed(msg);
                     cx.notify();
                 }
             })
@@ -248,6 +274,10 @@ impl AppRoot {
     /// then an optional identify-all, then the loader goes away.
     fn begin_startup(&mut self, client: ApiClient, cx: &mut Context<Self>) {
         self.stores.set_client(client.clone(), cx);
+        self.stores.pull_list.update(cx, |s, cx| s.init(cx));
+        self.stores
+            .store
+            .update(cx, |s, cx| s.refresh_downloaded(cx));
         let stores = self.stores.clone();
         cx.spawn(async move |this, cx| {
             let (library, comics) = cx.update(|cx| {
@@ -282,12 +312,25 @@ impl AppRoot {
                 // Long-running: the loader stays up and shows "Identifying library X/Y".
                 let identify =
                     cx.update(|cx| stores.library.update(cx, |s, cx| s.identify_library(cx)));
+                this.update(cx, |this, _| this.boot = Boot::Identifying)
+                    .ok();
                 identify.await;
             }
 
             this.update(cx, |this, cx| {
-                this.loading = false;
+                this.boot = Boot::LoaderLeaving;
                 cx.notify();
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(motion::BASE).await;
+                    this.update(cx, |this, cx| {
+                        if matches!(this.boot, Boot::LoaderLeaving) {
+                            this.boot = Boot::Running;
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .detach();
             })
             .ok();
         })
@@ -297,22 +340,20 @@ impl AppRoot {
     /// Close-guard decision for a close request: `true` lets the window close now. Otherwise a
     /// background check decides, and closes the window itself if it is allowed.
     pub fn guard_close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if self.close_confirmed {
-            return true;
+        match self.close {
+            Close::Confirmed => return true,
+            Close::Checking => return false,
+            Close::Idle => {}
         }
         let Some(client) = self.client.clone() else {
             return true;
         };
-        if self.close_check_pending {
-            return false;
-        }
-        self.close_check_pending = true;
+        self.close = Close::Checking;
         let handle = window.window_handle();
         cx.spawn(async move |this, cx| {
             let close = close_guard::confirm_close(client, cx).await;
             this.update(cx, |this, _| {
-                this.close_check_pending = false;
-                this.close_confirmed = close;
+                this.close = if close { Close::Confirmed } else { Close::Idle };
             })
             .ok();
             if close {
@@ -362,6 +403,7 @@ impl AppRoot {
                 .update(cx, |s, cx| s.flush_pending(cx).detach());
         }
         self._page_subs.clear();
+        self.page_gen += 1;
         self.page = match route {
             Route::Reader { uid } => {
                 let page = cx.new(|cx| ReaderPage::new(uid, self.stores.clone(), window, cx));
@@ -413,6 +455,15 @@ impl AppRoot {
             Route::StoreDownloads => {
                 Page::Downloads(cx.new(|cx| DownloadsPage::new(self.stores.clone(), cx)))
             }
+            Route::PullList => {
+                let page = cx.new(|cx| PullListPage::new(self.stores.clone(), cx));
+                self._page_subs.push(cx.subscribe_in(
+                    &page,
+                    window,
+                    |this, _, ev: &Navigate, window, cx| this.navigate(ev.0.clone(), window, cx),
+                ));
+                Page::PullList(page)
+            }
         };
     }
 
@@ -437,18 +488,24 @@ impl AppRoot {
         });
     }
 
+    fn close_sidebar_overlay(&mut self, cx: &mut Context<Self>) {
+        self.stores
+            .prefs
+            .update(cx, |p, cx| p.update(cx, |p| p.sidebar_collapsed = true));
+    }
+
     fn placeholder(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let status = match &self.server_status {
-            ServerStatus::Starting => "Starting server…".to_string(),
-            ServerStatus::Ready => "Not ported yet".to_string(),
-            ServerStatus::Failed(msg) => {
+        let status = match &self.boot {
+            Boot::StartingServer => "Starting server…".to_string(),
+            Boot::Failed(msg) => {
                 format!(
                     "Server failed to start:\n{msg}\n\nFull logs: {}",
                     logging::log_dir().display()
                 )
             }
+            _ => "Not ported yet".to_string(),
         };
-        let failed = matches!(self.server_status, ServerStatus::Failed(_));
+        let failed = self.boot.failed();
         let remote = server_config::current().remote;
         div()
             .flex()
@@ -557,7 +614,7 @@ impl Focusable for AppRoot {
 
 impl Render for AppRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !self.loading {
+        if !self.boot.loader_up() {
             if let Some(route) = self.pending_route.take() {
                 self.navigate(route, window, cx);
             }
@@ -571,15 +628,16 @@ impl Render for AppRoot {
             }
         }
         let layout = self.history.current().uses_layout();
-        let sidebar_collapsed = self.stores.prefs.read(cx).prefs.sidebar_collapsed;
-        let failed = matches!(self.server_status, ServerStatus::Failed(_));
+        let (sidebar_open, sidebar_pinned) = {
+            let p = &self.stores.prefs.read(cx).prefs;
+            (!p.sidebar_collapsed, p.sidebar_pinned)
+        };
+        let failed = self.boot.failed();
 
-        let loader_message = match self.stores.library.read(cx).identify_progress {
+        let loader_message = match self.stores.library.read(cx).identify_progress() {
             Some((done, total)) if total > 0 => format!("Identifying library {done}/{total}"),
             Some(_) => "Identifying library…".to_string(),
-            None if matches!(self.server_status, ServerStatus::Starting) => {
-                "Starting server…".to_string()
-            }
+            None if matches!(self.boot, Boot::StartingServer) => "Starting server…".to_string(),
             None => "Loading your library…".to_string(),
         };
 
@@ -590,6 +648,7 @@ impl Render for AppRoot {
             Page::Settings(page) if !failed => AnyView::from(page.clone()).into_any_element(),
             Page::Store(page) if !failed => AnyView::from(page.clone()).into_any_element(),
             Page::Downloads(page) if !failed => AnyView::from(page.clone()).into_any_element(),
+            Page::PullList(page) if !failed => AnyView::from(page.clone()).into_any_element(),
             _ => self.placeholder(cx),
         };
 
@@ -620,16 +679,87 @@ impl Render for AppRoot {
                     .flex()
                     .flex_1()
                     .min_h_0()
-                    .when(layout && !sidebar_collapsed, |s| {
+                    .relative()
+                    .when(layout && sidebar_open && sidebar_pinned, |s| {
                         s.child(self.sidebar.clone())
                     })
-                    .child(content),
+                    .child(
+                        div()
+                            .id(("page", self.page_gen))
+                            .flex()
+                            .flex_1()
+                            .min_w_0()
+                            .min_h_0()
+                            .child(content)
+                            .with_animation(
+                                ("page-in", self.page_gen),
+                                motion::once(motion::FAST),
+                                |el, t| el.opacity(t),
+                            ),
+                    )
+                    .when(layout && sidebar_open && !sidebar_pinned, |s| {
+                        s.child(
+                            deferred(
+                                div()
+                                    .absolute()
+                                    .top_0()
+                                    .left_0()
+                                    .size_full()
+                                    .flex()
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .h_full()
+                                            .occlude()
+                                            .child(self.sidebar.clone())
+                                            .with_animation(
+                                                "sidebar-slide",
+                                                motion::once(motion::BASE),
+                                                |el, t| {
+                                                    el.ml(px(-f32::from(theme::sidebar_width())
+                                                        * (1.0 - t)))
+                                                },
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .h_full()
+                                            .bg(gpui::rgba(0x00000066))
+                                            .occlude()
+                                            .on_mouse_down(
+                                                gpui::MouseButton::Left,
+                                                cx.listener(|this, _, _, cx| {
+                                                    this.close_sidebar_overlay(cx)
+                                                }),
+                                            )
+                                            .with_animation(
+                                                "sidebar-backdrop",
+                                                motion::once(motion::SLOW),
+                                                |el, t| el.opacity(t),
+                                            ),
+                                    ),
+                            )
+                            .with_priority(10),
+                        )
+                    }),
             )
             .child(self.toasts.clone())
             .child(self.modals.clone())
             .child(self.confirm.clone())
-            .when(self.loading && !failed, |s| {
-                s.child(app_loader(loader_message))
+            .when(self.boot.loader_up() && !failed, |s| {
+                s.child(app_loader(loader_message.clone()))
+            })
+            .when(matches!(self.boot, Boot::LoaderLeaving), |s| {
+                s.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .child(app_loader(loader_message))
+                        .with_animation("loader-out", motion::once(motion::BASE), |el, t| {
+                            el.opacity(1.0 - t)
+                        }),
+                )
             })
     }
 }
@@ -657,6 +787,7 @@ fn dev_route() -> Option<Route> {
             "settings" => Route::Settings,
             "store" => Route::Store,
             "downloads" => Route::StoreDownloads,
+            "pull-list" => Route::PullList,
             "recent" => Route::Recent,
             "reading" => Route::Reading,
             _ => return None,

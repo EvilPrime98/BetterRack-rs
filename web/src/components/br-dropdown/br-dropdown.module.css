@@ -1,0 +1,107 @@
+.root {
+    position: relative;
+    width: 100%;
+}
+
+.trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    background-color: rgba(255, 255, 255, 0.04);
+    color: #d8d8d8;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease;
+}
+
+.trigger:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.trigger:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.label {
+    display: grid;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.label > * {
+    grid-area: 1 / 1;
+}
+
+.sizer {
+    text-transform: capitalize;
+    visibility: hidden;
+    height: 0;
+    overflow: hidden;
+}
+
+.current {
+    text-transform: capitalize;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chevron {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.15s ease;
+}
+
+.chevronOpen {
+    transform: rotate(180deg);
+}
+
+.list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    background-color: #1a1a1a;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.option {
+    padding: 7px 10px;
+    border-radius: 4px;
+    color: #d8d8d8;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    white-space: nowrap;
+    text-transform: capitalize;
+    cursor: pointer;
+    user-select: none;
+}
+
+.active {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.selected {
+    color: var(--accent);
+    font-weight: 600;
+}

@@ -37,9 +37,17 @@ pub async fn get_comics(
     Query(q): Q,
 ) -> Result<axum::response::Response, ApiError> {
     if q.get("latest").is_some_and(|v| v == "true") {
+        let range = q
+            .get("after")
+            .zip(q.get("before"))
+            .map(|(a, b)| (a.as_str(), b.as_str()));
         let posts = s
             .store
-            .get_latest(&number_or(&q, "page", 1.0), &number_or(&q, "perPage", 10.0))
+            .get_latest(
+                &number_or(&q, "page", 1.0),
+                &number_or(&q, "perPage", 10.0),
+                range,
+            )
             .await
             .map_err(store_err)?;
         return Ok(Json(posts).into_response());
@@ -116,6 +124,10 @@ fn start_failed(e: impl std::fmt::Display) -> ApiError {
     )
 }
 
+fn resource_key(id: &str, uuid: &str) -> String {
+    format!("{id}:{uuid}")
+}
+
 struct StartParams {
     id: Option<i64>,
     resource_key: String,
@@ -190,7 +202,7 @@ pub async fn download_by_query(
         &s,
         StartParams {
             id: leading_int(&id),
-            resource_key: id,
+            resource_key: resource_key(&id, &uuid),
             title,
             output_dir: q.get("outputDir").cloned(),
             uuid,
@@ -233,7 +245,7 @@ pub async fn download_by_body(
         &s,
         StartParams {
             id: Some(id),
-            resource_key: id.to_string(),
+            resource_key: resource_key(&id.to_string(), &uuid),
             title,
             output_dir: body["outputDir"].as_str().map(str::to_string),
             uuid,
@@ -295,11 +307,6 @@ pub async fn cancel_job(
     let outcome = s.downloads.cancel(&job_id).map_err(store_err)?;
     Ok(match outcome {
         CancelOutcome::NotFound => not_found(),
-        CancelOutcome::NotActive => ApiError::Json(
-            StatusCode::CONFLICT,
-            "Only active downloads can be stopped".into(),
-        )
-        .into_response(),
         CancelOutcome::Extracting => ApiError::Json(
             StatusCode::CONFLICT,
             "The download is being extracted and cannot be stopped".into(),

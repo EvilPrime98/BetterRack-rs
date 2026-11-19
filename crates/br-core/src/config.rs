@@ -11,9 +11,11 @@
 //! (dev checkout and packaged sidecar alike, where the base is `%APPDATA%\BetterRack`) usable
 //! as is.
 
+use std::net::IpAddr;
 use std::path::PathBuf;
 
 pub const DEFAULT_PORT: u16 = 3000;
+pub const DEFAULT_BIND_ADDR: &str = "127.0.0.1";
 pub const DEFAULT_LOG_LEVEL: &str = "info";
 /// Relative to the data dir.
 pub const DB_SUBDIR: &str = "src/database";
@@ -24,6 +26,7 @@ pub const JOBS_DB: &str = "jobs.sqlite";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub port: u16,
+    pub bind_addr: String,
     pub api_key: Option<String>,
     pub log_level: String,
     pub seven_zip_path: Option<PathBuf>,
@@ -45,11 +48,27 @@ impl Config {
             port: non_empty("PORT")
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(DEFAULT_PORT),
+            bind_addr: non_empty("BR_BIND_ADDR").unwrap_or_else(|| DEFAULT_BIND_ADDR.into()),
             api_key: non_empty("BR_API_KEY"),
             log_level: non_empty("LOG_LEVEL").unwrap_or_else(|| DEFAULT_LOG_LEVEL.into()),
             seven_zip_path: non_empty("SEVEN_ZIP_PATH").map(PathBuf::from),
             data_dir: non_empty("BR_DATA_DIR").map(PathBuf::from).unwrap_or(cwd),
         }
+    }
+
+    pub fn validated_bind_ip(&self) -> Result<IpAddr, String> {
+        let ip: IpAddr = self.bind_addr.parse().map_err(|_| {
+            format!(
+                "BR_BIND_ADDR is not a valid IP address: {:?}",
+                self.bind_addr
+            )
+        })?;
+        if !ip.is_loopback() && self.api_key.is_none() {
+            return Err(format!(
+                "BR_BIND_ADDR={ip} is not a loopback address; set BR_API_KEY to expose the server"
+            ));
+        }
+        Ok(ip)
     }
 
     /// Folder holding the three `.sqlite` files.
@@ -128,6 +147,49 @@ mod tests {
         assert_eq!(
             c.jobs_db(),
             PathBuf::from("data").join("src/database/jobs.sqlite")
+        );
+    }
+
+    #[test]
+    fn bind_addr_defaults_to_loopback() {
+        let c = cfg(&[]);
+        assert_eq!(c.bind_addr, "127.0.0.1");
+        assert_eq!(c.validated_bind_ip(), Ok("127.0.0.1".parse().unwrap()));
+        assert_eq!(cfg(&[("BR_BIND_ADDR", "")]).bind_addr, "127.0.0.1");
+    }
+
+    #[test]
+    fn bind_addr_accepts_ipv4_and_ipv6() {
+        assert!(cfg(&[("BR_BIND_ADDR", "::1")]).validated_bind_ip().is_ok());
+        let keyed = |a| cfg(&[("BR_BIND_ADDR", a), ("BR_API_KEY", "k")]);
+        assert_eq!(
+            keyed("0.0.0.0").validated_bind_ip(),
+            Ok("0.0.0.0".parse().unwrap())
+        );
+        assert_eq!(keyed("::").validated_bind_ip(), Ok("::".parse().unwrap()));
+    }
+
+    #[test]
+    fn bind_addr_invalid_is_an_error() {
+        assert!(
+            cfg(&[("BR_BIND_ADDR", "nope")])
+                .validated_bind_ip()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn non_loopback_without_key_is_refused() {
+        assert!(
+            cfg(&[("BR_BIND_ADDR", "0.0.0.0")])
+                .validated_bind_ip()
+                .is_err()
+        );
+        assert!(cfg(&[("BR_BIND_ADDR", "::")]).validated_bind_ip().is_err());
+        assert!(
+            cfg(&[("BR_BIND_ADDR", "127.0.0.1")])
+                .validated_bind_ip()
+                .is_ok()
         );
     }
 

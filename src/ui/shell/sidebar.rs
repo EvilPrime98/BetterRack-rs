@@ -48,7 +48,6 @@ pub struct Sidebar {
     scroll: UniformListScrollHandle,
     memo: Option<RowsMemo>,
     group_menu_open: bool,
-    /// Set by `AppRoot` so the current page's nav link is highlighted.
     pub current: Route,
 }
 
@@ -150,7 +149,6 @@ impl Sidebar {
         cx.emit(Navigate(route));
     }
 
-    /// Opening a folder from the list clears the search box (`SideBarElement.onClick`).
     fn open_dir(&mut self, uid: String, cx: &mut Context<Self>) {
         self.search.update(cx, |i, cx| i.set_value("", cx));
         self.stores
@@ -178,6 +176,7 @@ impl Sidebar {
             .id(id)
             .flex()
             .items_center()
+            .w_full()
             .gap(px(10.0))
             .px(px(10.0))
             .py(px(9.0))
@@ -223,16 +222,21 @@ impl Sidebar {
 impl Render for Sidebar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rows = self.rows(cx);
+
         let (structure, busy, progress, loading) = {
             let lib = self.stores.library.read(cx);
             (
                 lib.structure,
-                lib.refreshing || lib.identify_progress.is_some(),
-                lib.identify_progress,
-                lib.loading,
+                lib.refreshing() || lib.identify_progress().is_some(),
+                lib.identify_progress(),
+                lib.loading(),
             )
         };
-        let compact = self.stores.prefs.read(cx).prefs.sidebar_compact;
+
+        let (compact, pinned) = {
+            let p = &self.stores.prefs.read(cx).prefs;
+            (p.sidebar_compact, p.sidebar_pinned)
+        };
 
         let refresh_label: SharedString = match progress {
             Some((done, total)) if total > 0 => format!("Identifying {done}/{total}").into(),
@@ -260,6 +264,13 @@ impl Render for Sidebar {
                             "Downloads",
                             Icon::Download,
                             Route::StoreDownloads,
+                            cx,
+                        ))
+                        .child(self.nav_item(
+                            "nav-pull-list",
+                            "Pull list",
+                            Icon::Pin,
+                            Route::PullList,
                             cx,
                         )),
                 )
@@ -344,7 +355,11 @@ impl Render for Sidebar {
             uniform_list(
                 "sidebar-list",
                 rows.len(),
-                cx.processor(move |_this, range: std::ops::Range<usize>, _w, cx| {
+                cx.processor(move |this, range: std::ops::Range<usize>, _w, cx| {
+                    let active_uid = match &this.current {
+                        Route::Library { uid: Some(uid), .. } => Some(uid.clone()),
+                        _ => None,
+                    };
                     range
                         .map(|ix| match rows_for_list[ix].clone() {
                             Row::Group {
@@ -358,9 +373,9 @@ impl Render for Sidebar {
                                     .flex()
                                     .items_center()
                                     .gap(px(10.0))
+                                    .w_full()
                                     .h(px(ROW_H))
-                                    .px(px(10.0))
-                                    .rounded(px(6.0))
+                                    .px(px(20.0))
                                     .cursor_pointer()
                                     .text_size(px(14.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -395,23 +410,35 @@ impl Render for Sidebar {
                             }
                             Row::Dir { uid, name, indent } => {
                                 let open = uid.clone();
+                                let active = active_uid.as_deref() == Some(uid.as_str());
+                                let tone = if active {
+                                    theme::accent()
+                                } else {
+                                    rgb(0xd8d8d8)
+                                };
                                 div()
                                     .id(SharedString::from(format!("dir-{uid}")))
                                     .flex()
                                     .items_center()
                                     .gap(px(10.0))
+                                    .w_full()
                                     .h(px(ROW_H))
-                                    .pl(px(if indent { 24.0 } else { 10.0 }))
-                                    .pr(px(10.0))
-                                    .rounded(px(6.0))
+                                    .pl(px(if indent { 34.0 } else { 20.0 }))
+                                    .pr(px(20.0))
                                     .cursor_pointer()
                                     .text_size(px(14.0))
-                                    .text_color(rgb(0xd8d8d8))
+                                    .text_color(tone)
+                                    .when(active, |s| {
+                                        s.bg(rgba(0x34c3d11f))
+                                            .border_l_2()
+                                            .border_color(theme::accent())
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    })
                                     .hover(|s| s.bg(rgba(0xffffff0f)))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.open_dir(open.clone(), cx)
                                     }))
-                                    .child(icon(Icon::Folder, px(16.0)).text_color(rgb(0xd8d8d8)))
+                                    .child(icon(Icon::Folder, px(16.0)).text_color(tone))
                                     .child(
                                         div()
                                             .flex_1()
@@ -444,16 +471,42 @@ impl Render for Sidebar {
             .bg(theme::bg_panel())
             .border_r_1()
             .border_color(theme::border_subtle())
-            .child(div().mx(px(16.0)).my(px(6.0)).child(button(
-                "sidebar-compact",
-                if compact { "Show More" } else { "Show Less" },
-                ButtonVariant::Ghost,
-                cx.listener(|this, _, _, cx| {
-                    this.stores.prefs.update(cx, |p, cx| {
-                        p.update(cx, |p| p.sidebar_compact = !p.sidebar_compact)
-                    });
-                }),
-            )))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .mx(px(16.0))
+                    .my(px(6.0))
+                    .child(button(
+                        "sidebar-compact",
+                        if compact { "Show More" } else { "Show Less" },
+                        ButtonVariant::Ghost,
+                        cx.listener(|this, _, _, cx| {
+                            this.stores.prefs.update(cx, |p, cx| {
+                                p.update(cx, |p| p.sidebar_compact = !p.sidebar_compact)
+                            });
+                        }),
+                    ))
+                    .child(
+                        div()
+                            .id("sidebar-pin")
+                            .p(px(6.0))
+                            .rounded(px(6.0))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgba(0xffffff0f)))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.stores.prefs.update(cx, |p, cx| {
+                                    p.update(cx, |p| p.sidebar_pinned = !p.sidebar_pinned)
+                                });
+                            }))
+                            .child(icon(Icon::Pin, px(16.0)).text_color(if pinned {
+                                theme::accent()
+                            } else {
+                                rgb(0x8a8a8a)
+                            })),
+                    ),
+            )
             .child(
                 Self::section("Group by").child(
                     div()
@@ -506,7 +559,7 @@ impl Render for Sidebar {
                                             }),
                                         ),
                                 )
-                                .with_priority(1),
+                                .with_priority(11),
                             )
                             .child(
                                 deferred(
@@ -581,12 +634,12 @@ impl Render for Sidebar {
                                             ),
                                         ),
                                 )
-                                .with_priority(2),
+                                .with_priority(12),
                             )
                         }),
                 ),
             )
             .children(folded)
-            .child(div().flex_1().min_h_0().p(px(10.0)).child(list))
+            .child(div().flex_1().min_h_0().py(px(10.0)).child(list))
     }
 }
