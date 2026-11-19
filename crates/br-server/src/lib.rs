@@ -2,6 +2,7 @@
 
 pub mod bookmarks;
 pub mod comic_file;
+pub mod downloaded;
 pub mod error;
 pub mod http_cache;
 pub mod library;
@@ -119,6 +120,7 @@ pub fn app_with_web(state: AppState, web_dir: Option<PathBuf>) -> Router {
             "/api/bookmarks/{key}",
             patch(bookmarks::patch).delete(bookmarks::remove),
         )
+        .route("/api/downloaded", get(downloaded::list))
         .route("/api/pull-list", get(pull_list::list).post(pull_list::add))
         .route(
             "/api/pull-list/{id}",
