@@ -243,3 +243,30 @@ async fn read_requires_the_api_key() {
     let (s, _, body) = h.get(&format!("/read/{uid}/pages/1?key=secret"), &[]).await;
     assert_eq!((s, body.as_slice()), (StatusCode::OK, &b"one"[..]));
 }
+
+#[tokio::test]
+async fn streams_comic_file_as_attachment() {
+    let h = harness(None);
+    let (s, hd, body) = h
+        .get(
+            &format!("/api/library/{}/file", h.uid("Series/Issue 1.cbz")),
+            &[],
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        hd[header::CONTENT_DISPOSITION],
+        "attachment; filename=\"Issue 1.cbz\"; filename*=UTF-8''Issue%201.cbz"
+    );
+    let on_disk = std::fs::read(h.lib.path().join("Series/Issue 1.cbz")).unwrap();
+    assert_eq!(body, on_disk);
+    assert_eq!(hd[header::CONTENT_LENGTH], on_disk.len().to_string());
+}
+
+#[tokio::test]
+async fn comic_file_unknown_uid_is_404() {
+    let h = harness(None);
+    let (s, _, body) = h.get("/api/library/nope/file", &[]).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    assert_eq!(json_of(&body)["error"], true);
+}

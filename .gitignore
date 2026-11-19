@@ -15,8 +15,13 @@ Thumbs.db
 # Env / local files
 .env
 .env.*
+!.env.example
 *.log
 
 # tools
 .claude/
 CLAUDE.md
+
+docs/
+scripts/
+src/database/

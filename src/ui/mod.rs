@@ -3,6 +3,7 @@ pub mod components;
 pub mod confirm;
 pub mod icons;
 pub mod modals;
+pub mod motion;
 pub mod pages;
 pub mod shell;
 pub mod text;

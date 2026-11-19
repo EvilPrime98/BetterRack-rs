@@ -2,7 +2,7 @@
 //! every [`POLL_INTERVAL_MS`] while it is open (the SSE stream is not used by the client). Jobs that flip to `done` while we watch toast and trigger a silent
 //! library refresh, because the server rescans after a download finishes.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::Duration;
 
 use gpui::{Context, Task};
@@ -13,14 +13,20 @@ use crate::runtime;
 use crate::state::Stores;
 use crate::ui::toast;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Pending {
+    Retrying,
+    Stopping,
+    Deleting,
+}
+
 #[derive(Default)]
 pub struct DownloadsStore {
     pub client: Option<ApiClient>,
     pub jobs: Vec<JobStatus>,
     pub error: String,
     pub loaded: bool,
-    pub retrying: HashSet<String>,
-    pub stopping: HashSet<String>,
+    pending: HashMap<String, Pending>,
     previous: HashMap<String, JobState>,
 }
 
@@ -82,7 +88,7 @@ pub fn detail_for(progress: Option<&StoreProgressEvent>) -> String {
             format!("Extracting {done} / {total}")
         }
         Some(StoreProgressEvent::Done { filename }) => filename.clone(),
-        Some(StoreProgressEvent::Error { message }) => message.clone(),
+        Some(StoreProgressEvent::Error { message, .. }) => message.clone(),
     }
 }
 
@@ -90,6 +96,10 @@ pub fn detail_for(progress: Option<&StoreProgressEvent>) -> String {
 pub fn can_stop(job: &JobStatus) -> bool {
     matches!(job.state, JobState::Queued | JobState::Running)
         && !matches!(job.progress, Some(StoreProgressEvent::Extracting { .. }))
+}
+
+pub fn can_delete(job: &JobStatus) -> bool {
+    matches!(job.state, JobState::Done | JobState::Error)
 }
 
 pub fn state_label(state: JobState) -> &'static str {
@@ -146,6 +156,7 @@ impl DownloadsStore {
                     }
                     if let Some(stores) = cx.try_global::<Stores>().cloned() {
                         stores.library.update(cx, |l, cx| l.refresh(true, cx));
+                        stores.store.update(cx, |s, cx| s.refresh_downloaded(cx));
                     }
                 }
             }
@@ -154,11 +165,18 @@ impl DownloadsStore {
         cx.notify();
     }
 
+    pub fn pending(&self, job_id: &str) -> Option<Pending> {
+        self.pending.get(job_id).copied()
+    }
+
     pub fn retry(&mut self, job_id: String, cx: &mut Context<Self>) {
         let Some(client) = self.client.clone() else {
             return;
         };
-        self.retrying.insert(job_id.clone());
+        if self.pending.contains_key(&job_id) {
+            return;
+        }
+        self.pending.insert(job_id.clone(), Pending::Retrying);
         cx.notify();
         cx.spawn(async move |this, cx| {
             let id = job_id.clone();
@@ -169,7 +187,7 @@ impl DownloadsStore {
             })
             .await;
             this.update(cx, |s, cx| {
-                s.retrying.remove(&job_id);
+                s.pending.remove(&job_id);
                 match result {
                     Ok(jobs) => s.jobs = jobs,
                     Err(e) => toast::error(cx, describe(e, "Failed to retry the download.")),
@@ -182,10 +200,37 @@ impl DownloadsStore {
     }
 
     pub fn stop(&mut self, job_id: String, cx: &mut Context<Self>) {
+        self.remove(
+            job_id,
+            Pending::Stopping,
+            "Failed to stop the download.",
+            cx,
+        );
+    }
+
+    pub fn delete(&mut self, job_id: String, cx: &mut Context<Self>) {
+        self.remove(
+            job_id,
+            Pending::Deleting,
+            "Failed to delete the download.",
+            cx,
+        );
+    }
+
+    fn remove(
+        &mut self,
+        job_id: String,
+        pending: Pending,
+        error: &'static str,
+        cx: &mut Context<Self>,
+    ) {
         let Some(client) = self.client.clone() else {
             return;
         };
-        self.stopping.insert(job_id.clone());
+        if self.pending.contains_key(&job_id) {
+            return;
+        }
+        self.pending.insert(job_id.clone(), pending);
         cx.notify();
         cx.spawn(async move |this, cx| {
             let id = job_id.clone();
@@ -196,10 +241,10 @@ impl DownloadsStore {
             })
             .await;
             this.update(cx, |s, cx| {
-                s.stopping.remove(&job_id);
+                s.pending.remove(&job_id);
                 match result {
                     Ok(jobs) => s.jobs = jobs,
-                    Err(e) => toast::error(cx, describe(e, "Failed to stop the download.")),
+                    Err(e) => toast::error(cx, describe(e, error)),
                 }
                 cx.notify();
             })
@@ -310,5 +355,13 @@ mod tests {
         assert!(can_stop(&job("a", JobState::Queued, None)));
         assert!(!can_stop(&job("a", JobState::Done, None)));
         assert!(!can_stop(&job("a", JobState::Error, None)));
+    }
+
+    #[test]
+    fn only_finished_jobs_can_be_deleted() {
+        assert!(can_delete(&job("a", JobState::Done, None)));
+        assert!(can_delete(&job("a", JobState::Error, None)));
+        assert!(!can_delete(&job("a", JobState::Queued, None)));
+        assert!(!can_delete(&job("a", JobState::Running, None)));
     }
 }

@@ -1,14 +1,18 @@
 //! App state: each store is an entity or a plain struct.
 
+pub mod bookmarks;
 pub mod comic_cache;
 pub mod directories;
 pub mod downloads;
+pub mod epoch;
 pub mod identify;
 pub mod library;
 pub mod prefs;
+pub mod pull_list;
 pub mod reader_images;
 pub mod store;
 pub mod thumbnails;
+pub mod week;
 
 use gpui::{App, AppContext as _, Entity, Global};
 
@@ -19,6 +23,8 @@ use crate::api::ApiClient;
 #[derive(Clone)]
 pub struct Stores {
     pub library: Entity<library::LibraryStore>,
+    pub bookmarks: Entity<bookmarks::BookmarksStore>,
+    pub pull_list: Entity<pull_list::PullListStore>,
     pub comics: Entity<comic_cache::ComicCacheStore>,
     pub thumbs: Entity<thumbnails::Thumbnails>,
     pub identify: Entity<identify::IdentifyStore>,
@@ -35,6 +41,8 @@ impl Stores {
     pub fn new(cx: &mut App) -> Self {
         Self {
             library: cx.new(|_| library::LibraryStore::default()),
+            bookmarks: cx.new(|_| bookmarks::BookmarksStore::load()),
+            pull_list: cx.new(|_| pull_list::PullListStore::default()),
             comics: cx.new(|_| comic_cache::ComicCacheStore::default()),
             thumbs: cx.new(|_| thumbnails::Thumbnails::default()),
             identify: cx.new(|_| identify::IdentifyStore::default()),
@@ -50,6 +58,8 @@ impl Stores {
         self.library
             .update(cx, |s, _| s.client = Some(client.clone()));
         self.comics
+            .update(cx, |s, _| s.client = Some(client.clone()));
+        self.pull_list
             .update(cx, |s, _| s.client = Some(client.clone()));
         self.thumbs
             .update(cx, |s, _| s.client = Some(client.clone()));

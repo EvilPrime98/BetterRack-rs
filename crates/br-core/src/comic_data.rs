@@ -217,6 +217,14 @@ fn num(n: Option<i64>) -> Option<Value> {
     n.map(Value::from)
 }
 
+fn js_number(f: f64) -> Value {
+    if f.fract() == 0.0 && f.abs() < 9e15 {
+        Value::from(f as i64)
+    } else {
+        Number::from_f64(f).map_or(Value::Null, Value::Number)
+    }
+}
+
 fn row_to_record(r: &rusqlite::Row<'_>) -> rusqlite::Result<ComicRecord> {
     let mut m = ComicRecord::new();
     m.insert("uid".into(), r.get::<_, String>(0)?.into());
@@ -246,19 +254,10 @@ fn row_to_record(r: &rusqlite::Row<'_>) -> rusqlite::Result<ComicRecord> {
             .and_then(|s| serde_json::from_str(&s).ok()),
     );
     put("cover", r.get::<_, Option<String>>(4)?.map(Value::from));
-    put("rating", num(r.get(7)?));
+    put("rating", r.get::<_, Option<f64>>(7)?.map(js_number));
     put("currentPage", num(r.get(8)?));
     // JS numbers have no int/float split, so whole values print as `1` not `1.0`.
-    put(
-        "readPer",
-        r.get::<_, Option<f64>>(9)?.map(|f| {
-            if f.fract() == 0.0 && f.abs() < 9e15 {
-                Value::from(f as i64)
-            } else {
-                Number::from_f64(f).map_or(Value::Null, Value::Number)
-            }
-        }),
-    );
+    put("readPer", r.get::<_, Option<f64>>(9)?.map(js_number));
     put(
         "read",
         r.get::<_, Option<i64>>(10)?.map(|i| Value::Bool(i != 0)),
@@ -274,6 +273,14 @@ mod tests {
 
     fn obj(v: Value) -> ComicRecord {
         v.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn fractional_rating_round_trips() {
+        let s = ComicDataStore::open_in_memory().unwrap();
+        let a = s.upsert("u1", &obj(json!({"rating": 3.5}))).unwrap();
+        assert_eq!(a["rating"], 3.5);
+        assert_eq!(s.get_by_uid("u1").unwrap().unwrap()["rating"], 3.5);
     }
 
     #[test]

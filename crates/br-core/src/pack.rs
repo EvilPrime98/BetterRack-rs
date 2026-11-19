@@ -62,7 +62,7 @@ pub struct PackExtractor {
     decompressor: std::sync::Arc<dyn PackDecompressor>,
 }
 
-fn dedupe(target: &Path) -> PathBuf {
+pub(crate) fn dedupe(target: &Path) -> PathBuf {
     if !target.exists() {
         return target.to_path_buf();
     }

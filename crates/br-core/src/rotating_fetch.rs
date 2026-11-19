@@ -98,6 +98,7 @@ pub const ABORT_MESSAGE: &str = "This operation was aborted";
 #[derive(Clone)]
 pub struct RotatingFetch {
     client: reqwest::Client,
+    proxy_clients: Vec<reqwest::Client>,
     retries: u32,
     backoff_ms: u64,
     jitter_ms: u64,
@@ -126,6 +127,7 @@ impl RotatingFetch {
     pub fn new(client: reqwest::Client) -> Self {
         Self {
             client,
+            proxy_clients: Vec::new(),
             retries: DEFAULT_RETRIES,
             backoff_ms: DEFAULT_BACKOFF_MS,
             jitter_ms: DEFAULT_JITTER_MS,
@@ -139,6 +141,26 @@ impl RotatingFetch {
         self.backoff_ms = backoff_ms;
         self.jitter_ms = jitter_ms;
         self
+    }
+
+    pub fn with_proxies(mut self, proxies: &[String]) -> Result<Self, reqwest::Error> {
+        self.proxy_clients = proxies
+            .iter()
+            .map(|url| {
+                reqwest::Client::builder()
+                    .proxy(reqwest::Proxy::all(url)?)
+                    .build()
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(self)
+    }
+
+    fn client_for_attempt(&self) -> &reqwest::Client {
+        if self.proxy_clients.is_empty() {
+            &self.client
+        } else {
+            &self.proxy_clients[fastrand::usize(..self.proxy_clients.len())]
+        }
     }
 
     pub fn build_headers(&self, profile: BrowserProfile) -> HeaderMap {
@@ -199,7 +221,7 @@ impl RotatingFetch {
                     headers.insert(k, v);
                 }
             }
-            let send = self.client.get(url).headers(headers).send();
+            let send = self.client_for_attempt().get(url).headers(headers).send();
             let result = match cancel {
                 Some(c) => tokio::select! {
                     r = send => r,

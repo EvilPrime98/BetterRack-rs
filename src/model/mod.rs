@@ -114,6 +114,7 @@ pub struct AppSettings {
     pub download_dir: String,
     pub wiki_search: bool,
     pub rescan_on_startup: bool,
+    pub rotating_fetch: bool,
 }
 
 /// `PUT /api/settings` body: a partial that must NOT contain `outputDirs`.
@@ -128,6 +129,8 @@ pub struct SettingsUpdate {
     pub wiki_search: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rescan_on_startup: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotating_fetch: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -334,6 +337,14 @@ impl IdentifyLibraryStatus {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct Downloaded {
+    #[serde(default)]
+    pub ids: Vec<i64>,
+    #[serde(default)]
+    pub paths: BTreeMap<i64, String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorePost {
@@ -344,6 +355,61 @@ pub struct StorePost {
     #[serde(default)]
     pub link: String,
     pub upload_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct StoreBookmark {
+    pub key: String,
+    pub id: Option<i64>,
+    pub title: String,
+    pub thumbnail_url: Option<String>,
+    pub link: String,
+    pub upload_date: Option<String>,
+    pub folder: Option<String>,
+    pub rating: f32,
+    pub read: bool,
+    pub created_at: i64,
+}
+
+impl StoreBookmark {
+    pub fn new(key: String, post: &StorePost, folder: Option<String>) -> Self {
+        Self {
+            key,
+            id: post.id,
+            title: post.title.clone(),
+            thumbnail_url: post.thumbnail_url.clone(),
+            link: post.link.clone(),
+            upload_date: post.upload_date.clone(),
+            folder,
+            rating: 0.0,
+            read: false,
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis() as i64),
+        }
+    }
+
+    pub fn post(&self) -> StorePost {
+        StorePost {
+            id: self.id,
+            thumbnail_url: self.thumbnail_url.clone(),
+            title: self.title.clone(),
+            link: self.link.clone(),
+            upload_date: self.upload_date.clone(),
+        }
+    }
+}
+
+/// A followed series name; posts with an id above `last_seen_id` count as new.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PullEntry {
+    pub id: String,
+    pub keyword: String,
+    pub exclude: String,
+    pub last_seen_id: i64,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -408,7 +474,11 @@ pub enum StoreProgressEvent {
     #[serde(rename_all = "camelCase")]
     Done { filename: String },
     #[serde(rename_all = "camelCase")]
-    Error { message: String },
+    Error {
+        message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        page_url: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -524,6 +594,22 @@ mod tests {
         .unwrap();
         assert_eq!(jobs.len(), 2);
         assert!(jobs[0].progress.is_none() && jobs[1].progress.is_none());
+    }
+
+    #[test]
+    fn error_progress_carries_page_url() {
+        let e: StoreProgressEvent =
+            serde_json::from_str(r#"{"type":"error","message":"m","pageUrl":"https://x.test/c"}"#)
+                .unwrap();
+        assert!(
+            matches!(e, StoreProgressEvent::Error { page_url: Some(u), .. } if u == "https://x.test/c")
+        );
+        let e: StoreProgressEvent =
+            serde_json::from_str(r#"{"type":"error","message":"m"}"#).unwrap();
+        assert!(matches!(
+            e,
+            StoreProgressEvent::Error { page_url: None, .. }
+        ));
     }
 
     #[test]

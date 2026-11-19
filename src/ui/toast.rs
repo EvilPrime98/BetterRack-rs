@@ -3,11 +3,11 @@
 use std::time::Duration;
 
 use gpui::{
-    App, AppContext as _, Context, Entity, Global, InteractiveElement, IntoElement, ParentElement,
-    Render, SharedString, Styled, Window, div, px,
+    AnimationExt as _, App, AppContext as _, Context, Entity, Global, InteractiveElement,
+    IntoElement, ParentElement, Render, SharedString, Styled, Window, div, px,
 };
 
-use crate::ui::theme;
+use crate::ui::{motion, theme};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -19,6 +19,7 @@ struct Toast {
     id: u64,
     kind: Kind,
     text: SharedString,
+    leaving: bool,
 }
 
 #[derive(Default)]
@@ -51,13 +52,26 @@ fn push(cx: &mut App, kind: Kind, text: SharedString) {
     host.update(cx, |host, cx| {
         let id = host.next_id;
         host.next_id += 1;
-        host.items.push(Toast { id, kind, text });
+        host.items.push(Toast {
+            id,
+            kind,
+            text,
+            leaving: false,
+        });
         cx.notify();
         let ttl = if kind == Kind::Error { 5000 } else { 2500 };
         cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(Duration::from_millis(ttl))
                 .await;
+            this.update(cx, |host, cx| {
+                if let Some(t) = host.items.iter_mut().find(|t| t.id == id) {
+                    t.leaving = true;
+                }
+                cx.notify();
+            })
+            .ok();
+            cx.background_executor().timer(motion::FAST).await;
             this.update(cx, |host, cx| {
                 host.items.retain(|t| t.id != id);
                 cx.notify();
@@ -80,6 +94,7 @@ impl Render for ToastHost {
             .items_center()
             .gap(px(8.0))
             .children(self.items.iter().map(|t| {
+                let leaving = t.leaving;
                 let border = if t.kind == Kind::Error {
                     theme::error()
                 } else {
@@ -106,6 +121,21 @@ impl Render for ToastHost {
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .text_color(theme::text())
                     .child(t.text.clone())
+                    .with_animation(
+                        (if t.leaving { "toast-out" } else { "toast-in" }, t.id),
+                        motion::once(if t.leaving {
+                            motion::FAST
+                        } else {
+                            motion::BASE
+                        }),
+                        move |el, p| {
+                            if leaving {
+                                el.opacity(1.0 - p)
+                            } else {
+                                el.opacity(p).mt(px(-12.0 * (1.0 - p)))
+                            }
+                        },
+                    )
             }))
     }
 }

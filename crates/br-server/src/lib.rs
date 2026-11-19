@@ -1,11 +1,17 @@
 //! Axum app exposing `br-core`.
 
+pub mod bookmarks;
+pub mod comic_file;
+pub mod downloaded;
 pub mod error;
 pub mod http_cache;
 pub mod library;
 pub mod middleware;
+pub mod migrate;
+pub mod pull_list;
 pub mod reader;
 pub mod routes;
+pub mod server_info;
 pub mod state;
 pub mod store;
 pub mod thumbnail;
@@ -13,10 +19,12 @@ pub mod wiki;
 
 use axum::http::StatusCode;
 use axum::response::Response;
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{any, delete, get, patch, post};
 use axum::{Json, Router, middleware::from_fn_with_state};
 use state::AppState;
+use std::path::{Path, PathBuf};
 use tower_http::cors::CorsLayer;
+use tower_http::services::{ServeDir, ServeFile};
 
 async fn healthz() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "app": "betterrack", "version": env!("CARGO_PKG_VERSION") }))
@@ -26,8 +34,33 @@ async fn not_found() -> Response {
     error::text(StatusCode::NOT_FOUND, "Not Found")
 }
 
-pub fn app(state: AppState) -> Router {
+pub fn web_dir_from_env() -> Option<PathBuf> {
+    let dir = PathBuf::from(std::env::var_os("BR_WEB_DIR").filter(|v| !v.is_empty())?);
+    if dir.is_dir() {
+        Some(dir)
+    } else {
+        tracing::warn!(
+            "BR_WEB_DIR {} is not a directory; serving the API only",
+            dir.display()
+        );
+        None
+    }
+}
+
+fn web_service(dir: &Path) -> Router {
+    let files = ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html")));
     Router::new()
+        .route("/api/{*rest}", any(not_found))
+        .route("/read/{*rest}", any(not_found))
+        .fallback_service(files)
+}
+
+pub fn app(state: AppState) -> Router {
+    app_with_web(state, web_dir_from_env())
+}
+
+pub fn app_with_web(state: AppState, web_dir: Option<PathBuf>) -> Router {
+    let router = Router::new()
         .route("/healthz", get(healthz))
         .route(
             "/api/settings",
@@ -40,6 +73,9 @@ pub fn app(state: AppState) -> Router {
         .route("/api/comic-data", get(routes::get_comic_data))
         .route("/api/comic-data/{uid}", patch(routes::patch_comic_data))
         .route("/api/directories", get(routes::directories))
+        .route("/api/server/info", get(server_info::info))
+        .route("/api/server/logs", get(server_info::logs))
+        .route("/api/server/update", get(server_info::update))
         .route("/api/library", get(library::list))
         .route("/api/library/", get(library::list))
         .route("/api/library/by-series", get(library::by_series))
@@ -60,6 +96,7 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/api/library/file", delete(library::delete_file))
         .route("/api/library/file/move", post(library::move_file))
+        .route("/api/library/folder/flatten", post(library::flatten_folder))
         .route(
             "/api/library/file/unidentify",
             post(library::unidentify_file),
@@ -73,10 +110,22 @@ pub fn app(state: AppState) -> Router {
             "/api/library/identify/all",
             post(library::start_identify_library).get(library::identify_library_status),
         )
+        .route("/api/library/{uid}/file", get(comic_file::get))
         .route("/api/library/{uid}/identify", get(library::identify))
         .route(
             "/api/library/{uid}/identify/reset",
             post(library::reidentify_file),
+        )
+        .route("/api/bookmarks", get(bookmarks::list).post(bookmarks::add))
+        .route(
+            "/api/bookmarks/{key}",
+            patch(bookmarks::patch).delete(bookmarks::remove),
+        )
+        .route("/api/downloaded", get(downloaded::list))
+        .route("/api/pull-list", get(pull_list::list).post(pull_list::add))
+        .route(
+            "/api/pull-list/{id}",
+            patch(pull_list::patch).delete(pull_list::remove),
         )
         .route("/api/wiki/comic", get(wiki::comic))
         .route("/api/wiki/comic/{id}", get(wiki::comic_by_id))
@@ -130,8 +179,12 @@ pub fn app(state: AppState) -> Router {
         .route("/read/{uuid}", get(reader::get))
         .route("/read/{uuid}/refresh", get(reader::refresh))
         .route("/read/{uuid}/bookmarks", get(reader::bookmarks))
-        .route("/read/{uuid}/pages/{page}", get(reader::page))
-        .fallback(not_found)
+        .route("/read/{uuid}/pages/{page}", get(reader::page));
+    let router = match web_dir {
+        Some(dir) => router.fallback_service(web_service(&dir)),
+        None => router.fallback(not_found),
+    };
+    router
         .layer(from_fn_with_state(state.clone(), middleware::api_key_auth))
         // Outermost, registered first so preflights never reach the key check.
         .layer(CorsLayer::permissive())

@@ -14,7 +14,7 @@ pub fn directories_under(roots: &[String], cwd: &str) -> Vec<String> {
         }
     };
     for root in roots {
-        let abs = crate::uid::resolve_windows(root, cwd);
+        let abs = crate::uid::resolve_in(root, cwd);
         push(abs.clone());
         let mut found = Vec::new();
         recurse(Path::new(&abs), &mut found);
@@ -108,7 +108,7 @@ mod tests {
         let rel: Vec<String> = got
             .iter()
             .map(|p| {
-                p.strip_prefix(&crate::uid::resolve_windows(&root_s, &root_s))
+                p.strip_prefix(&crate::uid::resolve_in(&root_s, &root_s))
                     .unwrap_or(p)
                     .to_string()
             })

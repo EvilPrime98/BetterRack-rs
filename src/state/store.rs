@@ -4,14 +4,15 @@
 //! Per-card download state also lives here: GPUI rebuilds cards as they scroll in and out of the
 //! virtualized list, so a card cannot own it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use gpui::{Context, UniformListScrollHandle};
+use gpui::{App, Context, UniformListScrollHandle};
 
 use crate::api::ApiClient;
 use crate::model::{STORE_PAGE_SIZE, StartDownload, StorePost, StoreStrat};
 use crate::runtime;
+use crate::state::epoch::Epoch;
 use crate::ui::{modals, toast};
 
 /// While links are loading the button ignores clicks.
@@ -23,6 +24,38 @@ pub enum CardState {
     Error(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum Feed {
+    #[default]
+    Unloaded,
+    Loading,
+    Failed(String),
+    Ready(Tail),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Tail {
+    More,
+    Fetching,
+    /// Stops the scroll from retrying in a loop until the user does.
+    Failed,
+    End,
+}
+
+impl Feed {
+    fn page_loaded(len: usize) -> Self {
+        Feed::Ready(if len == STORE_PAGE_SIZE {
+            Tail::More
+        } else {
+            Tail::End
+        })
+    }
+
+    pub fn can_load_more(&self) -> bool {
+        matches!(self, Feed::Ready(Tail::More))
+    }
+}
+
 pub struct StoreState {
     pub client: Option<ApiClient>,
     /// The text box.
@@ -31,17 +64,13 @@ pub struct StoreState {
     pub active_search: String,
     pub results: Rc<Vec<StorePost>>,
     pub page: u32,
-    pub has_more: bool,
-    pub has_loaded: bool,
-    pub loading: bool,
-    pub loading_more: bool,
-    /// Loading the next page failed; stops the scroll from retrying in a loop until the user does.
-    pub more_failed: bool,
-    pub error: String,
+    pub feed: Feed,
     pub scroll: UniformListScrollHandle,
     cards: HashMap<String, CardState>,
+    downloaded: HashSet<i64>,
+    downloaded_paths: HashMap<i64, String>,
     /// Bumped by every new search so late answers for an older one are dropped.
-    request: u64,
+    epoch: Epoch,
 }
 
 impl Default for StoreState {
@@ -52,15 +81,12 @@ impl Default for StoreState {
             active_search: String::new(),
             results: Rc::new(Vec::new()),
             page: 1,
-            has_more: true,
-            has_loaded: false,
-            loading: false,
-            loading_more: false,
-            more_failed: false,
-            error: String::new(),
+            feed: Feed::Unloaded,
             scroll: UniformListScrollHandle::new(),
             cards: HashMap::new(),
-            request: 0,
+            downloaded: HashSet::new(),
+            downloaded_paths: HashMap::new(),
+            epoch: Epoch::default(),
         }
     }
 }
@@ -97,6 +123,54 @@ pub fn display_date(raw: &str) -> String {
 }
 
 impl StoreState {
+    pub fn is_loading(&self) -> bool {
+        self.feed == Feed::Loading
+    }
+
+    pub fn loading_more(&self) -> bool {
+        self.feed == Feed::Ready(Tail::Fetching)
+    }
+
+    pub fn more_failed(&self) -> bool {
+        self.feed == Feed::Ready(Tail::Failed)
+    }
+
+    pub fn error(&self) -> Option<&str> {
+        match &self.feed {
+            Feed::Failed(m) => Some(m),
+            _ => None,
+        }
+    }
+
+    pub fn is_downloaded(&self, post: &StorePost) -> bool {
+        post.id.is_some_and(|id| self.downloaded.contains(&id))
+    }
+
+    pub fn downloaded_path(&self, post: &StorePost) -> Option<&str> {
+        let id = post.id?;
+        self.downloaded_paths.get(&id).map(String::as_str)
+    }
+
+    pub fn refresh_downloaded(&mut self, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            let loaded = runtime::run(async move { client.downloaded().await }).await;
+            this.update(cx, |s, cx| match loaded {
+                Ok(d) => {
+                    s.downloaded = d.ids.into_iter().collect();
+                    s.downloaded.extend(d.paths.keys().copied());
+                    s.downloaded_paths = d.paths.into_iter().collect();
+                    cx.notify();
+                }
+                Err(e) => tracing::warn!("could not load downloaded posts: {e}"),
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     pub fn card(&self, key: &str) -> CardState {
         self.cards.get(key).cloned().unwrap_or_default()
     }
@@ -112,7 +186,7 @@ impl StoreState {
 
     /// First visit: show the "latest" feed. A no-op once something has loaded.
     pub fn ensure_loaded(&mut self, cx: &mut Context<Self>) {
-        if !self.has_loaded && !self.loading {
+        if matches!(self.feed, Feed::Unloaded | Feed::Failed(_)) {
             self.load_first(self.active_search.clone(), cx);
         }
     }
@@ -143,34 +217,27 @@ impl StoreState {
         let Some(client) = self.client.clone() else {
             return;
         };
-        self.request += 1;
-        let request = self.request;
-        self.loading = true;
-        self.loading_more = false;
-        self.more_failed = false;
-        self.error.clear();
+        let ticket = self.epoch.next();
+        self.feed = Feed::Loading;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let result = Self::fetch_page(client, term, 1).await;
             this.update(cx, |s, cx| {
-                if s.request != request {
+                if !s.epoch.is_current(ticket) {
                     return;
                 }
-                s.loading = false;
                 match result {
                     Ok(items) => {
-                        s.has_more = items.len() == STORE_PAGE_SIZE;
+                        s.feed = Feed::page_loaded(items.len());
                         s.results = Rc::new(items);
                         s.page = 1;
-                        s.has_loaded = true;
                     }
                     Err(message) => {
-                        s.error = if message.is_empty() {
-                            "Failed to load comics.".into()
-                        } else {
-                            message
-                        };
-                        toast::error(cx, s.error.clone());
+                        let message = fallback(message, "Failed to load comics.");
+                        toast::error(cx, message.clone());
+                        s.results = Rc::new(Vec::new());
+                        s.page = 1;
+                        s.feed = Feed::Failed(message);
                     }
                 }
                 cx.notify();
@@ -182,44 +249,35 @@ impl StoreState {
 
     /// Idempotent: the list calls it whenever its last rows are on screen.
     pub fn load_more(&mut self, cx: &mut Context<Self>) {
-        if !self.has_more
-            || !self.has_loaded
-            || self.loading
-            || self.loading_more
-            || self.more_failed
-        {
+        if !self.feed.can_load_more() {
             return;
         }
         let Some(client) = self.client.clone() else {
             return;
         };
-        let (term, next, request) = (self.active_search.clone(), self.page + 1, self.request);
-        self.loading_more = true;
+        let (term, next, ticket) = (
+            self.active_search.clone(),
+            self.page + 1,
+            self.epoch.current(),
+        );
+        self.feed = Feed::Ready(Tail::Fetching);
         cx.notify();
         cx.spawn(async move |this, cx| {
             let result = Self::fetch_page(client, term, next).await;
             this.update(cx, |s, cx| {
                 // A new search started meanwhile: these rows belong to the old one.
-                if s.request != request {
+                if !s.epoch.is_current(ticket) {
                     return;
                 }
-                s.loading_more = false;
                 match result {
                     Ok(items) => {
-                        s.has_more = items.len() == STORE_PAGE_SIZE;
+                        s.feed = Feed::page_loaded(items.len());
                         s.results = Rc::new(append_unique(&s.results, items));
                         s.page = next;
                     }
                     Err(message) => {
-                        s.more_failed = true;
-                        toast::error(
-                            cx,
-                            if message.is_empty() {
-                                "Failed to load more comics.".to_string()
-                            } else {
-                                message
-                            },
-                        );
+                        s.feed = Feed::Ready(Tail::Failed);
+                        toast::error(cx, fallback(message, "Failed to load more comics."));
                     }
                 }
                 cx.notify();
@@ -230,43 +288,83 @@ impl StoreState {
     }
 
     pub fn retry_more(&mut self, cx: &mut Context<Self>) {
-        self.more_failed = false;
-        self.load_more(cx);
+        if self.more_failed() {
+            self.feed = Feed::Ready(Tail::More);
+            self.load_more(cx);
+        }
     }
 
     /// The card's Download / Retry button: links → (link picker) → folder picker → job.
     pub fn download(&mut self, post: &StorePost, cx: &mut Context<Self>) {
+        self.run_download(post, None, None, cx);
+    }
+
+    pub fn download_into(
+        &mut self,
+        post: &StorePost,
+        dir: Option<String>,
+        on_started: impl FnOnce(Option<String>, &mut App) + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.run_download(post, dir, Some(Box::new(on_started)), cx);
+    }
+
+    fn run_download(
+        &mut self,
+        post: &StorePost,
+        dir: Option<String>,
+        on_started: Option<OnStarted>,
+        cx: &mut Context<Self>,
+    ) {
+        let started = |f: Option<OnStarted>, job: Option<String>, cx: &mut App| {
+            if let Some(f) = f {
+                f(job, cx);
+            }
+        };
         let Some(id) = post.id.filter(|id| *id != 0) else {
+            started(on_started, None, cx);
             return;
         };
         let Some(client) = self.client.clone() else {
+            started(on_started, None, cx);
             return;
         };
         let key = post_key(post);
         if self.card(&key) == CardState::LinksLoading {
+            started(on_started, None, cx);
             return;
         }
         self.set_card(&key, CardState::LinksLoading, cx);
         let title = post.title.clone();
 
         cx.spawn(async move |this, cx| {
-            let outcome = Self::download_flow(&client, id, &title, cx).await;
-            this.update(cx, |s, cx| match outcome {
-                Flow::Started => {
-                    s.set_card(&key, CardState::Idle, cx);
-                    toast::success(cx, "Download in progress");
-                }
-                Flow::Cancelled => s.set_card(&key, CardState::Idle, cx),
-                // "No links" is shown on the card only.
-                Flow::NoLinks => s.set_card(
-                    &key,
-                    CardState::Error("No download links found.".into()),
-                    cx,
-                ),
-                Flow::Failed(message) => {
-                    toast::error(cx, message.clone());
-                    s.set_card(&key, CardState::Error(message), cx);
-                }
+            let outcome = Self::download_flow(&client, id, &title, dir, cx).await;
+            this.update(cx, |s, cx| {
+                let job = match outcome {
+                    Flow::Started(job) => {
+                        s.set_card(&key, CardState::Idle, cx);
+                        toast::success(cx, "Download in progress");
+                        job
+                    }
+                    Flow::Cancelled => {
+                        s.set_card(&key, CardState::Idle, cx);
+                        None
+                    }
+                    Flow::NoLinks => {
+                        s.set_card(
+                            &key,
+                            CardState::Error("No download links found.".into()),
+                            cx,
+                        );
+                        None
+                    }
+                    Flow::Failed(message) => {
+                        toast::error(cx, message.clone());
+                        s.set_card(&key, CardState::Error(message), cx);
+                        None
+                    }
+                };
+                started(on_started, job, cx);
             })
             .ok();
         })
@@ -277,6 +375,7 @@ impl StoreState {
         client: &ApiClient,
         id: i64,
         title: &str,
+        dir: Option<String>,
         cx: &mut gpui::AsyncApp,
     ) -> Flow {
         let links = {
@@ -305,14 +404,20 @@ impl StoreState {
             }
         };
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        cx.update(|cx| {
-            modals::open_download_dir(cx, move |dir, _| {
-                let _ = tx.send(dir);
-            })
-        });
-        let Ok(Some(output_dir)) = rx.await else {
-            return Flow::Cancelled;
+        let output_dir = match dir {
+            Some(dir) => dir,
+            None => {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                cx.update(|cx| {
+                    modals::open_download_dir(cx, move |dir, _| {
+                        let _ = tx.send(dir);
+                    })
+                });
+                let Ok(Some(output_dir)) = rx.await else {
+                    return Flow::Cancelled;
+                };
+                output_dir
+            }
         };
 
         let req = StartDownload {
@@ -324,14 +429,16 @@ impl StoreState {
         };
         let client = client.clone();
         match runtime::run(async move { client.start_download(&req).await }).await {
-            Ok(_) => Flow::Started,
+            Ok(job) => Flow::Started(job),
             Err(e) => Flow::Failed(fallback(e.to_string(), "Download failed.")),
         }
     }
 }
 
+type OnStarted = Box<dyn FnOnce(Option<String>, &mut App)>;
+
 enum Flow {
-    Started,
+    Started(Option<String>),
     Cancelled,
     NoLinks,
     Failed(String),
@@ -357,6 +464,23 @@ mod tests {
             link: link.into(),
             upload_date: None,
         }
+    }
+
+    #[test]
+    fn only_a_ready_feed_with_more_loads_more() {
+        assert!(!Feed::Failed("x".into()).can_load_more());
+        assert!(!Feed::Loading.can_load_more());
+        assert!(!Feed::Unloaded.can_load_more());
+        assert!(!Feed::Ready(Tail::Fetching).can_load_more());
+        assert!(!Feed::Ready(Tail::Failed).can_load_more());
+        assert!(!Feed::Ready(Tail::End).can_load_more());
+        assert!(Feed::Ready(Tail::More).can_load_more());
+    }
+
+    #[test]
+    fn a_short_page_ends_the_feed() {
+        assert_eq!(Feed::page_loaded(STORE_PAGE_SIZE), Feed::Ready(Tail::More));
+        assert_eq!(Feed::page_loaded(1), Feed::Ready(Tail::End));
     }
 
     #[test]

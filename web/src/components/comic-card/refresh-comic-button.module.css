@@ -1,0 +1,43 @@
+.refreshComicButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: rgba(255, 255, 255, 0.5);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        color 160ms ease,
+        transform 160ms ease;
+}
+
+.refreshComicButton svg {
+    pointer-events: none;
+}
+
+@media (hover: hover) {
+    .refreshComicButton:hover {
+        background: rgba(52, 195, 209, 0.12);
+        border-color: rgba(52, 195, 209, 0.35);
+        color: #34c3d1;
+    }
+}
+
+.refreshComicButton:active {
+    transform: scale(0.96);
+}
+
+.refreshComicButton:focus-visible {
+    outline: 2px solid #34c3d1;
+    outline-offset: 2px;
+}
+
+.refreshComicButton[aria-busy='true'] {
+    cursor: progress;
+    opacity: 0.5;
+}

@@ -1,0 +1,13 @@
+.content {
+    transition: padding-left 0.2s ease-in-out;
+}
+
+@media (min-width: 801px) {
+    .content {
+        padding-left: var(--sidebar-width);
+    }
+
+    .sidebarCollapsed .content {
+        padding-left: 0;
+    }
+}
