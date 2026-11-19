@@ -821,7 +821,7 @@ dependencies = [
 
 [[package]]
 name = "br-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -851,7 +851,7 @@ dependencies = [
 
 [[package]]
 name = "br-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "br-core",
@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "br-wiki"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "futures-util",
