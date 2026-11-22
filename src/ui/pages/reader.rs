@@ -20,7 +20,7 @@ use crate::model::{Bookmark, LibraryEntry};
 use crate::route::{GoBack, Navigate, Route};
 use crate::runtime;
 use crate::state::Stores;
-use crate::state::reader_images::{PageImages, PageImg};
+use crate::state::reader_images::{LocalArchive, PageImages, PageImg, ReaderSource};
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::text_input::{TextInput, TextInputEvent};
 use crate::ui::icons::{Icon, icon};
@@ -162,7 +162,7 @@ impl Scroll {
 }
 
 pub struct ReaderPage {
-    uid: String,
+    source: ReaderSource,
     stores: Stores,
     images: gpui::Entity<PageImages>,
     load: Load,
@@ -186,9 +186,14 @@ impl EventEmitter<Navigate> for ReaderPage {}
 impl EventEmitter<GoBack> for ReaderPage {}
 
 impl ReaderPage {
-    pub fn new(uid: String, stores: Stores, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        source: ReaderSource,
+        stores: Stores,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let client = stores.comics.read(cx).client.clone();
-        let images = cx.new(|_| PageImages::new(uid.clone(), client));
+        let images = cx.new(|_| PageImages::new(source.clone(), client));
         cx.observe(&images, |this, images, cx| {
             // A page's real size is known: its list item must be measured again.
             let sized = images.update(cx, |s, _| s.take_newly_sized());
@@ -239,7 +244,7 @@ impl ReaderPage {
         let zoom = stores.prefs.read(cx).prefs.zoom;
         let size = window.viewport_size();
         let mut this = Self {
-            uid,
+            source,
             stores,
             images,
             load: Load::Loading,
@@ -259,6 +264,14 @@ impl ReaderPage {
         };
         this.load(cx);
         this
+    }
+
+    /// The library comic being read; `None` for a local file, which has no library entry.
+    fn uid(&self) -> Option<&str> {
+        match &self.source {
+            ReaderSource::Library { uid } => Some(uid),
+            ReaderSource::LocalFile { .. } => None,
+        }
     }
 
     fn list(&self) -> Option<&ListState> {
@@ -286,11 +299,16 @@ impl ReaderPage {
     /// saved position, then show the viewer scrolled there. Bookmarks are optional.
     fn load(&mut self, cx: &mut Context<Self>) {
         self.load = Load::Loading;
+        if let ReaderSource::LocalFile { path } = &self.source {
+            return self.load_local(path.clone(), cx);
+        }
+        let Some(uid) = self.uid().map(str::to_owned) else {
+            return;
+        };
         let Some(client) = self.stores.comics.read(cx).client.clone() else {
             self.load = Load::Error("Server is not ready".into());
             return;
         };
-        let uid = self.uid.clone();
         let comics = self.stores.comics.clone();
         let images = self.images.clone();
         cx.notify();
@@ -326,6 +344,32 @@ impl ReaderPage {
             }
             let bookmarks = fetch_bookmarks(client, uid).await;
             this.update(cx, |t, cx| t.apply_pages(total, saved, bookmarks, cx))
+                .ok();
+        }));
+    }
+
+    /// Local file: list the archive's pages in-process and open on page 1 (nothing is saved).
+    fn load_local(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        let images = self.images.clone();
+        cx.notify();
+        self._task = Some(cx.spawn(async move |this, cx| {
+            let opened = runtime::run(async move {
+                tokio::task::spawn_blocking(move || LocalArchive::open(path))
+                    .await
+                    .unwrap_or_else(|e| Err(e.to_string()))
+            })
+            .await;
+            let local = match opened {
+                Ok(l) => std::sync::Arc::new(l),
+                Err(e) => return fail(&this, cx, e),
+            };
+            let total = local.len();
+            cx.update(|cx| images.update(cx, |s, _| s.set_local(local)));
+            if let Some(range) = preload_range(total, 1) {
+                let warm = cx.update(|cx| images.update(cx, |s, cx| s.load_window(range, 1, cx)));
+                warm.await;
+            }
+            this.update(cx, |t, cx| t.apply_pages(total, 1, Vec::new(), cx))
                 .ok();
         }));
     }
@@ -372,11 +416,14 @@ impl ReaderPage {
         if self.refreshing {
             return;
         }
+        let Some(uid) = self.uid().map(str::to_owned) else {
+            return;
+        };
         let Some(client) = self.stores.comics.read(cx).client.clone() else {
             return;
         };
         self.refreshing = true;
-        let (uid, page) = (self.uid.clone(), self.current);
+        let page = self.current;
         let images = self.images.clone();
         cx.notify();
         self._task = Some(cx.spawn(async move |this, cx| {
@@ -470,6 +517,9 @@ impl ReaderPage {
 
     /// `useReaderProgress`: every page change is written through the debounced comic cache.
     fn on_page_changed(&mut self, cx: &mut Context<Self>) {
+        let Some(uid) = self.uid().map(str::to_owned) else {
+            return;
+        };
         let Load::Ready(loaded) = &mut self.load else {
             return;
         };
@@ -479,7 +529,6 @@ impl ReaderPage {
         loaded.touched = true;
         let (page, total) = (self.current, loaded.total);
         let (per, read) = progress(page, total);
-        let uid = self.uid.clone();
         self.stores.comics.update(cx, |s, cx| {
             s.update(&uid, cx, |c| {
                 c.read_per = per;
@@ -491,11 +540,12 @@ impl ReaderPage {
 
     /// `ReaderNext`: the entry after this one in its folder.
     fn next_entry(&self, cx: &App) -> Option<LibraryEntry> {
+        let uid = self.uid()?;
         let lib = self.stores.library.read(cx);
-        let entry = lib.find_entry(&self.uid)?;
+        let entry = lib.find_entry(uid)?;
         let parent = (!entry.parent_id.is_empty()).then(|| entry.parent_id.clone());
         let siblings = lib.items(false, parent.as_deref());
-        let ix = siblings.iter().position(|e| e.uid == self.uid)?;
+        let ix = siblings.iter().position(|e| e.uid == uid)?;
         siblings.into_iter().skip(ix + 1).find(|e| !e.did)
     }
 
@@ -579,14 +629,21 @@ fn tool_button(id: &'static str) -> gpui::Stateful<gpui::Div> {
 impl ReaderPage {
     fn toolbar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let spinning = self.refreshing;
-        let title: gpui::SharedString = self
-            .stores
-            .library
-            .read(cx)
-            .find_entry(&self.uid)
-            .map(|e| e.name.clone())
-            .unwrap_or_default()
-            .into();
+        let title: gpui::SharedString = match &self.source {
+            ReaderSource::Library { uid } => self
+                .stores
+                .library
+                .read(cx)
+                .find_entry(uid)
+                .map(|e| e.name.clone())
+                .unwrap_or_default(),
+            ReaderSource::LocalFile { path } => path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        }
+        .into();
+        let is_library = self.uid().is_some();
         div()
             .flex()
             .items_center()
@@ -657,12 +714,14 @@ impl ReaderPage {
                     )
                     .child(format!("/ {}", self.total())),
             )
-            .child(
-                tool_button("reader-refresh")
-                    .opacity(if spinning { 0.4 } else { 1.0 })
-                    .on_click(cx.listener(|this, _, _, cx| this.refresh(cx)))
-                    .child(icon(Icon::Refresh, px(16.0)).text_color(theme::text())),
-            )
+            .when(is_library, |s| {
+                s.child(
+                    tool_button("reader-refresh")
+                        .opacity(if spinning { 0.4 } else { 1.0 })
+                        .on_click(cx.listener(|this, _, _, cx| this.refresh(cx)))
+                        .child(icon(Icon::Refresh, px(16.0)).text_color(theme::text())),
+                )
+            })
             .children(window_controls(window))
     }
 

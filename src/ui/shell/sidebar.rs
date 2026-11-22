@@ -11,7 +11,7 @@ use gpui::{
 };
 
 use crate::model::LibraryStructure;
-use crate::route::{Navigate, Route};
+use crate::route::{Navigate, OpenFile, Route};
 use crate::state::Stores;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::text_input::{TextInput, TextInputEvent};
@@ -52,6 +52,7 @@ pub struct Sidebar {
 }
 
 impl EventEmitter<Navigate> for Sidebar {}
+impl EventEmitter<OpenFile> for Sidebar {}
 
 impl Sidebar {
     pub fn new(stores: Stores, cx: &mut Context<Self>) -> Self {
@@ -289,7 +290,25 @@ impl Render for Sidebar {
                             Icon::BookOpen,
                             Route::Reading,
                             cx,
-                        )),
+                        ))
+                        .child(
+                            div()
+                                .id("nav-open-file")
+                                .flex()
+                                .items_center()
+                                .w_full()
+                                .gap(px(10.0))
+                                .px(px(10.0))
+                                .py(px(9.0))
+                                .rounded(px(6.0))
+                                .cursor_pointer()
+                                .text_size(px(14.0))
+                                .text_color(rgb(0xd8d8d8))
+                                .hover(|s| s.bg(rgba(0xffffff0f)))
+                                .on_click(cx.listener(|_, _, _, cx| cx.emit(OpenFile)))
+                                .child(icon(Icon::Folder, px(16.0)).text_color(rgb(0xd8d8d8)))
+                                .child("Open file…"),
+                        ),
                 )
                 .child(
                     div()

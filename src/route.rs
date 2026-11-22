@@ -1,5 +1,7 @@
 //! Routing. GPUI has no router: an `enum Route` plus a back/forward stack.
 
+use std::path::PathBuf;
+
 /// App pages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
@@ -12,6 +14,10 @@ pub enum Route {
     /// `/:uid/reader`
     Reader {
         uid: String,
+    },
+    /// A comic archive outside the library, read in place.
+    LocalReader {
+        path: PathBuf,
     },
     Settings,
     Store,
@@ -41,7 +47,7 @@ impl Route {
                 search: Some(_), ..
             } => "Search",
             Self::Library { .. } => "Library",
-            Self::Reader { .. } => "Reader",
+            Self::Reader { .. } | Self::LocalReader { .. } => "Reader",
             Self::Settings => "Settings",
             Self::Store => "Store",
             Self::StoreDownloads => "Downloads",
@@ -54,7 +60,7 @@ impl Route {
 
     /// Reader (and the app loader) are full-bleed: no Header/SideBar `Layout`.
     pub fn uses_layout(&self) -> bool {
-        !matches!(self, Self::Reader { .. })
+        !matches!(self, Self::Reader { .. } | Self::LocalReader { .. })
     }
 }
 
@@ -130,6 +136,9 @@ pub struct Navigate(pub Route);
 
 /// `history.back()` with fallback to `/`.
 pub struct GoBack;
+
+/// Emitted by the sidebar: ask `AppRoot` to show the "Open file…" dialog.
+pub struct OpenFile;
 
 #[cfg(test)]
 mod tests {
