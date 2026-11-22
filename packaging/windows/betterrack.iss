@@ -26,6 +26,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 DisableProgramGroupPage=yes
+ChangesAssociations=yes
 LicenseFile=..\..\dist\BetterRack\NOTICE.txt
 
 [Tasks]
@@ -37,6 +38,16 @@ Source: "..\..\dist\BetterRack\*"; DestDir: "{app}"; Flags: recursesubdirs creat
 [Icons]
 Name: "{group}\Better Rack"; Filename: "{app}\better-rack-rus.exe"
 Name: "{autodesktop}\Better Rack"; Filename: "{app}\better-rack-rus.exe"; Tasks: desktopicon
+
+[Registry]
+; "Open with" entries for comic archives. They list the app without taking over the default handler.
+Root: HKA; Subkey: "Software\Classes\BetterRack.Comic"; ValueType: string; ValueName: ""; ValueData: "Comic archive"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\BetterRack.Comic\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\better-rack-rus.exe,0"
+Root: HKA; Subkey: "Software\Classes\BetterRack.Comic\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\better-rack-rus.exe"" ""%1"""
+Root: HKA; Subkey: "Software\Classes\.cbz\OpenWithProgids"; ValueType: string; ValueName: "BetterRack.Comic"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.cbr\OpenWithProgids"; ValueType: string; ValueName: "BetterRack.Comic"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.cb7\OpenWithProgids"; ValueType: string; ValueName: "BetterRack.Comic"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.cbt\OpenWithProgids"; ValueType: string; ValueName: "BetterRack.Comic"; ValueData: ""; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\better-rack-rus.exe"; Description: "Launch Better Rack"; Flags: nowait postinstall skipifsilent

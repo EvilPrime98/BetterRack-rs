@@ -7,8 +7,10 @@
 
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
+use br_core::archive::Archives;
 use gpui::{Context, Image, ImageSource, Task};
 use tokio::sync::Semaphore;
 
@@ -32,10 +34,58 @@ pub enum PageImg {
     Failed,
 }
 
-#[derive(Default)]
+/// Where the reader gets its pages from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReaderSource {
+    /// A library comic, read through the server.
+    Library { uid: String },
+    /// An archive on disk outside the library, read in-process.
+    LocalFile { path: PathBuf },
+}
+
+/// An opened local archive and its page entries, in reading order.
+pub struct LocalArchive {
+    path: PathBuf,
+    archives: Archives,
+    pages: Vec<String>,
+}
+
+impl LocalArchive {
+    /// Blocking: lists the archive's image pages.
+    pub fn open(path: PathBuf) -> Result<Self, String> {
+        if !path.is_file() {
+            return Err(format!("File not found: \"{}\"", path.display()));
+        }
+        let archives =
+            Archives::new(std::env::var_os(br_core::archive::SEVEN_ZIP_ENV_VAR).map(PathBuf::from));
+        let pages = archives.list_pages(&path).map_err(|e| e.to_string())?;
+        Ok(Self {
+            path,
+            archives,
+            pages,
+        })
+    }
+
+    pub fn len(&self) -> u32 {
+        self.pages.len() as u32
+    }
+
+    /// Bytes of the 1-based `page`.
+    fn page_bytes(&self, page: u32) -> Option<Vec<u8>> {
+        let entry = self.pages.get(page.checked_sub(1)? as usize)?;
+        self.archives.read_entry(&self.path, entry).ok()
+    }
+}
+
+enum Backend {
+    Server(ApiClient, String),
+    Local(Arc<LocalArchive>),
+}
+
 pub struct PageImages {
-    pub client: Option<ApiClient>,
-    pub uid: String,
+    source: ReaderSource,
+    client: Option<ApiClient>,
+    local: Option<Arc<LocalArchive>>,
     entries: HashMap<u32, PageImg>,
     /// height / width, by 1-based page.
     aspects: HashMap<u32, f32>,
@@ -54,12 +104,29 @@ fn dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
 }
 
 impl PageImages {
-    pub fn new(uid: String, client: Option<ApiClient>) -> Self {
+    pub fn new(source: ReaderSource, client: Option<ApiClient>) -> Self {
         Self {
-            uid,
+            source,
             client,
+            local: None,
+            entries: HashMap::new(),
+            aspects: HashMap::new(),
+            newly_sized: Vec::new(),
             center: 1,
-            ..Self::default()
+        }
+    }
+
+    /// Local mode: the archive pages are read from.
+    pub fn set_local(&mut self, local: Arc<LocalArchive>) {
+        self.local = Some(local);
+    }
+
+    fn backend(&self) -> Option<Backend> {
+        match &self.source {
+            ReaderSource::Library { uid } => {
+                Some(Backend::Server(self.client.clone()?, uid.clone()))
+            }
+            ReaderSource::LocalFile { .. } => Some(Backend::Local(self.local.clone()?)),
         }
     }
 
@@ -116,15 +183,21 @@ impl PageImages {
     }
 
     fn fetch(&mut self, page: u32, cx: &mut Context<Self>) -> Task<()> {
-        let Some(client) = self.client.clone() else {
+        let Some(backend) = self.backend() else {
             return Task::ready(());
         };
         self.entries.insert(page, PageImg::Loading);
-        let uid = self.uid.clone();
         cx.spawn(async move |this, cx| {
             let loaded = runtime::run(async move {
                 let _permit = permits().acquire().await.ok()?;
-                let bytes = client.page_bytes(&uid, page).await.ok()?;
+                let bytes = match backend {
+                    Backend::Server(client, uid) => client.page_bytes(&uid, page).await.ok()?,
+                    Backend::Local(local) => {
+                        tokio::task::spawn_blocking(move || local.page_bytes(page))
+                            .await
+                            .ok()??
+                    }
+                };
                 let format = sniff(&bytes)?;
                 let (w, h) = dimensions(&bytes)?;
                 Some((format, bytes, w, h))

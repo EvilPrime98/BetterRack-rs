@@ -10,9 +10,10 @@ use gpui::{
 use crate::api::ApiClient;
 use crate::platform::server_process::{self, Launch, ServerProcess};
 use crate::platform::{close_guard, logging, server_config, update_check};
-use crate::route::{GoBack, History, Navigate, Route, window_title};
+use crate::route::{GoBack, History, Navigate, OpenFile, Route, window_title};
 use crate::runtime;
 use crate::state::Stores;
+use crate::state::reader_images::ReaderSource;
 use crate::ui::app_loader::app_loader;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::confirm::{self, ConfirmHost, ConfirmOptions};
@@ -30,12 +31,22 @@ use crate::ui::shell::sidebar::Sidebar;
 use crate::ui::theme;
 use crate::ui::toast::{self, ToastHost};
 
-actions!(betterrack, [Back, Forward, ToggleFullscreen, RequestClose]);
+actions!(
+    betterrack,
+    [
+        Back,
+        Forward,
+        ToggleFullscreen,
+        RequestClose,
+        OpenFileDialog
+    ]
+);
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         gpui::KeyBinding::new("alt-left", Back, None),
         gpui::KeyBinding::new("alt-right", Forward, None),
+        gpui::KeyBinding::new("secondary-o", OpenFileDialog, None),
         // F11 anywhere; macOS also uses ctrl-cmd-f.
         gpui::KeyBinding::new("f11", ToggleFullscreen, None),
         #[cfg(target_os = "macos")]
@@ -100,7 +111,8 @@ pub struct AppRoot {
     _page_subs: Vec<Subscription>,
     _subs: Vec<Subscription>,
     page_gen: u64,
-    /// Dev aid: `BETTERRACK_OPEN` (see [`dev_route`]) opens a page once startup finishes.
+    /// Opened once startup finishes: the file given on the command line, or the dev aid
+    /// `BETTERRACK_OPEN` (see [`dev_route`]).
     pending_route: Option<Route>,
     dev_identify_opened: Option<bool>,
     focus: FocusHandle,
@@ -125,6 +137,9 @@ impl AppRoot {
                     this.close_sidebar_overlay(cx);
                 }
                 this.navigate(ev.0.clone(), window, cx)
+            }),
+            cx.subscribe_in(&sidebar, window, |this, _, _: &OpenFile, window, cx| {
+                this.open_file_dialog(window, cx)
             }),
             // The loader message follows the identify-all progress.
             cx.observe(&stores.library, |_, _, cx| cx.notify()),
@@ -152,7 +167,7 @@ impl AppRoot {
             _page_subs: Vec::new(),
             _subs: subs,
             page_gen: 0,
-            pending_route: dev_route(),
+            pending_route: cli_route().or_else(dev_route),
             dev_identify_opened: None,
             focus,
             close: Close::Idle,
@@ -373,6 +388,34 @@ impl AppRoot {
         self.route_changed(window, cx);
     }
 
+    /// "Open file…": pick a comic archive and read it in place, without adding it to the library.
+    pub fn open_file_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.boot.loader_up() {
+            return;
+        }
+        let handle = window.window_handle();
+        cx.spawn(async move |this, cx| {
+            let picked = runtime::run(async {
+                rfd::AsyncFileDialog::new()
+                    .add_filter("Comic archives", &COMIC_FILE_EXTENSIONS)
+                    .pick_file()
+                    .await
+                    .map(|h| h.path().to_path_buf())
+            })
+            .await;
+            let Some(path) = picked else { return };
+            handle
+                .update(cx, |_, window, cx| {
+                    this.update(cx, |this, cx| {
+                        this.navigate(Route::LocalReader { path }, window, cx)
+                    })
+                    .ok();
+                })
+                .ok();
+        })
+        .detach();
+    }
+
     pub fn go_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.history.back_or_home();
         self.route_changed(window, cx);
@@ -405,8 +448,13 @@ impl AppRoot {
         self._page_subs.clear();
         self.page_gen += 1;
         self.page = match route {
-            Route::Reader { uid } => {
-                let page = cx.new(|cx| ReaderPage::new(uid, self.stores.clone(), window, cx));
+            route @ (Route::Reader { .. } | Route::LocalReader { .. }) => {
+                let source = match route {
+                    Route::Reader { uid } => ReaderSource::Library { uid },
+                    Route::LocalReader { path } => ReaderSource::LocalFile { path },
+                    _ => unreachable!(),
+                };
+                let page = cx.new(|cx| ReaderPage::new(source, self.stores.clone(), window, cx));
                 self._page_subs.push(cx.subscribe_in(
                     &page,
                     window,
@@ -658,6 +706,11 @@ impl Render for AppRoot {
             .track_focus(&self.focus)
             .on_action(cx.listener(|this, _: &Back, window, cx| this.go_back(window, cx)))
             .on_action(cx.listener(|this, _: &Forward, window, cx| this.go_forward(window, cx)))
+            .on_action(
+                cx.listener(|this, _: &OpenFileDialog, window, cx| {
+                    this.open_file_dialog(window, cx)
+                }),
+            )
             .on_action(cx.listener(|_, _: &ToggleFullscreen, window, _| window.toggle_fullscreen()))
             // The Linux close button goes through here so it is guarded like the OS close.
             .on_action(cx.listener(|this, _: &RequestClose, window, cx| {
@@ -762,6 +815,21 @@ impl Render for AppRoot {
                 )
             })
     }
+}
+
+/// Extensions the "Open file…" picker offers: the library's comic formats plus plain zip/rar/7z.
+const COMIC_FILE_EXTENSIONS: [&str; 7] = ["cbz", "cbr", "cb7", "cbt", "zip", "rar", "7z"];
+
+/// The first command-line argument (also what the OS "Open with" action passes) is a comic file
+/// to read in place.
+fn cli_route() -> Option<Route> {
+    let arg = std::env::args_os().nth(1)?;
+    if arg.to_string_lossy().starts_with('-') {
+        return None;
+    }
+    let path = std::path::PathBuf::from(arg);
+    let path = std::path::absolute(&path).unwrap_or(path);
+    Some(Route::LocalReader { path })
 }
 
 /// Dev aid. `BETTERRACK_OPEN_READER=<uid>`, or `BETTERRACK_OPEN=settings|store|downloads|recent|reading|
