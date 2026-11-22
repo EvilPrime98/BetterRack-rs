@@ -354,13 +354,17 @@ impl ReaderPage {
         cx.notify();
         self._task = Some(cx.spawn(async move |this, cx| {
             let opened = runtime::run(async move {
-                tokio::task::spawn_blocking(move || LocalArchive::open(path))
-                    .await
-                    .unwrap_or_else(|e| Err(e.to_string()))
+                tokio::task::spawn_blocking(move || {
+                    let local = LocalArchive::open(path)?;
+                    let bookmarks = local.bookmarks();
+                    Ok((local, bookmarks))
+                })
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()))
             })
             .await;
-            let local = match opened {
-                Ok(l) => std::sync::Arc::new(l),
+            let (local, bookmarks) = match opened {
+                Ok((l, b)) => (std::sync::Arc::new(l), b),
                 Err(e) => return fail(&this, cx, e),
             };
             let total = local.len();
@@ -369,7 +373,7 @@ impl ReaderPage {
                 let warm = cx.update(|cx| images.update(cx, |s, cx| s.load_window(range, 1, cx)));
                 warm.await;
             }
-            this.update(cx, |t, cx| t.apply_pages(total, 1, Vec::new(), cx))
+            this.update(cx, |t, cx| t.apply_pages(total, 1, bookmarks, cx))
                 .ok();
         }));
     }
