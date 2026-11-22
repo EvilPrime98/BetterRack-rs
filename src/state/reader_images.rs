@@ -70,6 +70,19 @@ impl LocalArchive {
         self.pages.len() as u32
     }
 
+    /// Blocking: the page bookmarks in `ComicInfo.xml`; empty on any failure.
+    pub fn bookmarks(&self) -> Vec<crate::model::Bookmark> {
+        self.archives
+            .bookmarks(&self.path)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|b| crate::model::Bookmark {
+                page: b.page,
+                label: b.label,
+            })
+            .collect()
+    }
+
     /// Bytes of the 1-based `page`.
     fn page_bytes(&self, page: u32) -> Option<Vec<u8>> {
         let entry = self.pages.get(page.checked_sub(1)? as usize)?;
