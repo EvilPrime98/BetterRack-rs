@@ -7,6 +7,7 @@ pub mod downloads;
 pub mod epoch;
 pub mod identify;
 pub mod library;
+pub mod local_progress;
 pub mod prefs;
 pub mod pull_list;
 pub mod reader_images;
