@@ -20,6 +20,7 @@ use crate::model::{Bookmark, LibraryEntry};
 use crate::route::{GoBack, Navigate, Route};
 use crate::runtime;
 use crate::state::Stores;
+use crate::state::local_progress;
 use crate::state::reader_images::{LocalArchive, PageImages, PageImg, ReaderSource};
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::text_input::{TextInput, TextInputEvent};
@@ -180,6 +181,8 @@ pub struct ReaderPage {
     focus: FocusHandle,
     page_input: gpui::Entity<TextInput>,
     _task: Option<Task<()>>,
+    /// Pending debounced write of a local file's page; replacing it cancels the previous one.
+    _local_save: Option<Task<()>>,
 }
 
 impl EventEmitter<Navigate> for ReaderPage {}
@@ -261,6 +264,7 @@ impl ReaderPage {
             focus,
             page_input,
             _task: None,
+            _local_save: None,
         };
         this.load(cx);
         this
@@ -348,32 +352,35 @@ impl ReaderPage {
         }));
     }
 
-    /// Local file: list the archive's pages in-process and open on page 1 (nothing is saved).
+    /// Local file: list the archive's pages in-process and open on the remembered page (page 1
+    /// when none is saved or the file was finished).
     fn load_local(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
         let images = self.images.clone();
         cx.notify();
         self._task = Some(cx.spawn(async move |this, cx| {
             let opened = runtime::run(async move {
                 tokio::task::spawn_blocking(move || {
-                    let local = LocalArchive::open(path)?;
+                    let local = LocalArchive::open(path.clone())?;
                     let bookmarks = local.bookmarks();
-                    Ok((local, bookmarks))
+                    let saved = local_progress::resume_page(&path, local.len());
+                    Ok((local, bookmarks, saved))
                 })
                 .await
                 .unwrap_or_else(|e| Err(e.to_string()))
             })
             .await;
-            let (local, bookmarks) = match opened {
-                Ok((l, b)) => (std::sync::Arc::new(l), b),
+            let (local, bookmarks, saved) = match opened {
+                Ok((l, b, s)) => (std::sync::Arc::new(l), b, s),
                 Err(e) => return fail(&this, cx, e),
             };
             let total = local.len();
             cx.update(|cx| images.update(cx, |s, _| s.set_local(local)));
-            if let Some(range) = preload_range(total, 1) {
-                let warm = cx.update(|cx| images.update(cx, |s, cx| s.load_window(range, 1, cx)));
+            if let Some(range) = preload_range(total, saved) {
+                let warm =
+                    cx.update(|cx| images.update(cx, |s, cx| s.load_window(range, saved, cx)));
                 warm.await;
             }
-            this.update(cx, |t, cx| t.apply_pages(total, 1, bookmarks, cx))
+            this.update(cx, |t, cx| t.apply_pages(total, saved, bookmarks, cx))
                 .ok();
         }));
     }
@@ -521,9 +528,6 @@ impl ReaderPage {
 
     /// `useReaderProgress`: every page change is written through the debounced comic cache.
     fn on_page_changed(&mut self, cx: &mut Context<Self>) {
-        let Some(uid) = self.uid().map(str::to_owned) else {
-            return;
-        };
         let Load::Ready(loaded) = &mut self.load else {
             return;
         };
@@ -532,6 +536,20 @@ impl ReaderPage {
         }
         loaded.touched = true;
         let (page, total) = (self.current, loaded.total);
+        let Some(uid) = self.uid().map(str::to_owned) else {
+            if let ReaderSource::LocalFile { path } = &self.source {
+                let path = path.clone();
+                self._local_save = Some(cx.spawn(async move |_, cx| {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(500))
+                        .await;
+                    cx.background_executor()
+                        .spawn(async move { local_progress::save_page(&path, page) })
+                        .await;
+                }));
+            }
+            return;
+        };
         let (per, read) = progress(page, total);
         self.stores.comics.update(cx, |s, cx| {
             s.update(&uid, cx, |c| {
