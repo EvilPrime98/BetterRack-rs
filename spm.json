@@ -2,15 +2,6 @@
   "repos": [
     "EvilPrime98/mySkills"
   ],
-  "skills": {
-    "github-issue-doctor": "EvilPrime98/mySkills",
-    "github-issue-resolver": "EvilPrime98/mySkills",
-    "gpui-kit": {
-      "repo": "https://github.com/AprilNEA/OpenLogi/tree/master/.agents/skills/gpui-kit",
-      "ref": "f4b2f864a6a262de1d4455e1da584d217910a9f3",
-      "market": "skillsmp"
-    },
-    "issue-orchestrator": "EvilPrime98/mySkills"
-  },
+  "skills": {},
   "isolate": false
 }
