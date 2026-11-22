@@ -2,8 +2,9 @@
 Type=Application
 Name=Better Rack
 Comment=Local comic book library reader
-Exec=better-rack-rus
+Exec=better-rack-rus %f
 Icon=betterrack
 Categories=Graphics;Viewer;
+MimeType=application/vnd.comicbook+zip;application/vnd.comicbook-rar;application/x-cbz;application/x-cbr;application/x-cb7;application/x-cbt;
 Terminal=false
 StartupWMClass=betterrack
