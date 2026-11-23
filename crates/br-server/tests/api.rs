@@ -12,25 +12,15 @@ struct Harness {
     router: axum::Router,
 }
 
-fn harness(api_key: Option<&str>) -> Harness {
+fn harness() -> Harness {
     let dir = tempfile::tempdir().unwrap();
-    let mut config = Config::from_lookup(|_| None, dir.path().to_path_buf());
-    config.api_key = api_key.map(str::to_string);
+    let config = Config::from_lookup(|_| None, dir.path().to_path_buf());
     let router = app(AppState::open(config).unwrap());
     Harness { _dir: dir, router }
 }
 
-async fn call(
-    h: &Harness,
-    method: &str,
-    uri: &str,
-    body: Option<Value>,
-    key: Option<&str>,
-) -> (StatusCode, String) {
-    let mut req = Request::builder().method(method).uri(uri);
-    if let Some(k) = key {
-        req = req.header("x-br-api-key", k);
-    }
+async fn call(h: &Harness, method: &str, uri: &str, body: Option<Value>) -> (StatusCode, String) {
+    let req = Request::builder().method(method).uri(uri);
     let body = body.map_or(Body::empty(), |b| Body::from(b.to_string()));
     let res = h
         .router
@@ -51,22 +41,13 @@ async fn json_call(
     uri: &str,
     body: Option<Value>,
 ) -> (StatusCode, Value) {
-    let (s, t) = call(h, method, uri, body, None).await;
+    let (s, t) = call(h, method, uri, body).await;
     (s, serde_json::from_str(&t).unwrap_or(Value::String(t)))
 }
 
 #[tokio::test]
-async fn healthz_and_unknown_route() {
-    let h = harness(None);
-    let (s, v) = json_call(&h, "GET", "/healthz", None).await;
-    assert_eq!((s, v["app"].as_str()), (StatusCode::OK, Some("betterrack")));
-    let (s, t) = call(&h, "GET", "/api/nope", None, None).await;
-    assert_eq!((s, t.as_str()), (StatusCode::NOT_FOUND, "Not Found"));
-}
-
-#[tokio::test]
 async fn settings_round_trip_and_output_dirs_are_protected() {
-    let h = harness(None);
+    let h = harness();
     let (_, v) = json_call(&h, "GET", "/api/settings", None).await;
     assert_eq!(
         v,
@@ -90,7 +71,7 @@ async fn settings_round_trip_and_output_dirs_are_protected() {
         (Some("https://x.test"), Some(true), 0)
     );
 
-    let (s, t) = call(&h, "PUT", "/api/settings", None, None).await;
+    let (s, t) = call(&h, "PUT", "/api/settings", None).await;
     assert_eq!(
         (s, t.as_str()),
         (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
@@ -99,7 +80,7 @@ async fn settings_round_trip_and_output_dirs_are_protected() {
 
 #[tokio::test]
 async fn library_folders_add_remove_validate() {
-    let h = harness(None);
+    let h = harness();
     let lib = tempfile::tempdir().unwrap();
     let path = lib.path().to_string_lossy().into_owned();
 
@@ -162,7 +143,7 @@ async fn library_folders_add_remove_validate() {
 
 #[tokio::test]
 async fn comic_data_patch_and_list() {
-    let h = harness(None);
+    let h = harness();
     assert_eq!(
         json_call(&h, "GET", "/api/comic-data", None).await.1,
         json!({})
@@ -182,37 +163,4 @@ async fn comic_data_patch_and_list() {
     assert!(v["lastReadAt"].as_i64().unwrap() > 0);
     let (_, all) = json_call(&h, "GET", "/api/comic-data", None).await;
     assert_eq!(all["abc"], v);
-}
-
-#[tokio::test]
-async fn api_key_guard() {
-    let h = harness(Some("s3cret"));
-    let (s, t) = call(&h, "GET", "/api/settings", None, None).await;
-    assert_eq!((s, t.as_str()), (StatusCode::UNAUTHORIZED, "Unauthorized"));
-    assert_eq!(
-        call(&h, "GET", "/api/nope", None, None).await.0,
-        StatusCode::UNAUTHORIZED
-    );
-    assert_eq!(
-        call(&h, "GET", "/api/settings", None, Some("wrong"))
-            .await
-            .0,
-        StatusCode::UNAUTHORIZED
-    );
-    assert_eq!(
-        call(&h, "GET", "/api/settings", None, Some("s3cret"))
-            .await
-            .0,
-        StatusCode::OK
-    );
-    assert_eq!(
-        call(&h, "GET", "/api/settings?key=s3cret", None, None)
-            .await
-            .0,
-        StatusCode::OK
-    );
-    assert_eq!(
-        call(&h, "GET", "/healthz", None, None).await.0,
-        StatusCode::OK
-    );
 }

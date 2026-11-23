@@ -23,6 +23,10 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
+      - name: Black-box cases
+        shell: bash
+        run: tests/run.sh
+
       - name: Test
         run: cargo test --locked --workspace
 
@@ -51,3 +55,6 @@ jobs:
 
       - name: Test
         run: cargo test --locked --workspace
+
+      - name: Black-box cases
+        run: tests/run.sh
