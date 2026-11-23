@@ -18,6 +18,7 @@ pub struct Prefs {
     pub sidebar_compact: bool,
     pub sidebar_collapsed: bool,
     pub sidebar_pinned: bool,
+    pub local_tabs: bool,
 }
 
 impl Default for Prefs {
@@ -31,6 +32,7 @@ impl Default for Prefs {
             sidebar_compact: false,
             sidebar_collapsed: false,
             sidebar_pinned: true,
+            local_tabs: false,
         }
     }
 }

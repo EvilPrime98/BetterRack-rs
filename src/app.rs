@@ -1,10 +1,12 @@
 //! Root entity: routing, server lifecycle, startup sequence, shell chrome and
 //! the global overlays (toasts, confirm dialog, app loader).
 
+use std::path::PathBuf;
+
 use gpui::{
     AnimationExt as _, AnyView, App, AppContext as _, Context, Entity, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, ParentElement, Render, Styled, Subscription, Window, actions,
-    deferred, div, prelude::*, px,
+    InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement, Styled,
+    Subscription, Window, actions, deferred, div, prelude::*, px,
 };
 
 use crate::api::ApiClient;
@@ -17,6 +19,7 @@ use crate::state::reader_images::ReaderSource;
 use crate::ui::app_loader::app_loader;
 use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::confirm::{self, ConfirmHost, ConfirmOptions};
+use crate::ui::icons::{Icon, icon};
 use crate::ui::modals::{self, ModalHost};
 use crate::ui::motion;
 use crate::ui::pages::downloads::DownloadsPage;
@@ -38,7 +41,9 @@ actions!(
         Forward,
         ToggleFullscreen,
         RequestClose,
-        OpenFileDialog
+        OpenFileDialog,
+        CloseTab,
+        NextTab
     ]
 );
 
@@ -47,6 +52,8 @@ pub fn bind_keys(cx: &mut App) {
         gpui::KeyBinding::new("alt-left", Back, None),
         gpui::KeyBinding::new("alt-right", Forward, None),
         gpui::KeyBinding::new("secondary-o", OpenFileDialog, None),
+        gpui::KeyBinding::new("ctrl-w", CloseTab, None),
+        gpui::KeyBinding::new("ctrl-tab", NextTab, None),
         // F11 anywhere; macOS also uses ctrl-cmd-f.
         gpui::KeyBinding::new("f11", ToggleFullscreen, None),
         #[cfg(target_os = "macos")]
@@ -117,6 +124,8 @@ pub struct AppRoot {
     dev_identify_opened: Option<bool>,
     focus: FocusHandle,
     close: Close,
+    tabs: Vec<PathBuf>,
+    active_tab: usize,
 }
 
 impl AppRoot {
@@ -171,6 +180,8 @@ impl AppRoot {
             dev_identify_opened: None,
             focus,
             close: Close::Idle,
+            tabs: Vec::new(),
+            active_tab: 0,
         };
         // Closing cancels running downloads: ask first (`on_window_should_close` is synchronous, so
         // the check runs in the background and the window closes itself once it is answered).
@@ -416,6 +427,110 @@ impl AppRoot {
         .detach();
     }
 
+    fn tabs_enabled(&self, cx: &App) -> bool {
+        self.stores.prefs.read(cx).prefs.local_tabs
+    }
+
+    fn tabs_visible(&self, cx: &App) -> bool {
+        self.tabs_enabled(cx)
+            && !self.tabs.is_empty()
+            && matches!(self.history.current(), Route::LocalReader { .. })
+    }
+
+    fn open_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(path) = self.tabs.get(index).cloned() {
+            self.navigate(Route::LocalReader { path }, window, cx);
+        }
+    }
+
+    fn close_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        let was_active = index == self.active_tab;
+        self.tabs.remove(index);
+        if self.tabs.is_empty() {
+            self.active_tab = 0;
+            self.navigate(Route::home(), window, cx);
+        } else if was_active {
+            self.active_tab = index.min(self.tabs.len() - 1);
+            self.open_tab(self.active_tab, window, cx);
+        } else {
+            if index < self.active_tab {
+                self.active_tab -= 1;
+            }
+            cx.notify();
+        }
+    }
+
+    fn render_tabs(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let tabs = self.tabs.iter().enumerate().map(|(i, path)| {
+            let active = i == self.active_tab;
+            let title = path
+                .file_stem()
+                .unwrap_or(path.as_os_str())
+                .to_string_lossy()
+                .into_owned();
+            div()
+                .id(("tab", i))
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(px(8.0))
+                .max_w(px(220.0))
+                .h_full()
+                .pl(px(12.0))
+                .pr(px(6.0))
+                .cursor_pointer()
+                .text_size(px(12.0))
+                .border_b_2()
+                .border_color(if active {
+                    theme::text()
+                } else {
+                    gpui::rgba(0x00000000).into()
+                })
+                .text_color(if active {
+                    theme::text()
+                } else {
+                    theme::text_muted()
+                })
+                .hover(|s| s.bg(gpui::rgba(0xffffff0f)))
+                .on_click(cx.listener(move |this, _, window, cx| this.open_tab(i, window, cx)))
+                .child(div().min_w_0().truncate().child(title))
+                .child(
+                    div()
+                        .id(("tab-close", i))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .size(px(20.0))
+                        .rounded_full()
+                        .hover(|s| s.bg(gpui::rgba(0xffffff1f)))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.close_tab(i, window, cx)
+                        }))
+                        .child(icon(Icon::Close, px(12.0)).text_color(theme::text())),
+                )
+        });
+        div()
+            .flex()
+            .flex_none()
+            .h(px(34.0))
+            .w_full()
+            .overflow_hidden()
+            .border_b_1()
+            .border_color(theme::border_subtle())
+            .bg(theme::bg_app())
+            .children(tabs)
+    }
+
+    fn next_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.tabs_visible(cx) {
+            self.open_tab((self.active_tab + 1) % self.tabs.len(), window, cx);
+        }
+    }
+
     pub fn go_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.history.back_or_home();
         self.route_changed(window, cx);
@@ -444,6 +559,17 @@ impl AppRoot {
             self.stores
                 .comics
                 .update(cx, |s, cx| s.flush_pending(cx).detach());
+        }
+        if !self.tabs_enabled(cx) {
+            self.tabs.clear();
+        } else if let Route::LocalReader { path } = &route {
+            match self.tabs.iter().position(|p| p == path) {
+                Some(i) => self.active_tab = i,
+                None => {
+                    self.tabs.push(path.clone());
+                    self.active_tab = self.tabs.len() - 1;
+                }
+            }
         }
         self._page_subs.clear();
         self.page_gen += 1;
@@ -700,6 +826,8 @@ impl Render for AppRoot {
             _ => self.placeholder(cx),
         };
 
+        let show_tabs = self.tabs_visible(cx);
+
         div()
             .id("app-root")
             .key_context("AppRoot")
@@ -711,6 +839,12 @@ impl Render for AppRoot {
                     this.open_file_dialog(window, cx)
                 }),
             )
+            .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
+                if this.tabs_visible(cx) {
+                    this.close_tab(this.active_tab, window, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &NextTab, window, cx| this.next_tab(window, cx)))
             .on_action(cx.listener(|_, _: &ToggleFullscreen, window, _| window.toggle_fullscreen()))
             // The Linux close button goes through here so it is guarded like the OS close.
             .on_action(cx.listener(|this, _: &RequestClose, window, cx| {
@@ -727,6 +861,7 @@ impl Render for AppRoot {
             .text_color(theme::text())
             .bg(theme::bg_app())
             .when(layout, |s| s.child(header(window, cx)))
+            .when(show_tabs, |s| s.child(self.render_tabs(cx)))
             .child(
                 div()
                     .flex()
