@@ -382,6 +382,22 @@ impl Render for SettingsPage {
             .child(Self::label("API URL"))
             .child(div().flex().child(Self::field(&self.api_url)));
 
+        let local_tabs = self.stores.prefs.read(cx).prefs.local_tabs;
+        let this = cx.entity();
+        let reader = Self::section("Reader").child(checkbox(
+            "local-tabs",
+            "Open local files in tabs",
+            local_tabs,
+            move |on, _, cx| {
+                this.update(cx, |page, cx| {
+                    page.stores
+                        .prefs
+                        .update(cx, |p, cx| p.update(cx, |p| p.local_tabs = on));
+                    cx.notify();
+                })
+            },
+        ));
+
         let folder_rows: Vec<gpui::AnyElement> = if output_dirs.is_empty() {
             vec![
                 div()
@@ -577,6 +593,7 @@ impl Render for SettingsPage {
                                     .min_w(px(340.0))
                                     .child(server)
                                     .child(downloads)
+                                    .child(reader)
                                     .child(store),
                             )
                             .child(
