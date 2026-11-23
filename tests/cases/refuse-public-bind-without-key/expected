@@ -1,0 +1,2 @@
+exit 1
+Error: "BR_BIND_ADDR=0.0.0.0 is not a loopback address; set BR_API_KEY to expose the server"

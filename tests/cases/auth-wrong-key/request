@@ -1,0 +1,2 @@
+GET /api/settings
+x-br-api-key: nope
