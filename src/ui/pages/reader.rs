@@ -23,6 +23,7 @@ use crate::state::Stores;
 use crate::state::local_progress;
 use crate::state::reader_images::{LocalArchive, PageImages, PageImg, ReaderSource};
 use crate::ui::components::button::{ButtonVariant, button};
+use crate::ui::components::tab_bar::TabBar;
 use crate::ui::components::text_input::{TextInput, TextInputEvent};
 use crate::ui::icons::{Icon, icon};
 use crate::ui::pages::settings::HoverTip;
@@ -164,6 +165,7 @@ impl Scroll {
 
 pub struct ReaderPage {
     source: ReaderSource,
+    tab_bar: Option<gpui::Entity<TabBar>>,
     stores: Stores,
     images: gpui::Entity<PageImages>,
     load: Load,
@@ -191,6 +193,7 @@ impl EventEmitter<GoBack> for ReaderPage {}
 impl ReaderPage {
     pub fn new(
         source: ReaderSource,
+        tab_bar: Option<gpui::Entity<TabBar>>,
         stores: Stores,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -248,6 +251,7 @@ impl ReaderPage {
         let size = window.viewport_size();
         let mut this = Self {
             source,
+            tab_bar,
             stores,
             images,
             load: Load::Loading,
@@ -772,6 +776,7 @@ impl ReaderPage {
                     .bg(rgba(0xffffff1a))
                     .child(div().h_full().w(relative(frac)).bg(theme::accent())),
             )
+            .children(self.tab_bar.clone())
             .when(self.bookmarks_open, |s| s.child(self.bookmark_menu(cx)))
     }
 
