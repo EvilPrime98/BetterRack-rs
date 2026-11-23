@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use gpui::{
     AnimationExt as _, AnyView, App, AppContext as _, Context, Entity, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement, Styled,
-    Subscription, Window, actions, deferred, div, prelude::*, px,
+    InteractiveElement, IntoElement, ParentElement, Render, Styled, Subscription, Window, actions,
+    deferred, div, prelude::*, px,
 };
 
 use crate::api::ApiClient;
@@ -18,8 +18,8 @@ use crate::state::Stores;
 use crate::state::reader_images::ReaderSource;
 use crate::ui::app_loader::app_loader;
 use crate::ui::components::button::{ButtonVariant, button};
+use crate::ui::components::tab_bar::{TabBar, TabEvent};
 use crate::ui::confirm::{self, ConfirmHost, ConfirmOptions};
-use crate::ui::icons::{Icon, icon};
 use crate::ui::modals::{self, ModalHost};
 use crate::ui::motion;
 use crate::ui::pages::downloads::DownloadsPage;
@@ -120,12 +120,13 @@ pub struct AppRoot {
     page_gen: u64,
     /// Opened once startup finishes: the file given on the command line, or the dev aid
     /// `BETTERRACK_OPEN` (see [`dev_route`]).
-    pending_route: Option<Route>,
+    pending_routes: Vec<Route>,
     dev_identify_opened: Option<bool>,
     focus: FocusHandle,
     close: Close,
     tabs: Vec<PathBuf>,
     active_tab: usize,
+    tab_bar: Entity<TabBar>,
 }
 
 impl AppRoot {
@@ -162,6 +163,16 @@ impl AppRoot {
             async move { flush.await }
         }));
 
+        let tab_bar = cx.new(|_| TabBar::default());
+        subs.push(cx.subscribe_in(
+            &tab_bar,
+            window,
+            |this, _, ev: &TabEvent, window, cx| match ev {
+                TabEvent::Open(i) => this.open_tab(*i, window, cx),
+                TabEvent::Close(i) => this.close_tab(*i, window, cx),
+            },
+        ));
+
         let mut this = Self {
             history: History::default(),
             boot: Boot::StartingServer,
@@ -176,12 +187,13 @@ impl AppRoot {
             _page_subs: Vec::new(),
             _subs: subs,
             page_gen: 0,
-            pending_route: cli_route().or_else(dev_route),
+            pending_routes: cli_route().or_else(dev_route).into_iter().collect(),
             dev_identify_opened: None,
             focus,
             close: Close::Idle,
             tabs: Vec::new(),
             active_tab: 0,
+            tab_bar,
         };
         // Closing cancels running downloads: ask first (`on_window_should_close` is synchronous, so
         // the check runs in the background and the window closes itself once it is answered).
@@ -459,70 +471,23 @@ impl AppRoot {
             if index < self.active_tab {
                 self.active_tab -= 1;
             }
+            self.tab_bar
+                .update(cx, |bar, cx| bar.set(&self.tabs, self.active_tab, cx));
             cx.notify();
         }
     }
 
-    fn render_tabs(&self, cx: &mut Context<Self>) -> gpui::Div {
-        let tabs = self.tabs.iter().enumerate().map(|(i, path)| {
-            let active = i == self.active_tab;
-            let title = path
-                .file_stem()
-                .unwrap_or(path.as_os_str())
-                .to_string_lossy()
-                .into_owned();
-            div()
-                .id(("tab", i))
-                .flex()
-                .flex_none()
-                .items_center()
-                .gap(px(8.0))
-                .max_w(px(220.0))
-                .h_full()
-                .pl(px(12.0))
-                .pr(px(6.0))
-                .cursor_pointer()
-                .text_size(px(12.0))
-                .border_b_2()
-                .border_color(if active {
-                    theme::text()
-                } else {
-                    gpui::rgba(0x00000000).into()
-                })
-                .text_color(if active {
-                    theme::text()
-                } else {
-                    theme::text_muted()
-                })
-                .hover(|s| s.bg(gpui::rgba(0xffffff0f)))
-                .on_click(cx.listener(move |this, _, window, cx| this.open_tab(i, window, cx)))
-                .child(div().min_w_0().truncate().child(title))
-                .child(
-                    div()
-                        .id(("tab-close", i))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .size(px(20.0))
-                        .rounded_full()
-                        .hover(|s| s.bg(gpui::rgba(0xffffff1f)))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            cx.stop_propagation();
-                            this.close_tab(i, window, cx)
-                        }))
-                        .child(icon(Icon::Close, px(12.0)).text_color(theme::text())),
-                )
-        });
-        div()
-            .flex()
-            .flex_none()
-            .h(px(34.0))
-            .w_full()
-            .overflow_hidden()
-            .border_b_1()
-            .border_color(theme::border_subtle())
-            .bg(theme::bg_app())
-            .children(tabs)
+    /// A file handed over by a second launch: open it like one picked inside the app and bring
+    /// the window forward. Queued until startup has finished.
+    pub fn open_forwarded(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        let route = Route::LocalReader { path };
+        if self.boot.loader_up() {
+            self.pending_routes.push(route);
+        } else {
+            self.navigate(route, window, cx);
+        }
+        window.activate_window();
+        cx.activate(true);
     }
 
     fn next_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -571,6 +536,8 @@ impl AppRoot {
                 }
             }
         }
+        self.tab_bar
+            .update(cx, |bar, cx| bar.set(&self.tabs, self.active_tab, cx));
         self._page_subs.clear();
         self.page_gen += 1;
         self.page = match route {
@@ -580,7 +547,11 @@ impl AppRoot {
                     Route::LocalReader { path } => ReaderSource::LocalFile { path },
                     _ => unreachable!(),
                 };
-                let page = cx.new(|cx| ReaderPage::new(source, self.stores.clone(), window, cx));
+                let tab_bar = (self.tabs_enabled(cx)
+                    && matches!(source, ReaderSource::LocalFile { .. }))
+                .then(|| self.tab_bar.clone());
+                let page =
+                    cx.new(|cx| ReaderPage::new(source, tab_bar, self.stores.clone(), window, cx));
                 self._page_subs.push(cx.subscribe_in(
                     &page,
                     window,
@@ -789,7 +760,7 @@ impl Focusable for AppRoot {
 impl Render for AppRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.boot.loader_up() {
-            if let Some(route) = self.pending_route.take() {
+            for route in std::mem::take(&mut self.pending_routes) {
                 self.navigate(route, window, cx);
             }
             // Dev aid: `BETTERRACK_OPEN_IDENTIFY=<uid>:<query>` opens the identify modal and searches.
@@ -826,8 +797,6 @@ impl Render for AppRoot {
             _ => self.placeholder(cx),
         };
 
-        let show_tabs = self.tabs_visible(cx);
-
         div()
             .id("app-root")
             .key_context("AppRoot")
@@ -861,7 +830,6 @@ impl Render for AppRoot {
             .text_color(theme::text())
             .bg(theme::bg_app())
             .when(layout, |s| s.child(header(window, cx)))
-            .when(show_tabs, |s| s.child(self.render_tabs(cx)))
             .child(
                 div()
                     .flex()
@@ -957,14 +925,17 @@ const COMIC_FILE_EXTENSIONS: [&str; 7] = ["cbz", "cbr", "cb7", "cbt", "zip", "ra
 
 /// The first command-line argument (also what the OS "Open with" action passes) is a comic file
 /// to read in place.
-fn cli_route() -> Option<Route> {
+pub fn cli_path() -> Option<PathBuf> {
     let arg = std::env::args_os().nth(1)?;
     if arg.to_string_lossy().starts_with('-') {
         return None;
     }
-    let path = std::path::PathBuf::from(arg);
-    let path = std::path::absolute(&path).unwrap_or(path);
-    Some(Route::LocalReader { path })
+    let path = PathBuf::from(arg);
+    Some(std::path::absolute(&path).unwrap_or(path))
+}
+
+fn cli_route() -> Option<Route> {
+    cli_path().map(|path| Route::LocalReader { path })
 }
 
 /// Dev aid. `BETTERRACK_OPEN_READER=<uid>`, or `BETTERRACK_OPEN=settings|store|downloads|recent|reading|

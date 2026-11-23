@@ -24,9 +24,18 @@ fn main() {
     // Held until `main` returns so buffered log lines are flushed.
     let _log_guard = platform::logging::init();
 
+    // With tabs on there is one process: a later launch hands its file to the running one and exits.
+    let mut instance = None;
+    if state::prefs::Prefs::load().local_tabs {
+        match platform::instance::claim(app::cli_path().as_deref()) {
+            Ok(server) => instance = server,
+            Err(()) => return,
+        }
+    }
+
     gpui_ce_platform::application()
         .with_assets(Assets)
-        .run(|cx: &mut App| {
+        .run(move |cx: &mut App| {
             theme::register_fonts(cx);
             app::bind_keys(cx);
 
@@ -54,8 +63,26 @@ fn main() {
                 ..Default::default()
             };
             let _ = theme::bg_chrome();
-            cx.open_window(options, |window, cx| cx.new(|cx| AppRoot::new(window, cx)))
+            let root = cx
+                .open_window(options, |window, cx| cx.new(|cx| AppRoot::new(window, cx)))
                 .unwrap();
+            if let Some(mut server) = instance.take() {
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                runtime::spawn(async move {
+                    while let Some(path) = server.next().await {
+                        if tx.send(path).is_err() {
+                            break;
+                        }
+                    }
+                });
+                cx.spawn(async move |cx| {
+                    while let Some(path) = rx.recv().await {
+                        let _ = root
+                            .update(cx, |root, window, cx| root.open_forwarded(path, window, cx));
+                    }
+                })
+                .detach();
+            }
             cx.activate(true);
         });
 }

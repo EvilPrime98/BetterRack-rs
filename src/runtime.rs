@@ -35,3 +35,13 @@ pub async fn run<T: Send + 'static>(fut: impl Future<Output = T> + Send + 'stati
         .await
         .expect("tokio task panicked or was cancelled")
 }
+
+/// Run `fut` to completion from a plain thread (not from inside the runtime).
+pub fn block_on<T>(fut: impl Future<Output = T>) -> T {
+    runtime().block_on(fut)
+}
+
+/// Start a detached background task on the Tokio runtime.
+pub fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
+    runtime().spawn(fut);
+}
