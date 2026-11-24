@@ -1,0 +1,59 @@
+import { Button, LineEdit, ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export struct WikiRow {
+    title: string,
+    subtitle: string,
+}
+
+// Full-screen sheet to identify one issue against the wiki.
+export component IdentifySheet inherits Rectangle {
+    in property <string> title;
+    in property <string> current;
+    in property <string> status;
+    in property <[WikiRow]> results;
+    in-out property <string> query;
+    in property <length> inset-top;
+    in property <length> inset-bottom;
+    callback close();
+    callback search(string);
+    callback pick(int);
+    callback reset();
+    background: Theme.bg;
+    TouchArea { }
+    VerticalLayout {
+        padding: 16px;
+        padding-top: 16px + root.inset-top;
+        padding-bottom: 16px + root.inset-bottom;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 12px;
+            Rectangle {
+                width: 72px;
+                height: 40px;
+                border-radius: 20px;
+                background: Theme.surface;
+                Text { text: "Close"; color: Theme.accent; font-size: 16px; horizontal-alignment: center; vertical-alignment: center; }
+                TouchArea { clicked => { root.close(); } }
+            }
+            Text { text: "Identify"; color: Theme.text; font-size: 22px; font-weight: 700; vertical-alignment: center; }
+        }
+        Text { text: root.title; color: Theme.text; font-size: 15px; overflow: elide; }
+        Text { text: root.current; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+        Button { text: "Re-identify from the file"; clicked => { root.reset(); } }
+        LineEdit { placeholder-text: "Search the wiki"; text <=> root.query; accepted(t) => { root.search(t); } }
+        if root.status != "": Text { text: root.status; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+        ListView {
+            vertical-stretch: 1;
+            for row[i] in root.results: Rectangle {
+                height: 60px;
+                VerticalLayout {
+                    alignment: center;
+                    Text { text: row.title; color: Theme.text; font-size: 15px; font-weight: 700; overflow: elide; }
+                    Text { text: row.subtitle; color: Theme.muted; font-size: 12px; overflow: elide; }
+                }
+                TouchArea { clicked => { root.pick(i); } }
+            }
+        }
+    }
+}

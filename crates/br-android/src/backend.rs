@@ -4,7 +4,6 @@ use axum::body::Body;
 use br_core::config::Config;
 use br_core::archive::Archives;
 use br_core::fs::LibraryFs;
-use br_core::wiki::NoWiki;
 use br_server::state::{AppState, NetOptions};
 use http::{Request, StatusCode};
 use http_body_util::BodyExt;
@@ -54,7 +53,9 @@ impl Backend {
         };
         let archives = Archives::with_fs(None, fs).with_cache_dir(data_dir.join("cache"));
         let net = NetOptions { archives: Some(Arc::new(archives)), ..NetOptions::default() };
-        let state = AppState::open_with(config, Arc::new(NoWiki), net).map_err(|e| e.to_string())?;
+        // The wiki lookup blocks on this runtime from the core's worker threads.
+        let wiki = br_server::wiki::LiveWiki::with_handle(br_wiki::WikiService::default(), crate::runtime().handle().clone());
+        let state = AppState::open_with(config, Arc::new(wiki), net).map_err(|e| e.to_string())?;
         Ok(Self { router: br_server::app(state), remote: Arc::default() })
     }
 

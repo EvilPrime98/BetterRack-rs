@@ -9,6 +9,7 @@ export component SeriesDetail inherits Rectangle {
     callback back();
     callback cover-needed(int);
     callback open-issue(int);
+    callback identify-issue(int);
     VerticalLayout {
         padding: 16px;
         spacing: 12px;
@@ -47,6 +48,15 @@ export component SeriesDetail inherits Rectangle {
                         spacing: 2px;
                         Text { text: item.title; color: Theme.text; font-size: 16px; overflow: elide; }
                         if item.subtitle != "": Text { text: item.subtitle; color: Theme.muted; font-size: 14px; overflow: elide; }
+                    }
+                    Rectangle {
+                        width: 72px;
+                        height: 36px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 18px;
+                        background: Theme.surface;
+                        Text { text: "Identify"; color: Theme.accent; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                        TouchArea { clicked => { root.identify-issue(i); } }
                     }
                 }
             }

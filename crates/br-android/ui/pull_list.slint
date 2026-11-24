@@ -1,0 +1,73 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export struct PullRow {
+    title: string,
+    subtitle: string,
+    followed: bool,
+}
+
+component Pill inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 36px;
+    min-width: 44px;
+    border-radius: 18px;
+    background: Theme.surface;
+    Text {
+        text: root.label;
+        color: root.enabled ? Theme.accent : Theme.muted;
+        font-size: 14px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+export component PullListScreen inherits Rectangle {
+    in property <[PullRow]> rows;
+    in property <string> week;
+    in property <bool> at-current;
+    in property <string> following;
+    in property <string> status;
+    callback prev();
+    callback next();
+    callback now();
+    callback toggle(int);
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 8px;
+            Pill { label: "<"; clicked => { root.prev(); } }
+            Text { text: root.week; color: Theme.text; font-size: 16px; font-weight: 700; horizontal-stretch: 1; horizontal-alignment: center; vertical-alignment: center; }
+            Pill { label: ">"; enabled: !root.at-current; clicked => { root.next(); } }
+            Pill { label: "This week"; enabled: !root.at-current; width: 96px; clicked => { root.now(); } }
+        }
+        if root.following != "": Text { text: "Following: " + root.following; color: Theme.muted; font-size: 13px; wrap: word-wrap; }
+        if root.status != "": Text { text: root.status; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+        ListView {
+            vertical-stretch: 1;
+            for row[i] in root.rows: Rectangle {
+                height: 60px;
+                background: row.followed ? Theme.accent.with-alpha(0.12) : transparent;
+                border-radius: 8px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 8px;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        Text { text: row.title; color: Theme.text; font-size: 15px; font-weight: row.followed ? 700 : 400; overflow: elide; }
+                        Text { text: row.subtitle; color: Theme.muted; font-size: 12px; overflow: elide; }
+                    }
+                    Text { text: row.followed ? "Following" : "Follow"; color: row.followed ? Theme.muted : Theme.accent; font-size: 14px; vertical-alignment: center; }
+                }
+                TouchArea { clicked => { root.toggle(i); } }
+            }
+        }
+    }
+}

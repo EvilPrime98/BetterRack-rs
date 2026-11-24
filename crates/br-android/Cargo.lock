@@ -519,6 +519,7 @@ dependencies = [
  "axum",
  "br-core",
  "br-server",
+ "br-wiki",
  "http",
  "http-body-util",
  "image",

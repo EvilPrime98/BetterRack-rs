@@ -7,6 +7,8 @@ import { SettingsScreen } from "settings.slint";
 import { Reader } from "reader.slint";
 import { StoreScreen, StoreRow } from "store.slint";
 import { DownloadsScreen, JobRow } from "downloads.slint";
+import { PullListScreen, PullRow } from "pull_list.slint";
+import { IdentifySheet, WikiRow } from "identify.slint";
 
 export component App inherits Window {
     in property <[Item]> series;
@@ -31,6 +33,31 @@ export component App inherits Window {
     in property <string> store-pick-title;
     in-out property <string> store-url;
     in property <[JobRow]> download-jobs;
+    in property <[PullRow]> pull-rows;
+    in property <string> pull-week;
+    in property <bool> pull-at-current;
+    in property <string> pull-following;
+    in property <string> pull-status;
+    callback pull-prev();
+    callback pull-next();
+    callback pull-now();
+    callback pull-toggle(int);
+    callback pull-reload();
+    in property <bool> identify-open;
+    in property <string> identify-title;
+    in property <string> identify-current;
+    in property <string> identify-status;
+    in property <[WikiRow]> identify-results;
+    in-out property <string> identify-query;
+    in-out property <bool> wiki-search;
+    in property <string> meta-status;
+    callback identify-issue(int);
+    callback identify-close();
+    callback identify-search(string);
+    callback identify-pick(int);
+    callback identify-reset();
+    callback set-wiki-search(bool);
+    callback reidentify-all();
     callback store-search(string);
     callback store-download(int);
     callback store-pick-link(int);
@@ -65,6 +92,7 @@ export component App inherits Window {
     // One entry per destination; Phases 7-9 append here and add a branch to the `if` chain.
     property <[string]> destinations: ["Library", "Browse", "Store", "Downloads", "Settings"];
     property <int> tab: 0;
+    property <int> store-mode: 0;
     property <bool> wide: self.width >= Theme.wide-breakpoint;
 
     background: Theme.bg;
@@ -92,6 +120,7 @@ export component App inherits Window {
                     set-filter(f) => { root.set-filter(f); }
                     open-series(i) => { root.open-series(i); }
                     open-issue(i) => { root.open-issue(i); }
+                    identify-issue(i) => { root.identify-issue(i); }
                     close-series => { root.close-series(); }
                     cover-needed(d, i) => { root.cover-needed(d, i); }
                 }
@@ -103,7 +132,23 @@ export component App inherits Window {
                     list-cover-needed(s, i) => { root.list-cover-needed(s, i); }
                     open-list-item(s, i) => { root.open-list-item(s, i); }
                 }
-                if root.tab == 2: StoreScreen {
+                if root.tab == 2: VerticalLayout {
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-top: 12px;
+                    spacing: 8px;
+                    alignment: start;
+                    for label[m] in ["Search", "Pull list"]: Rectangle {
+                        height: 36px;
+                        width: 100px;
+                        border-radius: 18px;
+                        background: root.store-mode == m ? Theme.accent.with-alpha(0.18) : Theme.surface;
+                        Text { text: label; color: root.store-mode == m ? Theme.accent : Theme.muted; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+                        TouchArea { clicked => { root.store-mode = m; if m == 1 { root.pull-reload(); } } }
+                    }
+                }
+                if root.store-mode == 0: StoreScreen {
+                    vertical-stretch: 1;
                     results: root.store-results;
                     status: root.store-status;
                     needs-url: root.store-needs-url;
@@ -115,6 +160,19 @@ export component App inherits Window {
                     pick-link(i) => { root.store-pick-link(i); }
                     cancel-pick => { root.store-cancel-pick(); }
                     save-url(u) => { root.store-save-url(u); }
+                }
+                if root.store-mode == 1: PullListScreen {
+                    vertical-stretch: 1;
+                    rows: root.pull-rows;
+                    week: root.pull-week;
+                    at-current: root.pull-at-current;
+                    following: root.pull-following;
+                    status: root.pull-status;
+                    prev => { root.pull-prev(); }
+                    next => { root.pull-next(); }
+                    now => { root.pull-now(); }
+                    toggle(i) => { root.pull-toggle(i); }
+                }
                 }
                 if root.tab == 3: DownloadsScreen {
                     jobs: root.download-jobs;
@@ -131,6 +189,12 @@ export component App inherits Window {
                     add-folder => { root.add-folder(); }
                     connect-server(url, key) => { root.connect-server(url, key); }
                     disconnect-server => { root.disconnect-server(); }
+                    store-url <=> root.store-url;
+                    wiki-search <=> root.wiki-search;
+                    meta-status: root.meta-status;
+                    save-store-url(u) => { root.store-save-url(u); }
+                    set-wiki-search(b) => { root.set-wiki-search(b); }
+                    reidentify-all => { root.reidentify-all(); }
                 }
             }
         }
@@ -155,5 +219,20 @@ export component App inherits Window {
         step(d) => { root.reader-step(d); }
         seek(n) => { root.reader-seek(n); }
         toggle-direction => { root.reader-toggle-direction(); }
+    }
+    if root.identify-open: IdentifySheet {
+        width: root.width;
+        height: root.height;
+        title: root.identify-title;
+        current: root.identify-current;
+        status: root.identify-status;
+        results: root.identify-results;
+        query <=> root.identify-query;
+        inset-top: root.safe-area-insets.top;
+        inset-bottom: root.safe-area-insets.bottom;
+        close => { root.identify-close(); }
+        search(t) => { root.identify-search(t); }
+        pick(i) => { root.identify-pick(i); }
+        reset => { root.identify-reset(); }
     }
 }

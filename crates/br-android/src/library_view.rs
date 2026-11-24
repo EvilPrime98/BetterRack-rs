@@ -235,6 +235,14 @@ pub fn issue_uid(index: i32) -> Option<String> {
     open_series(&st)?.issues.get(index).map(|i| i.uid.clone())
 }
 
+/// Uid and display name of an issue of the open series.
+pub fn issue_ref(index: i32) -> Option<(String, String)> {
+    let st = state().lock().unwrap();
+    let index = usize::try_from(index).ok()?;
+    let issue = open_series(&st)?.issues.get(index)?;
+    Some((issue.uid.clone(), issue.name.clone()))
+}
+
 /// Called when Slint creates a row: start loading its cover unless known or in flight.
 fn cover_needed(weak: Weak<App>, backend: Backend, detail: bool, index: i32) {
     let Ok(index) = usize::try_from(index) else { return };

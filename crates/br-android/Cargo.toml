@@ -16,6 +16,7 @@ crate-type = ["cdylib"]
 slint = { version = "1", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06", "renderer-femtovg"] }
 br-core = { path = "../br-core" }
 br-server = { path = "../br-server" }
+br-wiki = { path = "../br-wiki" }
 axum = "0.8"
 tower = { version = "0.5", features = ["util"] }
 http = "1"

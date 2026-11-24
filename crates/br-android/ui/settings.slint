@@ -1,4 +1,4 @@
-import { Button, LineEdit } from "std-widgets.slint";
+import { Button, LineEdit, Switch } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 
 export component SettingsScreen inherits Rectangle {
@@ -8,10 +8,17 @@ export component SettingsScreen inherits Rectangle {
     in property <string> folder-status;
     in-out property <string> remote-url;
     in property <bool> remote-linked;
+    in-out property <string> store-url;
+    in-out property <bool> wiki-search;
+    in property <string> meta-status;
     property <string> key-text;
+    callback save-store-url(string);
+    callback set-wiki-search(bool);
+    callback reidentify-all();
     callback add-folder();
     callback connect-server(string, string);
     callback disconnect-server();
+    Flickable {
     VerticalLayout {
         padding: 16px;
         spacing: 12px;
@@ -41,6 +48,14 @@ export component SettingsScreen inherits Rectangle {
             text: "Link server";
             clicked => { root.connect-server(root.remote-url, root.key-text); }
         }
+        Text { text: "Metadata"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        Switch { text: "Search the wiki for metadata"; checked: root.wiki-search; toggled => { root.set-wiki-search(self.checked); } }
+        Button { text: "Re-identify all"; clicked => { root.reidentify-all(); } }
+        if root.meta-status != "": Text { text: root.meta-status; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+        Text { text: "Store"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        LineEdit { placeholder-text: "Store API address"; text <=> root.store-url; }
+        Button { text: "Save store address"; clicked => { root.save-store-url(root.store-url); } }
         if root.folder-status != "": Text { text: root.folder-status; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+    }
     }
 }
