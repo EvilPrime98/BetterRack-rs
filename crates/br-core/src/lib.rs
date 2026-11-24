@@ -10,6 +10,7 @@ pub mod directories;
 pub mod download;
 pub mod downloads;
 pub mod error;
+pub mod fs;
 pub mod jobs;
 pub mod library;
 pub mod pack;

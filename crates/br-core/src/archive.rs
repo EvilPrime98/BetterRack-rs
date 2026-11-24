@@ -9,12 +9,13 @@
 
 use crate::collate::locale_compare_numeric;
 use crate::comic_info::{self, Bookmark, ComicInfo};
+use crate::fs::{LibraryFs, StdFs};
 use crate::{CoreError, Result};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub const IMAGE_EXTENSIONS: [&str; 6] = ["jpg", "jpeg", "png", "webp", "gif", "bmp"];
 const ARCHIVE_CACHE_MAX_SIZE: usize = 50;
@@ -90,14 +91,14 @@ pub struct FileStamp {
 }
 
 pub fn file_stamp(path: &Path) -> std::io::Result<FileStamp> {
-    let meta = std::fs::metadata(path)?;
-    let since = meta
-        .modified()?
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
+    stamp_in(&StdFs, path)
+}
+
+pub fn stamp_in(fs: &dyn LibraryFs, path: &Path) -> std::io::Result<FileStamp> {
+    let meta = fs.stat(&path.to_string_lossy())?;
     Ok(FileStamp {
-        size: meta.len(),
-        mtime_ms: since.as_secs() as f64 * 1e3 + f64::from(since.subsec_nanos()) / 1e6,
+        size: meta.size,
+        mtime_ms: meta.mtime_ms,
     })
 }
 
@@ -154,6 +155,7 @@ impl<V: Clone> Cache<V> {
 }
 
 pub struct Archives {
+    fs: Arc<dyn LibraryFs>,
     configured_7z: Option<PathBuf>,
     resolved_7z: OnceLock<std::result::Result<PathBuf, String>>,
     entries: Mutex<Cache<Vec<String>>>,
@@ -232,12 +234,22 @@ fn native_separators(name: &str) -> String {
 
 impl Archives {
     pub fn new(configured_7z: Option<PathBuf>) -> Self {
+        Self::with_fs(configured_7z, Arc::new(StdFs))
+    }
+
+    /// The 7-Zip subprocess fallback and `extract_entries` still need real filesystem paths.
+    pub fn with_fs(configured_7z: Option<PathBuf>, fs: Arc<dyn LibraryFs>) -> Self {
         Self {
+            fs,
             configured_7z,
             resolved_7z: OnceLock::new(),
             entries: Mutex::new(Cache::new()),
             infos: Mutex::new(Cache::new()),
         }
+    }
+
+    pub fn fs(&self) -> &Arc<dyn LibraryFs> {
+        &self.fs
     }
 
     fn seven_zip(&self) -> Result<&Path> {
@@ -265,14 +277,14 @@ impl Archives {
     /// Every non-directory entry, in archive order.
     pub fn list_entries(&self, path: &Path) -> Result<Vec<String>> {
         let key = path.to_string_lossy().into_owned();
-        let stamp = file_stamp(path)?;
+        let stamp = stamp_in(self.fs.as_ref(), path)?;
         if let Some(hit) = lock(&self.entries).get(&key, stamp) {
             return Ok(hit);
         }
         let in_process = if is_zip_file(path) {
-            list_zip(path)
+            list_zip(self.fs.as_ref(), path)
         } else if is_7z_file(path) {
-            list_sevenz(path)
+            list_sevenz(self.fs.as_ref(), path)
         } else {
             None
         };
@@ -332,16 +344,16 @@ impl Archives {
                 "Rejected suspicious archive entry path: \"{entry}\""
             )));
         }
-        if !path.exists() {
+        if self.fs.stat(&path.to_string_lossy()).is_err() {
             return Err(invalid(format!(
                 "Archive not found: \"{}\"",
                 path.display()
             )));
         }
         let in_process = if is_zip_file(path) {
-            read_zip_entry(path, entry)
+            read_zip_entry(self.fs.as_ref(), path, entry)
         } else if is_7z_file(path) {
-            read_sevenz_entry(path, entry)
+            read_sevenz_entry(self.fs.as_ref(), path, entry)
         } else {
             None
         };
@@ -436,10 +448,11 @@ impl Archives {
         Ok(())
     }
 
-    fn sidecar_comic_info(path: &Path) -> Option<String> {
+    fn sidecar_comic_info(&self, path: &Path) -> Option<String> {
         let stem = path.file_stem()?;
         let sidecar = path.with_file_name(format!("{}.xml", stem.to_string_lossy()));
-        std::fs::read(sidecar)
+        self.fs
+            .read(&sidecar.to_string_lossy())
             .ok()
             .map(|b| String::from_utf8_lossy(&b).into_owned())
     }
@@ -447,7 +460,7 @@ impl Archives {
     /// The embedded `ComicInfo.xml` (top level only), else the `<name>.xml` next to the archive.
     pub fn comic_info(&self, path: &Path) -> Result<Option<ComicInfo>> {
         let key = path.to_string_lossy().into_owned();
-        let stamp = file_stamp(path)?;
+        let stamp = stamp_in(self.fs.as_ref(), path)?;
         if let Some(hit) = lock(&self.infos).get(&key, stamp) {
             return Ok(hit);
         }
@@ -457,7 +470,7 @@ impl Archives {
         });
         let xml = match entry {
             Some(e) => Some(String::from_utf8_lossy(&self.read_entry(path, &e)?).into_owned()),
-            None => Self::sidecar_comic_info(path),
+            None => self.sidecar_comic_info(path),
         };
         let info = xml.and_then(|x| comic_info::parse(&x));
         lock(&self.infos).put(&key, stamp, info.clone());
@@ -472,8 +485,8 @@ impl Archives {
     }
 }
 
-fn list_zip(path: &Path) -> Option<Vec<String>> {
-    let mut zip = zip::ZipArchive::new(std::fs::File::open(path).ok()?).ok()?;
+fn list_zip(fs: &dyn LibraryFs, path: &Path) -> Option<Vec<String>> {
+    let mut zip = zip::ZipArchive::new(fs.open(&path.to_string_lossy()).ok()?).ok()?;
     let mut out = Vec::with_capacity(zip.len());
     for i in 0..zip.len() {
         let f = zip.by_index_raw(i).ok()?;
@@ -484,8 +497,8 @@ fn list_zip(path: &Path) -> Option<Vec<String>> {
     Some(out)
 }
 
-fn read_zip_entry(path: &Path, entry: &str) -> Option<Vec<u8>> {
-    let mut zip = zip::ZipArchive::new(std::fs::File::open(path).ok()?).ok()?;
+fn read_zip_entry(fs: &dyn LibraryFs, path: &Path, entry: &str) -> Option<Vec<u8>> {
+    let mut zip = zip::ZipArchive::new(fs.open(&path.to_string_lossy()).ok()?).ok()?;
     let slashed = entry.replace('\\', "/");
     let index = zip
         .index_for_name(&slashed)
@@ -496,8 +509,12 @@ fn read_zip_entry(path: &Path, entry: &str) -> Option<Vec<u8>> {
     Some(buf)
 }
 
-fn list_sevenz(path: &Path) -> Option<Vec<String>> {
-    let reader = sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty()).ok()?;
+fn list_sevenz(fs: &dyn LibraryFs, path: &Path) -> Option<Vec<String>> {
+    let reader = sevenz_rust2::ArchiveReader::new(
+        fs.open(&path.to_string_lossy()).ok()?,
+        sevenz_rust2::Password::empty(),
+    )
+    .ok()?;
     Some(
         reader
             .archive()
@@ -509,9 +526,13 @@ fn list_sevenz(path: &Path) -> Option<Vec<String>> {
     )
 }
 
-fn read_sevenz_entry(path: &Path, entry: &str) -> Option<Vec<u8>> {
+fn read_sevenz_entry(fs: &dyn LibraryFs, path: &Path, entry: &str) -> Option<Vec<u8>> {
     let mut reader =
-        sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty()).ok()?;
+        sevenz_rust2::ArchiveReader::new(
+        fs.open(&path.to_string_lossy()).ok()?,
+        sevenz_rust2::Password::empty(),
+    )
+    .ok()?;
     let slashed = entry.replace('\\', "/");
     reader.read_file(&slashed).ok()
 }
@@ -583,7 +604,7 @@ mod tests {
             let path = Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("tests/fixtures")
                 .join(name);
-            let mut entries = list_sevenz(&path).expect(name);
+            let mut entries = list_sevenz(&StdFs, &path).expect(name);
             entries.sort();
             assert_eq!(
                 entries,
@@ -597,16 +618,16 @@ mod tests {
                 "{name}"
             );
             assert_eq!(
-                read_sevenz_entry(&path, "002.jpg").unwrap(),
+                read_sevenz_entry(&StdFs, &path, "002.jpg").unwrap(),
                 b"p2",
                 "{name}"
             );
             assert_eq!(
-                read_sevenz_entry(&path, &native_separators("nested/x.jpg")).unwrap(),
+                read_sevenz_entry(&StdFs, &path, &native_separators("nested/x.jpg")).unwrap(),
                 b"n",
                 "{name}"
             );
-            assert!(read_sevenz_entry(&path, "missing.jpg").is_none(), "{name}");
+            assert!(read_sevenz_entry(&StdFs, &path, "missing.jpg").is_none(), "{name}");
             let a = Archives::new(None);
             assert_eq!(a.list_pages(&path).unwrap().len(), 4, "{name}");
             assert!(a.comic_info(&path).unwrap().is_some(), "{name}");

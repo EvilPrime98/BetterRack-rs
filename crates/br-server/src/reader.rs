@@ -9,7 +9,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use br_core::archive::{file_stamp, page_mime_type};
+use br_core::archive::{page_mime_type, stamp_in};
 use br_core::comic_info::{js_number, js_positive_integer};
 use br_core::{CoreError, Result as CoreResult};
 use serde_json::{Value, json};
@@ -157,7 +157,7 @@ pub async fn page(
             return Ok(PageOutcome::NotFound);
         };
         // The etag covers archive size and mtime, so replacing the file on disk changes it.
-        let stamp = file_stamp(&path)?;
+        let stamp = stamp_in(s.archives.fs().as_ref(), &path)?;
         let etag = strong_etag(&[
             json_str(&path.to_string_lossy()),
             json_str(entry),

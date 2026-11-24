@@ -5,7 +5,7 @@ use crate::state::{AppState, blocking};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use br_core::directories::directories_under;
+use br_core::directories::directories_under_in;
 use br_core::settings::AppSettings;
 use serde_json::{Map, Value, json};
 
@@ -132,7 +132,8 @@ pub async fn directories(State(s): State<AppState>) -> Result<Json<Value>, ApiEr
             .into_iter()
             .chain(settings.output_dirs)
             .collect();
-        Ok(directories_under(
+        Ok(directories_under_in(
+            s.archives.fs().as_ref(),
             &roots,
             &s.config.data_dir.to_string_lossy(),
         ))
