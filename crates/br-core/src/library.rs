@@ -938,29 +938,24 @@ impl Library {
         };
         let base = std::path::PathBuf::from(resolve_in(&base, &self.cwd));
 
-        let mut walked = Vec::new();
+        let mut found = Vec::new();
         walk(
             self.archives.fs().as_ref(),
             &base.to_string_lossy(),
-            &mut walked,
+            &mut found,
         );
-        let mut found: Vec<(String, bool, std::path::PathBuf)> = walked
-            .into_iter()
-            .map(|w| (w.name, w.is_dir, std::path::PathBuf::from(w.path)))
-            .collect();
-        found.sort_by_key(|(_, _, p)| std::cmp::Reverse(p.components().count()));
+        found
+            .sort_by_key(|w| std::cmp::Reverse(std::path::Path::new(&w.path).components().count()));
 
-        for (name, is_dir, path) in &found {
-            if *is_dir || path.parent() == Some(base.as_path()) {
+        for w in &found {
+            if w.is_dir || std::path::Path::new(&w.path).parent() == Some(base.as_path()) {
                 continue;
             }
-            let dest = crate::pack::dedupe(&base.join(name));
-            std::fs::rename(path, dest)?;
+            let dest = crate::pack::dedupe(&base.join(&w.name));
+            std::fs::rename(&w.path, dest)?;
         }
-        for (_, is_dir, path) in &found {
-            if *is_dir {
-                let _ = std::fs::remove_dir(path);
-            }
+        for w in found.iter().filter(|w| w.is_dir) {
+            let _ = std::fs::remove_dir(&w.path);
         }
         self.rescan()
     }
