@@ -296,12 +296,19 @@ impl Archives {
             return Some(dest);
         }
         std::fs::create_dir_all(&dir).ok()?;
-        let tmp = dir.join(format!("{name}.part"));
-        let mut src = self.fs.open(&key).ok()?;
-        let mut out = std::fs::File::create(&tmp).ok()?;
-        std::io::copy(&mut src, &mut out).ok()?;
-        drop(out);
-        std::fs::rename(&tmp, &dest).ok()?;
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = dir.join(format!("{name}.{}.{seq}.part", std::process::id()));
+        let copied = (|| {
+            let mut src = self.fs.open(&key).ok()?;
+            let mut out = std::fs::File::create(&tmp).ok()?;
+            std::io::copy(&mut src, &mut out).ok()?;
+            Some(())
+        })();
+        if copied.is_none() || std::fs::rename(&tmp, &dest).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            return dest.is_file().then_some(dest);
+        }
         Some(dest)
     }
 

@@ -937,6 +937,11 @@ impl Library {
             }
         };
         let base = std::path::PathBuf::from(resolve_in(&base, &self.cwd));
+        if base.starts_with(crate::tree_fs::PREFIX) {
+            return Err(CoreError::Invalid(
+                "Flatten is not supported on this library folder.".into(),
+            ));
+        }
 
         let mut found = Vec::new();
         walk(
