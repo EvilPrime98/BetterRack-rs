@@ -1,6 +1,6 @@
 # Native Android app in Rust
 
-Decision record for building a native (non-WebView) Android version of the desktop comic library manager, reusing the existing Rust crates. It replaces the current Capacitor shell in `web-react/android`, which wraps the React client in a WebView. Outcome: build a separate mobile UI in a mature Rust UI framework (Slint is the leading candidate), share `br-core` and `br-server` with the desktop app, and settle the final framework with a spike. Status: In progress. Phases 0 to 11 are done (Phase 9 in slices 9a-9c); Slint is the chosen framework (Phase 4 gate decided, Makepad dropped). The implementation is split into phases, each sized for one agent (see Implementation phases and Progress).
+Decision record for building a native (non-WebView) Android version of the desktop comic library manager, reusing the existing Rust crates. It replaces the current Capacitor shell in `web-react/android`, which wraps the React client in a WebView. Outcome: build a separate mobile UI in a mature Rust UI framework (Slint is the leading candidate), share `br-core` and `br-server` with the desktop app, and settle the final framework with a spike. Status: In progress. Phases 0 to 12 are done (Phase 9 in slices 9a-9c); Slint is the chosen framework (Phase 4 gate decided, Makepad dropped). The implementation is split into phases, each sized for one agent (see Implementation phases and Progress).
 
 ## Decisions
 
@@ -35,7 +35,7 @@ Decision record for building a native (non-WebView) Android version of the deskt
 | 9a | Done (partial: shelves and refresh) | `docs/android/phase-9a.md` |
 | 9b | Done (built, not tested against a real store) | `docs/android/phase-9b.md` |
 | 9c | Done (built, not tested against a real store or wiki) | `docs/android/phase-9c.md` |
-| 12 | Ready | |
+| 12 | Done (no real release key yet) | `docs/android/phase-12.md` |
 
 Facts from finished phases that later phases rely on:
 - `br-core`, `br-server` and `br-wiki` pass `cargo ndk -t arm64-v8a check` (NDK r27.3, `cargo-ndk` 4.1.2). Only `aarch64` and only `cargo check` so far.

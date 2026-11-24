@@ -38,6 +38,7 @@ ndk-context = "0.1"
 slint-build = "1"
 
 [package.metadata.android]
+resources = "res"
 package = "dev.betterrack.android"
 build_targets = ["aarch64-linux-android", "x86_64-linux-android"]
 runtime_libs = "runtime_libs"
@@ -48,6 +49,7 @@ target_sdk_version = 34
 
 [package.metadata.android.application]
 label = "BetterRack"
+icon = "@mipmap/ic_launcher"
 
 # Without this the debug APK is ~800 MB (full DWARF for Skia and the server stack).
 [profile.dev]

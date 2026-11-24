@@ -1,0 +1,67 @@
+name: Android
+
+on:
+  pull_request:
+    paths: ['crates/br-android/**', 'crates/br-core/**', 'crates/br-server/**', 'crates/br-wiki/**', '.github/workflows/android.yml']
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/br-android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/br-android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK and NDK
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "ndk;27.3.13750724"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"
+
+      - name: cargo-apk
+        run: cargo install cargo-apk --locked --version 0.10.0
+
+      - name: Debug APK (pull requests)
+        if: github.event_name == 'pull_request'
+        run: ./build-apk.sh
+
+      - name: Release APK
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            export RELEASE_KEYSTORE="$RUNNER_TEMP/release.keystore"
+          fi
+          ./build-apk.sh --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: br-android-apk
+          path: crates/br-android/target/*/apk/br-android.apk
