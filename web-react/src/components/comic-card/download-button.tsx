@@ -12,10 +12,8 @@ export function DownloadComicButton({ uid, name }: { uid: string; name: string }
         e.preventDefault();
         if (isDownloading) return;
         setIsDownloading(true);
-        downloadComic(uid, name)
-            .then((savedPath) => {
-                if (savedPath) toast.success(`Saved to ${savedPath}`);
-            })
+        Promise.resolve()
+            .then(() => downloadComic(uid, name))
             .catch((e) => {
                 toast.error(
                     e instanceof Error ? e.message : 'There was an error downloading the comic.',

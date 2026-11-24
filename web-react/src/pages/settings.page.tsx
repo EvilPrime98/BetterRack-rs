@@ -9,13 +9,7 @@ import { toast } from '@/services/toast.service';
 import { useDocumentTitleStore } from '@/stores/documentTitle.store';
 import { BRButton } from '@/components/br-button/br-button';
 import { BRCheckbox } from '@/components/br-checkbox/br-checkbox';
-import {
-    clearRemoteServer,
-    getStoredServerUrl,
-    isRemoteModeEnabled,
-} from '@/services/server-config.service';
 import { useLibraryStore } from '@/stores/library.store';
-import { useServerModalStore } from '@/stores/serverModal.store';
 import { useConfirmModalStore } from '@/stores/confirmModal.store';
 
 type SettingsDraft = Pick<
@@ -29,45 +23,6 @@ const WIKI_SEARCH_TIP =
 
 const ROTATING_FETCH_TIP =
     'Send every download through the rotating fetch (changing identity per attempt). When off, only PixelDrain hosts use it.';
-
-function ServerSection() {
-    const remote = isRemoteModeEnabled();
-
-    async function onUnlinkServer() {
-        const confirmed = await useConfirmModalStore.getState().confirmDialog({
-            title: 'Unlink server?',
-            message: 'BetterRack will go back to its own local server and restart.',
-            confirmLabel: 'Unlink',
-        });
-        if (!confirmed) return;
-        clearRemoteServer();
-        window.location.reload();
-    }
-
-    return (
-        <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Server</h2>
-
-            <p className={styles.serverUrl}>{getStoredServerUrl() || 'No server configured'}</p>
-
-            <p className={styles.serverKind}>
-                {remote ? 'Remote server' : 'Local server started by BetterRack'}
-            </p>
-
-            <div className={styles.buttonRow}>
-                <BRButton
-                    text="Change server"
-                    variant="secondary"
-                    onClick={() => useServerModalStore.getState().openServerModal()}
-                />
-
-                {remote && (
-                    <BRButton text="Unlink server" variant="secondary" onClick={onUnlinkServer} />
-                )}
-            </div>
-        </section>
-    );
-}
 
 function DownloadsSection({ draft, setDraft }: { draft: SettingsDraft; setDraft: SetDraft }) {
     return (
@@ -304,7 +259,6 @@ export function SettingsPage() {
 
                 <div className={styles.grid}>
                     <div className={styles.column}>
-                        <ServerSection />
                         <DownloadsSection draft={draft} setDraft={setDraft} />
                         <StoreSection setDraft={setDraft} />
                     </div>

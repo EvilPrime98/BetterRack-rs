@@ -7,8 +7,6 @@ import {
     type IUltraCompStateStateful,
 } from 'ultra-light-js';
 import styles from './store-downloads.page.module.css';
-import { Browser } from '@capacitor/browser';
-import { isAndroidPlatform } from '@/services/server-config.service';
 import {
     cancelDownloadJob,
     getDownloadJobs,
@@ -145,13 +143,6 @@ export function StoreDownloadsPage() {
 
     function onListClick(event: Event) {
         const $target = event.target as HTMLElement;
-        const externalUrl =
-            $target.closest<HTMLAnchorElement>('[data-external-url]')?.dataset.externalUrl;
-        if (externalUrl && isAndroidPlatform()) {
-            event.preventDefault();
-            void Browser.open({ url: externalUrl });
-            return;
-        }
         const retryJobId =
             $target.closest<HTMLButtonElement>('[data-retry-job-id]')?.dataset.retryJobId;
         if (retryJobId) {
@@ -228,10 +219,7 @@ export function StoreDownloadsPage() {
                 onMount: [renderList],
                 trigger: [
                     {
-                        subscriber: [
-                            store.jobs.subscribe,
-                            store.pending.subscribe,
-                        ],
+                        subscriber: [store.jobs.subscribe, store.pending.subscribe],
                         triggerFunction: renderList,
                         defer: true,
                     },
