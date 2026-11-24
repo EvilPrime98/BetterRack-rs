@@ -10,6 +10,7 @@ pub mod directories;
 pub mod download;
 pub mod downloads;
 pub mod error;
+pub mod fs;
 pub mod jobs;
 pub mod library;
 pub mod pack;
@@ -20,6 +21,7 @@ pub mod settings;
 pub mod store;
 pub mod sync;
 pub mod thumbnail;
+pub mod tree_fs;
 pub mod uid;
 pub mod wiki;
 

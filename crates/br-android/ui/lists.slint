@@ -1,0 +1,77 @@
+import { Theme } from "theme.slint";
+import { Item, Cover } from "cover.slint";
+
+component Shelf inherits VerticalLayout {
+    in property <string> title;
+    in property <[Item]> items;
+    in property <string> empty;
+    callback cover-needed(int);
+    callback clicked(int);
+    spacing: 8px;
+    Text { text: root.title; color: Theme.text; font-size: 18px; font-weight: 700; }
+    if root.items.length == 0: Text { text: root.empty; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+    if root.items.length > 0: Flickable {
+        height: 200px;
+        content-width: root.items.length * 120px;
+        for item[i] in root.items: Rectangle {
+            x: i * 120px;
+            width: 112px;
+            height: 200px;
+            init => { root.cover-needed(i); }
+            VerticalLayout {
+                spacing: 4px;
+                Cover { vertical-stretch: 1; source: item.cover; loaded: item.has-cover; }
+                Text { text: item.title; color: Theme.text; font-size: 13px; font-weight: 700; overflow: elide; }
+                Text { text: item.subtitle; color: Theme.muted; font-size: 12px; overflow: elide; }
+            }
+            TouchArea { clicked => { root.clicked(i); } }
+        }
+    }
+}
+
+export component ListsScreen inherits Rectangle {
+    in property <[Item]> reading;
+    in property <[Item]> recent;
+    in property <bool> refreshing;
+    callback refresh();
+    callback list-cover-needed(int, int);
+    callback open-list-item(int, int);
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 16px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 12px;
+            Text { text: "Browse"; color: Theme.text; font-size: 24px; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
+            Rectangle {
+                width: 120px;
+                height: 40px;
+                border-radius: 20px;
+                background: Theme.surface;
+                Text {
+                    text: root.refreshing ? "Scanning..." : "Refresh";
+                    color: Theme.accent;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                TouchArea { enabled: !root.refreshing; clicked => { root.refresh(); } }
+            }
+        }
+        Shelf {
+            title: "Keep reading";
+            items: root.reading;
+            empty: "Nothing in progress. Open a comic and it shows up here.";
+            cover-needed(i) => { root.list-cover-needed(0, i); }
+            clicked(i) => { root.open-list-item(0, i); }
+        }
+        Shelf {
+            title: "Recently added";
+            items: root.recent;
+            empty: "No comics added in the last days.";
+            cover-needed(i) => { root.list-cover-needed(1, i); }
+            clicked(i) => { root.open-list-item(1, i); }
+        }
+    }
+}

@@ -13,6 +13,7 @@ use crate::archive::Archives;
 use crate::comic_data::{ComicDataStore, ComicRecord};
 use crate::comic_info::{js_number, to_wiki_comic};
 use crate::directories::natural_cmp;
+use crate::fs::{LibraryFs, StdFs};
 use crate::series::series_of;
 use crate::settings::Preferences;
 use crate::sync::{Semaphore, SingleFlight};
@@ -105,64 +106,66 @@ impl LibraryEntry {
     }
 }
 
-fn mtime_ms(meta: &std::fs::Metadata) -> f64 {
-    let since = meta
-        .modified()
-        .ok()
-        .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
-        .unwrap_or_default();
-    since.as_secs() as f64 * 1e3 + f64::from(since.subsec_nanos()) / 1e6
-}
-
 fn is_comic_name(name: &str) -> bool {
     COMIC_EXTENSIONS.contains(&crate::archive::extension(name).as_str())
 }
 
+struct Walked {
+    name: String,
+    is_dir: bool,
+    path: String,
+    parent: String,
+}
+
 /// Depth-first walk (symlinked folders are not followed, like `readdir({ recursive })`).
-fn walk(dir: &Path, out: &mut Vec<(String, bool, std::path::PathBuf)>) {
-    let Ok(read) = std::fs::read_dir(dir) else {
+fn walk(fs: &dyn LibraryFs, dir: &str, out: &mut Vec<Walked>) {
+    let Ok(read) = fs.list_dir(dir) else {
         return;
     };
-    for entry in read.filter_map(|e| e.ok()) {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
-        if is_dir || is_comic_name(&name) {
-            out.push((name, is_dir, entry.path()));
+    for entry in read {
+        if entry.is_dir || is_comic_name(&entry.name) {
+            out.push(Walked {
+                name: entry.name,
+                is_dir: entry.is_dir,
+                path: entry.path.clone(),
+                parent: dir.to_string(),
+            });
         }
-        if is_dir {
-            walk(&entry.path(), out);
+        if entry.is_dir {
+            walk(fs, &entry.path, out);
         }
     }
 }
 
 /// Scan the given library roots (already `outputDirs`, resolved against `cwd` here).
 pub fn scan(roots: &[String], cwd: &str) -> Vec<LibraryEntry> {
+    scan_in(&StdFs, roots, cwd)
+}
+
+pub fn scan_in(fs: &dyn LibraryFs, roots: &[String], cwd: &str) -> Vec<LibraryEntry> {
     let mut found: Vec<(LibraryEntry, String)> = Vec::new(); // (entry, parent path)
     for (library_index, root) in roots.iter().enumerate() {
         let root = resolve_in(root, cwd);
-        if !Path::new(&root).is_dir() {
+        if !fs.stat(&root).is_ok_and(|m| m.is_dir) {
             tracing::error!(lib_path = %root, "skipping unreachable library folder");
             continue;
         }
         let mut raw = Vec::new();
-        walk(Path::new(&root), &mut raw);
-        for (name, did, path) in raw {
-            let abs = resolve_in(&path.to_string_lossy(), cwd);
-            let Ok(meta) = std::fs::metadata(&path) else {
+        walk(fs, &root, &mut raw);
+        for w in raw {
+            let abs = resolve_in(&w.path, cwd);
+            let Ok(meta) = fs.stat(&w.path) else {
                 continue;
             };
-            let parent = path
-                .parent()
-                .map(|p| resolve_in(&p.to_string_lossy(), cwd))
-                .unwrap_or_default();
+            let parent = resolve_in(&w.parent, cwd);
             found.push((
                 LibraryEntry {
                     uid: uid_from_path(&abs),
-                    did,
-                    name,
+                    did: w.is_dir,
+                    name: w.name,
                     path: abs,
                     parent_id: None,
-                    created_at: mtime_ms(&meta),
+                    created_at: meta.mtime_ms,
                     library_index,
                     pref_publisher: None,
                     pref_inheritance: None,
@@ -336,7 +339,7 @@ impl Library {
             .collect();
         let stored = self.comic_data.get_all()?;
 
-        let mut entries = scan(&roots, &self.cwd);
+        let mut entries = scan_in(self.archives.fs().as_ref(), &roots, &self.cwd);
         for entry in &mut entries {
             if let Some(p) = prefs.get(&entry.uid) {
                 entry.pref_publisher = Some(p.pref_publisher.clone());
@@ -934,22 +937,30 @@ impl Library {
             }
         };
         let base = std::path::PathBuf::from(resolve_in(&base, &self.cwd));
+        if base.starts_with(crate::tree_fs::PREFIX) {
+            return Err(CoreError::Invalid(
+                "Flatten is not supported on this library folder.".into(),
+            ));
+        }
 
         let mut found = Vec::new();
-        walk(&base, &mut found);
-        found.sort_by_key(|(_, _, p)| std::cmp::Reverse(p.components().count()));
+        walk(
+            self.archives.fs().as_ref(),
+            &base.to_string_lossy(),
+            &mut found,
+        );
+        found
+            .sort_by_key(|w| std::cmp::Reverse(std::path::Path::new(&w.path).components().count()));
 
-        for (name, is_dir, path) in &found {
-            if *is_dir || path.parent() == Some(base.as_path()) {
+        for w in &found {
+            if w.is_dir || std::path::Path::new(&w.path).parent() == Some(base.as_path()) {
                 continue;
             }
-            let dest = crate::pack::dedupe(&base.join(name));
-            std::fs::rename(path, dest)?;
+            let dest = crate::pack::dedupe(&base.join(&w.name));
+            std::fs::rename(&w.path, dest)?;
         }
-        for (_, is_dir, path) in &found {
-            if *is_dir {
-                let _ = std::fs::remove_dir(path);
-            }
+        for w in found.iter().filter(|w| w.is_dir) {
+            let _ = std::fs::remove_dir(&w.path);
         }
         self.rescan()
     }
@@ -1264,7 +1275,11 @@ mod tests {
         old.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(48 * 3600))
             .unwrap();
         f.rescan();
-        let now = mtime_ms(&std::fs::metadata(f.root.path().join("new.cbz")).unwrap()) + 1000.0;
+        let now = StdFs
+            .stat(&f.root.path().join("new.cbz").to_string_lossy())
+            .unwrap()
+            .mtime_ms
+            + 1000.0;
         let r = f.lib.recent(None, now);
         assert_eq!(
             r["items"]

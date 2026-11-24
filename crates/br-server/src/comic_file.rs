@@ -4,7 +4,32 @@ use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use tokio_util::io::ReaderStream;
+use br_core::fs::ReadSeek;
+use std::io::Read;
+
+const CHUNK: usize = 64 * 1024;
+
+/// Stream a blocking reader without holding a runtime worker during the read.
+fn stream(reader: Box<dyn ReadSeek>) -> impl futures_util::Stream<Item = std::io::Result<Vec<u8>>> {
+    futures_util::stream::unfold(Some(reader), |state| async move {
+        let mut reader = state?;
+        let read = tokio::task::spawn_blocking(move || {
+            let mut buf = vec![0u8; CHUNK];
+            let n = reader.read(&mut buf);
+            n.map(|n| {
+                buf.truncate(n);
+                (buf, reader)
+            })
+        })
+        .await
+        .unwrap_or_else(|e| Err(std::io::Error::other(e)));
+        match read {
+            Ok((buf, _)) if buf.is_empty() => None,
+            Ok((buf, reader)) => Some((Ok(buf), Some(reader))),
+            Err(e) => Some((Err(e), None)),
+        }
+    })
+}
 
 pub fn content_disposition(name: &str) -> String {
     let fallback: String = name
@@ -48,7 +73,15 @@ pub async fn get(State(s): State<AppState>, Path(uid): Path<String>) -> Response
     let Some(path) = s.library.path_of(&uid).map(std::path::PathBuf::from) else {
         return not_found("File not found in library");
     };
-    let file = match tokio::fs::File::open(&path).await {
+    let fs = s.archives.fs().clone();
+    let key = path.to_string_lossy().into_owned();
+    let opened = tokio::task::spawn_blocking(move || {
+        let len = fs.stat(&key).map(|m| m.size).ok();
+        fs.open(&key).map(|f| (f, len))
+    })
+    .await
+    .unwrap_or_else(|e| Err(std::io::Error::other(e)));
+    let (file, len) = match opened {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return not_found("File not found"),
         Err(e) => {
@@ -56,12 +89,11 @@ pub async fn get(State(s): State<AppState>, Path(uid): Path<String>) -> Response
             return error::text(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error");
         }
     };
-    let len = file.metadata().await.ok().map(|m| m.len());
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "comic".to_string());
-    let mut res = Response::new(Body::from_stream(ReaderStream::new(file)));
+    let mut res = Response::new(Body::from_stream(stream(file)));
     let h = res.headers_mut();
     h.insert(
         header::CONTENT_TYPE,

@@ -21,13 +21,15 @@ webp = { version = "0.3", default-features = false }
 
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "fs", "io-util"] }
 tokio-util = "0.7"
-reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "charset", "json", "gzip", "brotli", "deflate", "stream"] }
 futures-util = "0.3"
 scraper = "0.23"
 html-escape = "0.2"
 url = "2"
 fastrand = "2"
 base64 = "0.22"
+sevenz-rust2 = { version = "0.25", default-features = false, features = ["bzip2", "deflate", "ppmd"] }
+rar-rs = "0.16"
 
 [dev-dependencies]
 axum = "0.8"

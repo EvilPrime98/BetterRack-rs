@@ -1,0 +1,114 @@
+import { ListView, LineEdit } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Item, Cover } from "cover.slint";
+import { SeriesDetail } from "series.slint";
+
+component Chip inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+    height: 34px;
+    border-radius: 17px;
+    background: root.selected ? Theme.accent.with-alpha(0.18) : Theme.surface;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        Text {
+            text: root.label;
+            color: root.selected ? Theme.accent : Theme.muted;
+            font-size: 14px;
+            vertical-alignment: center;
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+component SeriesCell inherits Rectangle {
+    in property <Item> item;
+    in property <int> index;
+    callback cover-needed(int);
+    callback clicked(int);
+    init => { root.cover-needed(root.index); }
+    VerticalLayout {
+        padding: 6px;
+        spacing: 4px;
+        Cover { vertical-stretch: 1; source: root.item.cover; loaded: root.item.has-cover; }
+        Text { text: root.item.title; color: Theme.text; font-size: 14px; font-weight: 700; overflow: elide; }
+        Text { text: root.item.subtitle; color: Theme.muted; font-size: 12px; overflow: elide; }
+    }
+    TouchArea { clicked => { root.clicked(root.index); } }
+}
+
+export component LibraryScreen inherits Rectangle {
+    in property <[Item]> series;
+    in property <[Item]> issues;
+    in property <bool> loading;
+    in property <bool> detail-open;
+    in property <string> detail-title;
+    in-out property <int> filter;
+    callback search(string);
+    callback set-filter(int);
+    callback open-series(int);
+    callback open-issue(int);
+    callback identify-issue(int);
+    callback close-series();
+    callback cover-needed(bool, int);
+
+    property <int> cols: max(2, floor((root.width - 32px) / 150px));
+    property <length> cell-w: (root.width - 32px) / root.cols;
+    property <string> query;
+
+    if root.detail-open: SeriesDetail {
+        title: root.detail-title;
+        issues: root.issues;
+        back => { root.close-series(); }
+        cover-needed(i) => { root.cover-needed(true, i); }
+        open-issue(i) => { root.open-issue(i); }
+        identify-issue(i) => { root.identify-issue(i); }
+    }
+    if !root.detail-open: VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        Text { text: "Library"; color: Theme.text; font-size: 24px; font-weight: 700; }
+        LineEdit {
+            placeholder-text: "Search series";
+            text <=> root.query;
+            edited(t) => { root.search(t); }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Chip { label: "All"; selected: root.filter == 0; clicked => { root.set-filter(0); } }
+            Chip { label: "Identified"; selected: root.filter == 1; clicked => { root.set-filter(1); } }
+            Chip { label: "Unidentified"; selected: root.filter == 2; clicked => { root.set-filter(2); } }
+        }
+        if root.series.length == 0: Text {
+            text: root.loading ? "Loading..." : (root.query != "" || root.filter != 0 ? "No series match." : "No comics yet. Add a library folder in Settings.");
+            color: Theme.muted;
+            font-size: 16px;
+            wrap: word-wrap;
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            ListView {
+                width: parent.width;
+                height: parent.height;
+                for r in ceil(root.series.length / root.cols): Rectangle {
+                    height: root.cell-w * 1.7;
+                    for c in root.cols: Rectangle {
+                        x: c * root.cell-w;
+                        width: root.cell-w;
+                        if r * root.cols + c < root.series.length: SeriesCell {
+                            item: root.series[r * root.cols + c];
+                            index: r * root.cols + c;
+                            width: parent.width;
+                            height: parent.height;
+                            cover-needed(i) => { root.cover-needed(false, i); }
+                            clicked(i) => { root.open-series(i); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

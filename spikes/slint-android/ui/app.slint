@@ -1,0 +1,17 @@
+import { ListView } from "std-widgets.slint";
+
+export component App inherits Window {
+    in property <[string]> items;
+    in property <string> status;
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        Text { text: "BetterRack (Slint spike)"; font-size: 22px; }
+        Text { text: root.status; }
+        ListView {
+            vertical-stretch: 1;
+            for name in root.items: Text { text: name; font-size: 18px; height: 40px; }
+        }
+        TextInput { text: "type here to test IME"; font-size: 18px; }
+    }
+}

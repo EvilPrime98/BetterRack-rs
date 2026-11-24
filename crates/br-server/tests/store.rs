@@ -62,6 +62,7 @@ async fn harness(configure_store: bool) -> Harness {
         },
         rotating: Some((0, 0, 0)),
         pixeldrain: None,
+        archives: None,
     };
     let state = AppState::open_with(config, Arc::new(NoWiki), net).unwrap();
     if configure_store {

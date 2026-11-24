@@ -1,19 +1,22 @@
 //! Archive layer: entry lists, page lists, entry bytes and `ComicInfo.xml`.
 //!
-//! `.cbz`/`.zip` are read in-process with the `zip` crate; everything else (`.cbr`, `.cb7`,
-//! `.cbt`, `.rar`, `.7z`) goes through the bundled 7-Zip. A zip the crate cannot read
-//! (odd compression, a misnamed RAR) silently falls back to 7-Zip too.
+//! `.cbz`/`.zip` are read in-process with the `zip` crate, `.cb7`/`.7z` with `sevenz-rust2` and
+//! `.cbr`/`.rar` with the pure-Rust
+//! `rar-rs`; everything else (`.cbt`) goes through the bundled 7-Zip. An archive the
+//! in-process readers cannot read (odd compression, a misnamed RAR) silently falls back to 7-Zip
+//! too, where one is installed.
 //!
 //! All methods block (file IO, child processes); call them from `spawn_blocking`.
 
 use crate::collate::locale_compare_numeric;
 use crate::comic_info::{self, Bookmark, ComicInfo};
+use crate::fs::{LibraryFs, StdFs};
 use crate::{CoreError, Result};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub const IMAGE_EXTENSIONS: [&str; 6] = ["jpg", "jpeg", "png", "webp", "gif", "bmp"];
 const ARCHIVE_CACHE_MAX_SIZE: usize = 50;
@@ -89,14 +92,14 @@ pub struct FileStamp {
 }
 
 pub fn file_stamp(path: &Path) -> std::io::Result<FileStamp> {
-    let meta = std::fs::metadata(path)?;
-    let since = meta
-        .modified()?
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
+    stamp_in(&StdFs, path)
+}
+
+pub fn stamp_in(fs: &dyn LibraryFs, path: &Path) -> std::io::Result<FileStamp> {
+    let meta = fs.stat(&path.to_string_lossy())?;
     Ok(FileStamp {
-        size: meta.len(),
-        mtime_ms: since.as_secs() as f64 * 1e3 + f64::from(since.subsec_nanos()) / 1e6,
+        size: meta.size,
+        mtime_ms: meta.mtime_ms,
     })
 }
 
@@ -153,7 +156,9 @@ impl<V: Clone> Cache<V> {
 }
 
 pub struct Archives {
+    fs: Arc<dyn LibraryFs>,
     configured_7z: Option<PathBuf>,
+    cache_dir: Option<PathBuf>,
     resolved_7z: OnceLock<std::result::Result<PathBuf, String>>,
     entries: Mutex<Cache<Vec<String>>>,
     infos: Mutex<Cache<Option<ComicInfo>>>,
@@ -215,6 +220,14 @@ fn is_zip_file(path: &Path) -> bool {
     matches!(extension(&path.to_string_lossy()).as_str(), "cbz" | "zip")
 }
 
+fn is_7z_file(path: &Path) -> bool {
+    matches!(extension(&path.to_string_lossy()).as_str(), "cb7" | "7z")
+}
+
+fn is_rar_file(path: &Path) -> bool {
+    matches!(extension(&path.to_string_lossy()).as_str(), "cbr" | "rar")
+}
+
 /// 7-Zip prints entry paths with the platform separator; mirror that for zip-crate listings so
 /// both backends return the same names (they are echoed in `/read/:uid`).
 fn native_separators(name: &str) -> String {
@@ -227,12 +240,76 @@ fn native_separators(name: &str) -> String {
 
 impl Archives {
     pub fn new(configured_7z: Option<PathBuf>) -> Self {
+        Self::with_fs(configured_7z, Arc::new(StdFs))
+    }
+
+    /// The 7-Zip subprocess fallback and `extract_entries` still need real filesystem paths.
+    pub fn with_fs(configured_7z: Option<PathBuf>, fs: Arc<dyn LibraryFs>) -> Self {
         Self {
+            fs,
             configured_7z,
+            cache_dir: None,
             resolved_7z: OnceLock::new(),
             entries: Mutex::new(Cache::new()),
             infos: Mutex::new(Cache::new()),
         }
+    }
+
+    pub fn fs(&self) -> &Arc<dyn LibraryFs> {
+        &self.fs
+    }
+
+    /// Directory for RAR copies made when the archive is not a real file on disk (e.g. an
+    /// Android content URI). Defaults to the OS temp dir.
+    pub fn with_cache_dir(mut self, dir: PathBuf) -> Self {
+        self.cache_dir = Some(dir);
+        self
+    }
+
+    /// The `rar-rs` reader only opens real paths. A path that is a file on disk is used as is;
+    /// anything else is copied once through the `LibraryFs` into the cache dir, keyed by path
+    /// and stamp so a changed archive gets a new copy.
+    fn local_rar(&self, path: &Path, stamp: FileStamp) -> Option<PathBuf> {
+        if std::fs::metadata(path)
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+        {
+            return Some(path.to_path_buf());
+        }
+        use sha2::{Digest, Sha256};
+        let key = path.to_string_lossy();
+        let mut h = Sha256::new();
+        h.update(key.as_bytes());
+        h.update(format!("{stamp:?}"));
+        let name: String = h
+            .finalize()
+            .iter()
+            .take(12)
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let dir = self
+            .cache_dir
+            .clone()
+            .unwrap_or_else(|| std::env::temp_dir().join("br-rar-cache"));
+        let dest = dir.join(format!("{name}.rar"));
+        if dest.is_file() {
+            return Some(dest);
+        }
+        std::fs::create_dir_all(&dir).ok()?;
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = dir.join(format!("{name}.{}.{seq}.part", std::process::id()));
+        let copied = (|| {
+            let mut src = self.fs.open(&key).ok()?;
+            let mut out = std::fs::File::create(&tmp).ok()?;
+            std::io::copy(&mut src, &mut out).ok()?;
+            Some(())
+        })();
+        if copied.is_none() || std::fs::rename(&tmp, &dest).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            return dest.is_file().then_some(dest);
+        }
+        Some(dest)
     }
 
     fn seven_zip(&self) -> Result<&Path> {
@@ -260,11 +337,20 @@ impl Archives {
     /// Every non-directory entry, in archive order.
     pub fn list_entries(&self, path: &Path) -> Result<Vec<String>> {
         let key = path.to_string_lossy().into_owned();
-        let stamp = file_stamp(path)?;
+        let stamp = stamp_in(self.fs.as_ref(), path)?;
         if let Some(hit) = lock(&self.entries).get(&key, stamp) {
             return Ok(hit);
         }
-        let entries = match is_zip_file(path).then(|| list_zip(path)).flatten() {
+        let in_process = if is_zip_file(path) {
+            list_zip(self.fs.as_ref(), path)
+        } else if is_7z_file(path) {
+            list_sevenz(self.fs.as_ref(), path)
+        } else if is_rar_file(path) {
+            self.local_rar(path, stamp).and_then(|p| list_rar(&p))
+        } else {
+            None
+        };
+        let entries = match in_process {
             Some(e) => e,
             None => self.list_7z(path)?,
         };
@@ -320,16 +406,25 @@ impl Archives {
                 "Rejected suspicious archive entry path: \"{entry}\""
             )));
         }
-        if !path.exists() {
+        if self.fs.stat(&path.to_string_lossy()).is_err() {
             return Err(invalid(format!(
                 "Archive not found: \"{}\"",
                 path.display()
             )));
         }
-        if is_zip_file(path)
-            && let Some(bytes) = read_zip_entry(path, entry)
-            && !bytes.is_empty()
-        {
+        let in_process = if is_zip_file(path) {
+            read_zip_entry(self.fs.as_ref(), path, entry)
+        } else if is_7z_file(path) {
+            read_sevenz_entry(self.fs.as_ref(), path, entry)
+        } else if is_rar_file(path) {
+            let stamp = stamp_in(self.fs.as_ref(), path).ok();
+            stamp
+                .and_then(|st| self.local_rar(path, st))
+                .and_then(|p| read_rar_entry(&p, entry))
+        } else {
+            None
+        };
+        if let Some(bytes) = in_process.filter(|b| !b.is_empty()) {
             return Ok(bytes);
         }
         self.read_entry_7z(path, entry)
@@ -378,6 +473,20 @@ impl Archives {
         if entries.is_empty() {
             return Ok(());
         }
+        if is_zip_file(path) || is_7z_file(path) || is_rar_file(path) {
+            let extracted: Result<()> = entries.iter().try_for_each(|e| {
+                let bytes = self.read_entry(path, e)?;
+                let dest = out_dir.join(e.replace('\\', "/"));
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(dest, bytes)?;
+                Ok(())
+            });
+            if extracted.is_ok() {
+                return Ok(());
+            }
+        }
         let mut out_arg = std::ffi::OsString::from("-o");
         out_arg.push(out_dir);
         let out = self
@@ -406,10 +515,11 @@ impl Archives {
         Ok(())
     }
 
-    fn sidecar_comic_info(path: &Path) -> Option<String> {
+    fn sidecar_comic_info(&self, path: &Path) -> Option<String> {
         let stem = path.file_stem()?;
         let sidecar = path.with_file_name(format!("{}.xml", stem.to_string_lossy()));
-        std::fs::read(sidecar)
+        self.fs
+            .read(&sidecar.to_string_lossy())
             .ok()
             .map(|b| String::from_utf8_lossy(&b).into_owned())
     }
@@ -417,7 +527,7 @@ impl Archives {
     /// The embedded `ComicInfo.xml` (top level only), else the `<name>.xml` next to the archive.
     pub fn comic_info(&self, path: &Path) -> Result<Option<ComicInfo>> {
         let key = path.to_string_lossy().into_owned();
-        let stamp = file_stamp(path)?;
+        let stamp = stamp_in(self.fs.as_ref(), path)?;
         if let Some(hit) = lock(&self.infos).get(&key, stamp) {
             return Ok(hit);
         }
@@ -427,7 +537,7 @@ impl Archives {
         });
         let xml = match entry {
             Some(e) => Some(String::from_utf8_lossy(&self.read_entry(path, &e)?).into_owned()),
-            None => Self::sidecar_comic_info(path),
+            None => self.sidecar_comic_info(path),
         };
         let info = xml.and_then(|x| comic_info::parse(&x));
         lock(&self.infos).put(&key, stamp, info.clone());
@@ -442,8 +552,8 @@ impl Archives {
     }
 }
 
-fn list_zip(path: &Path) -> Option<Vec<String>> {
-    let mut zip = zip::ZipArchive::new(std::fs::File::open(path).ok()?).ok()?;
+fn list_zip(fs: &dyn LibraryFs, path: &Path) -> Option<Vec<String>> {
+    let mut zip = zip::ZipArchive::new(fs.open(&path.to_string_lossy()).ok()?).ok()?;
     let mut out = Vec::with_capacity(zip.len());
     for i in 0..zip.len() {
         let f = zip.by_index_raw(i).ok()?;
@@ -454,8 +564,8 @@ fn list_zip(path: &Path) -> Option<Vec<String>> {
     Some(out)
 }
 
-fn read_zip_entry(path: &Path, entry: &str) -> Option<Vec<u8>> {
-    let mut zip = zip::ZipArchive::new(std::fs::File::open(path).ok()?).ok()?;
+fn read_zip_entry(fs: &dyn LibraryFs, path: &Path, entry: &str) -> Option<Vec<u8>> {
+    let mut zip = zip::ZipArchive::new(fs.open(&path.to_string_lossy()).ok()?).ok()?;
     let slashed = entry.replace('\\', "/");
     let index = zip
         .index_for_name(&slashed)
@@ -464,6 +574,54 @@ fn read_zip_entry(path: &Path, entry: &str) -> Option<Vec<u8>> {
     let mut buf = Vec::with_capacity(file.size() as usize);
     file.read_to_end(&mut buf).ok()?;
     Some(buf)
+}
+
+fn list_sevenz(fs: &dyn LibraryFs, path: &Path) -> Option<Vec<String>> {
+    let reader = sevenz_rust2::ArchiveReader::new(
+        fs.open(&path.to_string_lossy()).ok()?,
+        sevenz_rust2::Password::empty(),
+    )
+    .ok()?;
+    Some(
+        reader
+            .archive()
+            .files
+            .iter()
+            .filter(|f| !f.is_directory())
+            .map(|f| native_separators(f.name()))
+            .collect(),
+    )
+}
+
+fn read_sevenz_entry(fs: &dyn LibraryFs, path: &Path, entry: &str) -> Option<Vec<u8>> {
+    let mut reader = sevenz_rust2::ArchiveReader::new(
+        fs.open(&path.to_string_lossy()).ok()?,
+        sevenz_rust2::Password::empty(),
+    )
+    .ok()?;
+    let slashed = entry.replace('\\', "/");
+    reader.read_file(&slashed).ok()
+}
+
+fn list_rar(path: &Path) -> Option<Vec<String>> {
+    let reader = rar_rs::ArchiveReader::open(path).ok()?;
+    Some(
+        reader
+            .entries()
+            .filter(|e| !e.is_dir())
+            .map(|e| native_separators(&e.name().replace('\\', "/")))
+            .collect(),
+    )
+}
+
+fn read_rar_entry(path: &Path, entry: &str) -> Option<Vec<u8>> {
+    let mut reader = rar_rs::ArchiveReader::open(path).ok()?;
+    let slashed = entry.replace('\\', "/");
+    let id = reader
+        .entries()
+        .find(|e| !e.is_dir() && e.name().replace('\\', "/") == slashed)?
+        .id();
+    reader.read_entry(id).ok()
 }
 
 /// `7z l -slt -ba` output: blank-line separated `Key = Value` blocks.
@@ -525,6 +683,119 @@ mod tests {
         for good in ["x.png", "dir/x.png", r"dir\x.png", "..x.png"] {
             assert!(is_safe_entry_name(good), "{good:?}");
         }
+    }
+
+    #[test]
+    fn cb7_fixtures_are_read_in_process() {
+        for name in ["7z.cb7", "7z-solid.cb7"] {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures")
+                .join(name);
+            let mut entries = list_sevenz(&StdFs, &path).expect(name);
+            entries.sort();
+            assert_eq!(
+                entries,
+                [
+                    "001.jpg",
+                    "002.jpg",
+                    "010.jpg",
+                    "ComicInfo.xml",
+                    &native_separators("nested/x.jpg")
+                ],
+                "{name}"
+            );
+            assert_eq!(
+                read_sevenz_entry(&StdFs, &path, "002.jpg").unwrap(),
+                b"p2",
+                "{name}"
+            );
+            assert_eq!(
+                read_sevenz_entry(&StdFs, &path, &native_separators("nested/x.jpg")).unwrap(),
+                b"n",
+                "{name}"
+            );
+            assert!(
+                read_sevenz_entry(&StdFs, &path, "missing.jpg").is_none(),
+                "{name}"
+            );
+            let a = Archives::new(None);
+            assert_eq!(a.list_pages(&path).unwrap().len(), 4, "{name}");
+            assert!(a.comic_info(&path).unwrap().is_some(), "{name}");
+            let out = tempfile::tempdir().unwrap();
+            a.extract_entries(&path, out.path(), &["nested/x.jpg".into()])
+                .unwrap();
+            assert_eq!(
+                std::fs::read(out.path().join("nested/x.jpg")).unwrap(),
+                b"n"
+            );
+        }
+    }
+
+    #[test]
+    fn rar_fixtures_are_read_in_process() {
+        for name in ["rar4.cbr", "rar4-solid.cbr", "rar5.cbr", "rar5-solid.cbr"] {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures")
+                .join(name);
+            let mut entries = list_rar(&path).expect(name);
+            entries.sort();
+            assert_eq!(
+                entries,
+                vec![
+                    "001.jpg",
+                    "002.jpg",
+                    "010.jpg",
+                    "ComicInfo.xml",
+                    native_separators("Extras/note.txt").as_str()
+                ],
+                "{name}"
+            );
+            assert_eq!(
+                read_rar_entry(&path, "002.jpg").unwrap().len(),
+                409,
+                "{name}"
+            );
+            assert_eq!(
+                read_rar_entry(&path, &native_separators("Extras/note.txt"))
+                    .unwrap()
+                    .len(),
+                5,
+                "{name}"
+            );
+            assert!(read_rar_entry(&path, "missing.jpg").is_none(), "{name}");
+        }
+    }
+
+    #[test]
+    fn rar_outside_real_paths_is_copied_to_the_cache_dir() {
+        struct Virtual(Vec<u8>);
+        impl LibraryFs for Virtual {
+            fn list_dir(&self, _: &str) -> std::io::Result<Vec<crate::fs::DirEntry>> {
+                Ok(vec![])
+            }
+            fn stat(&self, _: &str) -> std::io::Result<crate::fs::FileMeta> {
+                Ok(crate::fs::FileMeta {
+                    size: self.0.len() as u64,
+                    mtime_ms: 1.0,
+                    is_dir: false,
+                })
+            }
+            fn open(&self, _: &str) -> std::io::Result<Box<dyn crate::fs::ReadSeek>> {
+                Ok(Box::new(std::io::Cursor::new(self.0.clone())))
+            }
+        }
+        let bytes = std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rar5-solid.cbr"),
+        )
+        .unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let archives =
+            Archives::with_fs(Some(PathBuf::from("no-such-7z")), Arc::new(Virtual(bytes)))
+                .with_cache_dir(cache.path().to_path_buf());
+        let uri = Path::new("content-uri-not-on-disk.cbr");
+        assert_eq!(archives.list_pages(uri).unwrap().len(), 3);
+        assert_eq!(archives.read_entry(uri, "001.jpg").unwrap().len(), 409);
+        assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 1);
     }
 
     #[test]

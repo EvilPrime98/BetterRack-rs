@@ -1,12 +1,16 @@
 //! `GET /api/directories`: every folder under the download dir and library roots.
 //! Directory listing under the library roots.
 
+use crate::fs::{LibraryFs, StdFs};
 use std::cmp::Ordering;
-use std::path::{Path, PathBuf};
 
 /// Roots first-seen order, each followed by its subfolders depth-first; duplicates dropped.
 /// Unreadable folders are skipped silently.
 pub fn directories_under(roots: &[String], cwd: &str) -> Vec<String> {
+    directories_under_in(&StdFs, roots, cwd)
+}
+
+pub fn directories_under_in(fs: &dyn LibraryFs, roots: &[String], cwd: &str) -> Vec<String> {
     let mut seen: Vec<String> = Vec::new();
     let mut push = |s: String| {
         if !seen.contains(&s) {
@@ -17,28 +21,23 @@ pub fn directories_under(roots: &[String], cwd: &str) -> Vec<String> {
         let abs = crate::uid::resolve_in(root, cwd);
         push(abs.clone());
         let mut found = Vec::new();
-        recurse(Path::new(&abs), &mut found);
+        recurse(fs, &abs, &mut found);
         for dir in found {
-            push(dir.to_string_lossy().into_owned());
+            push(dir);
         }
     }
     seen
 }
 
-fn recurse(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(read) = std::fs::read_dir(dir) else {
+fn recurse(fs: &dyn LibraryFs, dir: &str, out: &mut Vec<String>) {
+    let Ok(read) = fs.list_dir(dir) else {
         return;
     };
-    let mut names: Vec<String> = read
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .collect();
-    names.sort_by(|a, b| natural_cmp(a, b));
-    for name in names {
-        let child = dir.join(&name);
-        out.push(child.clone());
-        recurse(&child, out);
+    let mut kids: Vec<_> = read.into_iter().filter(|e| e.is_dir).collect();
+    kids.sort_by(|a, b| natural_cmp(&a.name, &b.name));
+    for kid in kids {
+        out.push(kid.path.clone());
+        recurse(fs, &kid.path, out);
     }
 }
 

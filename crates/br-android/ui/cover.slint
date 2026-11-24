@@ -1,0 +1,19 @@
+import { Theme } from "theme.slint";
+
+// One row of a series grid or an issue list. `cover` is filled in after the thumbnail loads.
+export struct Item {
+    title: string,
+    subtitle: string,
+    uid: string,
+    cover: image,
+    has-cover: bool,
+}
+
+export component Cover inherits Rectangle {
+    in property <image> source;
+    in property <bool> loaded;
+    background: Theme.surface;
+    border-radius: 6px;
+    clip: true;
+    Image { source: root.source; image-fit: cover; visible: root.loaded; }
+}

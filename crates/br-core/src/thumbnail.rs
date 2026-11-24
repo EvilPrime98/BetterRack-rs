@@ -5,7 +5,7 @@
 //! There is no raw-extract directory: the first
 //! page is read from the archive into memory and encoded in-process.
 
-use crate::archive::{Archives, file_stamp};
+use crate::archive::{Archives, stamp_in};
 use crate::sync::{Semaphore, SingleFlight};
 use crate::{CoreError, Result};
 use image::imageops::FilterType;
@@ -92,8 +92,8 @@ impl Thumbnails {
         self.cache_dir.join(uid)
     }
 
-    fn signature(path: &Path) -> Option<String> {
-        file_stamp(path)
+    fn signature(&self, path: &Path) -> Option<String> {
+        stamp_in(self.archives.fs().as_ref(), path)
             .ok()
             .map(|s| format!("{}:{}", s.size, s.mtime_ms))
     }
@@ -119,7 +119,7 @@ impl Thumbnails {
     }
 
     fn attempt(&self, uid: &str, file: &Path) -> Option<PathBuf> {
-        let signature = Self::signature(file)?;
+        let signature = self.signature(file)?;
         if lock(&self.failed).get(uid) == Some(&signature) {
             return None;
         }

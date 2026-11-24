@@ -1,0 +1,238 @@
+import { Theme } from "theme.slint";
+import { NavRail, NavBar } from "nav.slint";
+import { LibraryScreen } from "library.slint";
+import { Item } from "cover.slint";
+import { ListsScreen } from "lists.slint";
+import { SettingsScreen } from "settings.slint";
+import { Reader } from "reader.slint";
+import { StoreScreen, StoreRow } from "store.slint";
+import { DownloadsScreen, JobRow } from "downloads.slint";
+import { PullListScreen, PullRow } from "pull_list.slint";
+import { IdentifySheet, WikiRow } from "identify.slint";
+
+export component App inherits Window {
+    in property <[Item]> series;
+    in property <[Item]> issues;
+    in property <bool> detail-open;
+    in property <string> detail-title;
+    in-out property <int> filter;
+    in property <bool> loading;
+    in property <string> server-status;
+    in property <string> data-dir;
+    in property <[string]> folders;
+    in property <string> folder-status;
+    in-out property <string> remote-url;
+    in property <bool> remote-linked;
+    in property <[Item]> reading;
+    in property <[Item]> recent;
+    in property <bool> refreshing;
+    in property <[StoreRow]> store-results;
+    in property <string> store-status;
+    in property <bool> store-needs-url;
+    in property <[string]> store-links;
+    in property <string> store-pick-title;
+    in-out property <string> store-url;
+    in property <[JobRow]> download-jobs;
+    in property <[PullRow]> pull-rows;
+    in property <string> pull-week;
+    in property <bool> pull-at-current;
+    in property <string> pull-following;
+    in property <string> pull-status;
+    callback pull-prev();
+    callback pull-next();
+    callback pull-now();
+    callback pull-toggle(int);
+    callback pull-reload();
+    in property <bool> identify-open;
+    in property <string> identify-title;
+    in property <string> identify-current;
+    in property <string> identify-status;
+    in property <[WikiRow]> identify-results;
+    in-out property <string> identify-query;
+    in-out property <bool> wiki-search;
+    in property <string> meta-status;
+    callback identify-issue(int);
+    callback identify-close();
+    callback identify-search(string);
+    callback identify-pick(int);
+    callback identify-reset();
+    callback set-wiki-search(bool);
+    callback reidentify-all();
+    callback store-search(string);
+    callback store-download(int);
+    callback store-pick-link(int);
+    callback store-cancel-pick();
+    callback store-save-url(string);
+    callback download-retry(int);
+    callback download-stop(int);
+    callback refresh();
+    callback list-cover-needed(int, int);
+    callback open-list-item(int, int);
+    callback search(string);
+    callback set-filter(int);
+    callback open-series(int);
+    callback open-issue(int);
+    in property <bool> reader-open;
+    in property <image> reader-page;
+    in property <bool> reader-has-page;
+    in property <string> reader-message;
+    in property <int> reader-total;
+    in property <int> reader-current;
+    in property <bool> reader-rtl;
+    callback reader-close();
+    callback reader-step(int);
+    callback reader-seek(int);
+    callback reader-toggle-direction();
+    callback close-series();
+    callback cover-needed(bool, int);
+    callback add-folder();
+    callback connect-server(string, string);
+    callback disconnect-server();
+
+    // One entry per destination; Phases 7-9 append here and add a branch to the `if` chain.
+    property <[string]> destinations: ["Library", "Browse", "Store", "Downloads", "Settings"];
+    property <int> tab: 0;
+    property <int> store-mode: 0;
+    property <bool> wide: self.width >= Theme.wide-breakpoint;
+
+    background: Theme.bg;
+
+    VerticalLayout {
+        padding-top: root.safe-area-insets.top;
+        padding-bottom: root.safe-area-insets.bottom;
+        padding-left: root.safe-area-insets.left;
+        padding-right: root.safe-area-insets.right;
+        HorizontalLayout {
+            if root.wide: NavRail {
+                items: root.destinations;
+                current <=> root.tab;
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                if root.tab == 0: LibraryScreen {
+                    series: root.series;
+                    issues: root.issues;
+                    loading: root.loading;
+                    detail-open: root.detail-open;
+                    detail-title: root.detail-title;
+                    filter <=> root.filter;
+                    search(t) => { root.search(t); }
+                    set-filter(f) => { root.set-filter(f); }
+                    open-series(i) => { root.open-series(i); }
+                    open-issue(i) => { root.open-issue(i); }
+                    identify-issue(i) => { root.identify-issue(i); }
+                    close-series => { root.close-series(); }
+                    cover-needed(d, i) => { root.cover-needed(d, i); }
+                }
+                if root.tab == 1: ListsScreen {
+                    reading: root.reading;
+                    recent: root.recent;
+                    refreshing: root.refreshing;
+                    refresh => { root.refresh(); }
+                    list-cover-needed(s, i) => { root.list-cover-needed(s, i); }
+                    open-list-item(s, i) => { root.open-list-item(s, i); }
+                }
+                if root.tab == 2: VerticalLayout {
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-top: 12px;
+                    spacing: 8px;
+                    alignment: start;
+                    for label[m] in ["Search", "Pull list"]: Rectangle {
+                        height: 36px;
+                        width: 100px;
+                        border-radius: 18px;
+                        background: root.store-mode == m ? Theme.accent.with-alpha(0.18) : Theme.surface;
+                        Text { text: label; color: root.store-mode == m ? Theme.accent : Theme.muted; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+                        TouchArea { clicked => { root.store-mode = m; if m == 1 { root.pull-reload(); } } }
+                    }
+                }
+                if root.store-mode == 0: StoreScreen {
+                    vertical-stretch: 1;
+                    results: root.store-results;
+                    status: root.store-status;
+                    needs-url: root.store-needs-url;
+                    links: root.store-links;
+                    pick-title: root.store-pick-title;
+                    store-url <=> root.store-url;
+                    search(t) => { root.store-search(t); }
+                    download(i) => { root.store-download(i); }
+                    pick-link(i) => { root.store-pick-link(i); }
+                    cancel-pick => { root.store-cancel-pick(); }
+                    save-url(u) => { root.store-save-url(u); }
+                }
+                if root.store-mode == 1: PullListScreen {
+                    vertical-stretch: 1;
+                    rows: root.pull-rows;
+                    week: root.pull-week;
+                    at-current: root.pull-at-current;
+                    following: root.pull-following;
+                    status: root.pull-status;
+                    prev => { root.pull-prev(); }
+                    next => { root.pull-next(); }
+                    now => { root.pull-now(); }
+                    toggle(i) => { root.pull-toggle(i); }
+                }
+                }
+                if root.tab == 3: DownloadsScreen {
+                    jobs: root.download-jobs;
+                    retry(i) => { root.download-retry(i); }
+                    stop(i) => { root.download-stop(i); }
+                }
+                if root.tab == 4: SettingsScreen {
+                    server-status: root.server-status;
+                    data-dir: root.data-dir;
+                    folders: root.folders;
+                    folder-status: root.folder-status;
+                    remote-url <=> root.remote-url;
+                    remote-linked: root.remote-linked;
+                    add-folder => { root.add-folder(); }
+                    connect-server(url, key) => { root.connect-server(url, key); }
+                    disconnect-server => { root.disconnect-server(); }
+                    store-url <=> root.store-url;
+                    wiki-search <=> root.wiki-search;
+                    meta-status: root.meta-status;
+                    save-store-url(u) => { root.store-save-url(u); }
+                    set-wiki-search(b) => { root.set-wiki-search(b); }
+                    reidentify-all => { root.reidentify-all(); }
+                }
+            }
+        }
+        if !root.wide: NavBar {
+            items: root.destinations;
+            current <=> root.tab;
+        }
+    }
+
+    if root.reader-open: Reader {
+        width: root.width;
+        height: root.height;
+        page: root.reader-page;
+        has-page: root.reader-has-page;
+        message: root.reader-message;
+        total: root.reader-total;
+        current: root.reader-current;
+        rtl: root.reader-rtl;
+        inset-top: root.safe-area-insets.top;
+        inset-bottom: root.safe-area-insets.bottom;
+        close => { root.reader-close(); }
+        step(d) => { root.reader-step(d); }
+        seek(n) => { root.reader-seek(n); }
+        toggle-direction => { root.reader-toggle-direction(); }
+    }
+    if root.identify-open: IdentifySheet {
+        width: root.width;
+        height: root.height;
+        title: root.identify-title;
+        current: root.identify-current;
+        status: root.identify-status;
+        results: root.identify-results;
+        query <=> root.identify-query;
+        inset-top: root.safe-area-insets.top;
+        inset-bottom: root.safe-area-insets.bottom;
+        close => { root.identify-close(); }
+        search(t) => { root.identify-search(t); }
+        pick(i) => { root.identify-pick(i); }
+        reset => { root.identify-reset(); }
+    }
+}
