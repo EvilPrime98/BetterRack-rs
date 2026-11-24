@@ -21,7 +21,7 @@ webp = { version = "0.3", default-features = false }
 
 tokio = { version = "1", features = ["rt", "time", "sync", "macros", "fs", "io-util"] }
 tokio-util = "0.7"
-reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "charset", "json", "gzip", "brotli", "deflate", "stream"] }
 futures-util = "0.3"
 scraper = "0.23"
 html-escape = "0.2"
