@@ -2,6 +2,7 @@ import { Theme } from "theme.slint";
 import { NavRail, NavBar } from "nav.slint";
 import { LibraryScreen } from "library.slint";
 import { Item } from "cover.slint";
+import { ListsScreen } from "lists.slint";
 import { SettingsScreen } from "settings.slint";
 import { Reader } from "reader.slint";
 
@@ -18,6 +19,12 @@ export component App inherits Window {
     in property <string> folder-status;
     in-out property <string> remote-url;
     in property <bool> remote-linked;
+    in property <[Item]> reading;
+    in property <[Item]> recent;
+    in property <bool> refreshing;
+    callback refresh();
+    callback list-cover-needed(int, int);
+    callback open-list-item(int, int);
     callback search(string);
     callback set-filter(int);
     callback open-series(int);
@@ -40,7 +47,7 @@ export component App inherits Window {
     callback disconnect-server();
 
     // One entry per destination; Phases 7-9 append here and add a branch to the `if` chain.
-    property <[string]> destinations: ["Library", "Settings"];
+    property <[string]> destinations: ["Library", "Browse", "Settings"];
     property <int> tab: 0;
     property <bool> wide: self.width >= Theme.wide-breakpoint;
 
@@ -72,7 +79,15 @@ export component App inherits Window {
                     close-series => { root.close-series(); }
                     cover-needed(d, i) => { root.cover-needed(d, i); }
                 }
-                if root.tab == 1: SettingsScreen {
+                if root.tab == 1: ListsScreen {
+                    reading: root.reading;
+                    recent: root.recent;
+                    refreshing: root.refreshing;
+                    refresh => { root.refresh(); }
+                    list-cover-needed(s, i) => { root.list-cover-needed(s, i); }
+                    open-list-item(s, i) => { root.open-list-item(s, i); }
+                }
+                if root.tab == 2: SettingsScreen {
                     server-status: root.server-status;
                     data-dir: root.data-dir;
                     folders: root.folders;

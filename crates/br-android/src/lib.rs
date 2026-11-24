@@ -1,6 +1,7 @@
 mod backend;
 mod keepalive;
 mod library_view;
+mod lists_view;
 mod remote;
 mod reader_view;
 mod saf;
@@ -28,6 +29,7 @@ fn show_folders(ui: &App, folders: Vec<String>) {
 /// Reloads the library and folder list from the server and shows them.
 async fn refresh_ui(weak: slint::Weak<App>, backend: Backend, folder_status: String) {
     let loaded = library_view::reload(&weak, &backend).await;
+    lists_view::reload(&weak, &backend).await;
     let folders = backend.folders().await.unwrap_or_default();
     let folder_status = match (&loaded, backend.is_remote()) {
         (Err(e), true) => format!("Server unreachable: {e}. Unlink it in Settings to use the on-device library."),
@@ -83,6 +85,7 @@ fn android_main(app: slint::android::AndroidApp) {
             let _ = weak.upgrade_in_event_loop(move |ui| {
                 library_view::register(&ui, server_backend.clone());
                 reader_view::register(&ui, server_backend.clone());
+                lists_view::register(&ui, server_backend.clone(), |weak, backend| refresh_ui(weak, backend, String::new()));
                 ui.set_remote_url(linked_url.clone().unwrap_or_default().into());
                 ui.set_remote_linked(linked_url.is_some());
                 let (weak, backend, dir) = (ui_weak.clone(), server_backend.clone(), server_dir.clone());

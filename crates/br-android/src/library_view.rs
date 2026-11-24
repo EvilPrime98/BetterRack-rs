@@ -102,6 +102,21 @@ fn refilter(st: &mut State) {
     st.shown = (0..st.all.len()).filter(|&i| matches(&st.all[i], &st.query, st.filter)).collect();
 }
 
+/// A list row for `uid`, with its cover when already loaded.
+pub fn cover_item(title: &str, subtitle: String, uid: &str) -> Item {
+    item(&state().lock().unwrap(), title, subtitle, uid)
+}
+
+/// Starts loading the cover of `uid` unless it is known or in flight.
+pub fn ensure_cover(weak: Weak<App>, backend: Backend, uid: String) {
+    let mut st = state().lock().unwrap();
+    if st.covers.contains_key(&uid) || !st.inflight.insert(uid.clone()) {
+        return;
+    }
+    drop(st);
+    load_cover(weak, backend, uid);
+}
+
 fn item(st: &State, title: &str, subtitle: String, uid: &str) -> Item {
     let cover = st.covers.get(uid).and_then(Option::as_ref).map(|buf| Image::from_rgba8(buf.clone()));
     Item {
@@ -206,6 +221,8 @@ fn load_cover(weak: Weak<App>, backend: Backend, uid: String) {
             let _ = weak.upgrade_in_event_loop(move |ui| {
                 set_cover(ui.get_series(), &uid, &buf);
                 set_cover(ui.get_issues(), &uid, &buf);
+                set_cover(ui.get_reading(), &uid, &buf);
+                set_cover(ui.get_recent(), &uid, &buf);
             });
         }
     });
@@ -221,18 +238,16 @@ pub fn issue_uid(index: i32) -> Option<String> {
 /// Called when Slint creates a row: start loading its cover unless known or in flight.
 fn cover_needed(weak: Weak<App>, backend: Backend, detail: bool, index: i32) {
     let Ok(index) = usize::try_from(index) else { return };
-    let mut st = state().lock().unwrap();
+    let st = state().lock().unwrap();
     let uid = if detail {
         open_series(&st).and_then(|s| s.issues.get(index)).map(|i| i.uid.clone())
     } else {
         st.shown.get(index).and_then(|&i| st.all[i].issues.first()).map(|i| i.uid.clone())
     };
-    let Some(uid) = uid else { return };
-    if st.covers.contains_key(&uid) || !st.inflight.insert(uid.clone()) {
-        return;
-    }
     drop(st);
-    load_cover(weak, backend, uid);
+    if let Some(uid) = uid {
+        ensure_cover(weak, backend, uid);
+    }
 }
 
 /// Registers the library callbacks. Runs on the UI thread.

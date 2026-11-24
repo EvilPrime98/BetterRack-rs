@@ -163,20 +163,26 @@ async fn open(weak: Weak<App>, backend: Backend, uid: String) {
     go_to(&weak, &backend, start);
 }
 
+/// Opens the reader on the comic with this uid, at its saved page. Runs on the UI thread.
+pub fn start(ui: &App, backend: &Backend, uid: String) {
+    reset(uid.clone());
+    ui.set_reader_total(0);
+    ui.set_reader_current(1);
+    ui.set_reader_has_page(false);
+    ui.set_reader_message("Opening...".into());
+    ui.set_reader_rtl(state().lock().unwrap().rtl);
+    ui.set_reader_open(true);
+    runtime().spawn(open(ui.as_weak(), backend.clone(), uid));
+}
+
 pub fn register(ui: &App, backend: Backend) {
     let (weak, b) = (ui.as_weak(), backend.clone());
     ui.on_open_issue(move |index| {
-        let Some(uid) = library_view::issue_uid(index) else { return };
-        reset(uid.clone());
-        if let Some(ui) = weak.upgrade() {
-            ui.set_reader_total(0);
-            ui.set_reader_current(1);
-            ui.set_reader_has_page(false);
-            ui.set_reader_message("Opening...".into());
-            ui.set_reader_rtl(state().lock().unwrap().rtl);
-            ui.set_reader_open(true);
+        if let Some(uid) = library_view::issue_uid(index) {
+            if let Some(ui) = weak.upgrade() {
+                start(&ui, &b, uid);
+            }
         }
-        runtime().spawn(open(weak.clone(), b.clone(), uid));
     });
     let weak = ui.as_weak();
     ui.on_reader_close(move || {
