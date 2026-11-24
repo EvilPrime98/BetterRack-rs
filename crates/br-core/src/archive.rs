@@ -1,8 +1,9 @@
 //! Archive layer: entry lists, page lists, entry bytes and `ComicInfo.xml`.
 //!
-//! `.cbz`/`.zip` are read in-process with the `zip` crate; everything else (`.cbr`, `.cb7`,
-//! `.cbt`, `.rar`, `.7z`) goes through the bundled 7-Zip. A zip the crate cannot read
-//! (odd compression, a misnamed RAR) silently falls back to 7-Zip too.
+//! `.cbz`/`.zip` are read in-process with the `zip` crate and `.cb7`/`.7z` with `sevenz-rust2`;
+//! everything else (`.cbr`, `.cbt`, `.rar`) goes through the bundled 7-Zip. An archive the
+//! in-process readers cannot read (odd compression, a misnamed RAR) silently falls back to 7-Zip
+//! too, where one is installed.
 //!
 //! All methods block (file IO, child processes); call them from `spawn_blocking`.
 
@@ -215,6 +216,10 @@ fn is_zip_file(path: &Path) -> bool {
     matches!(extension(&path.to_string_lossy()).as_str(), "cbz" | "zip")
 }
 
+fn is_7z_file(path: &Path) -> bool {
+    matches!(extension(&path.to_string_lossy()).as_str(), "cb7" | "7z")
+}
+
 /// 7-Zip prints entry paths with the platform separator; mirror that for zip-crate listings so
 /// both backends return the same names (they are echoed in `/read/:uid`).
 fn native_separators(name: &str) -> String {
@@ -264,7 +269,14 @@ impl Archives {
         if let Some(hit) = lock(&self.entries).get(&key, stamp) {
             return Ok(hit);
         }
-        let entries = match is_zip_file(path).then(|| list_zip(path)).flatten() {
+        let in_process = if is_zip_file(path) {
+            list_zip(path)
+        } else if is_7z_file(path) {
+            list_sevenz(path)
+        } else {
+            None
+        };
+        let entries = match in_process {
             Some(e) => e,
             None => self.list_7z(path)?,
         };
@@ -326,10 +338,14 @@ impl Archives {
                 path.display()
             )));
         }
-        if is_zip_file(path)
-            && let Some(bytes) = read_zip_entry(path, entry)
-            && !bytes.is_empty()
-        {
+        let in_process = if is_zip_file(path) {
+            read_zip_entry(path, entry)
+        } else if is_7z_file(path) {
+            read_sevenz_entry(path, entry)
+        } else {
+            None
+        };
+        if let Some(bytes) = in_process.filter(|b| !b.is_empty()) {
             return Ok(bytes);
         }
         self.read_entry_7z(path, entry)
@@ -377,6 +393,20 @@ impl Archives {
         }
         if entries.is_empty() {
             return Ok(());
+        }
+        if is_zip_file(path) || is_7z_file(path) {
+            let extracted: Result<()> = entries.iter().try_for_each(|e| {
+                let bytes = self.read_entry(path, e)?;
+                let dest = out_dir.join(e.replace('\\', "/"));
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(dest, bytes)?;
+                Ok(())
+            });
+            if extracted.is_ok() {
+                return Ok(());
+            }
         }
         let mut out_arg = std::ffi::OsString::from("-o");
         out_arg.push(out_dir);
@@ -466,6 +496,26 @@ fn read_zip_entry(path: &Path, entry: &str) -> Option<Vec<u8>> {
     Some(buf)
 }
 
+fn list_sevenz(path: &Path) -> Option<Vec<String>> {
+    let reader = sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty()).ok()?;
+    Some(
+        reader
+            .archive()
+            .files
+            .iter()
+            .filter(|f| !f.is_directory())
+            .map(|f| native_separators(f.name()))
+            .collect(),
+    )
+}
+
+fn read_sevenz_entry(path: &Path, entry: &str) -> Option<Vec<u8>> {
+    let mut reader =
+        sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty()).ok()?;
+    let slashed = entry.replace('\\', "/");
+    reader.read_file(&slashed).ok()
+}
+
 /// `7z l -slt -ba` output: blank-line separated `Key = Value` blocks.
 fn parse_7z_listing(output: &str) -> Vec<String> {
     output
@@ -524,6 +574,49 @@ mod tests {
         }
         for good in ["x.png", "dir/x.png", r"dir\x.png", "..x.png"] {
             assert!(is_safe_entry_name(good), "{good:?}");
+        }
+    }
+
+    #[test]
+    fn cb7_fixtures_are_read_in_process() {
+        for name in ["7z.cb7", "7z-solid.cb7"] {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures")
+                .join(name);
+            let mut entries = list_sevenz(&path).expect(name);
+            entries.sort();
+            assert_eq!(
+                entries,
+                [
+                    "001.jpg",
+                    "002.jpg",
+                    "010.jpg",
+                    "ComicInfo.xml",
+                    &native_separators("nested/x.jpg")
+                ],
+                "{name}"
+            );
+            assert_eq!(
+                read_sevenz_entry(&path, "002.jpg").unwrap(),
+                b"p2",
+                "{name}"
+            );
+            assert_eq!(
+                read_sevenz_entry(&path, &native_separators("nested/x.jpg")).unwrap(),
+                b"n",
+                "{name}"
+            );
+            assert!(read_sevenz_entry(&path, "missing.jpg").is_none(), "{name}");
+            let a = Archives::new(None);
+            assert_eq!(a.list_pages(&path).unwrap().len(), 4, "{name}");
+            assert!(a.comic_info(&path).unwrap().is_some(), "{name}");
+            let out = tempfile::tempdir().unwrap();
+            a.extract_entries(&path, out.path(), &["nested/x.jpg".into()])
+                .unwrap();
+            assert_eq!(
+                std::fs::read(out.path().join("nested/x.jpg")).unwrap(),
+                b"n"
+            );
         }
     }
 

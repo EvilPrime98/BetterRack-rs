@@ -28,6 +28,7 @@ html-escape = "0.2"
 url = "2"
 fastrand = "2"
 base64 = "0.22"
+sevenz-rust2 = { version = "0.25", default-features = false, features = ["bzip2", "deflate", "ppmd"] }
 
 [dev-dependencies]
 axum = "0.8"
