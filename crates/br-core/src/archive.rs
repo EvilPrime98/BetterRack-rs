@@ -1,7 +1,8 @@
 //! Archive layer: entry lists, page lists, entry bytes and `ComicInfo.xml`.
 //!
-//! `.cbz`/`.zip` are read in-process with the `zip` crate and `.cb7`/`.7z` with `sevenz-rust2`;
-//! everything else (`.cbr`, `.cbt`, `.rar`) goes through the bundled 7-Zip. An archive the
+//! `.cbz`/`.zip` are read in-process with the `zip` crate, `.cb7`/`.7z` with `sevenz-rust2` and
+//! `.cbr`/`.rar` with the pure-Rust
+//! `rar-rs`; everything else (`.cbt`) goes through the bundled 7-Zip. An archive the
 //! in-process readers cannot read (odd compression, a misnamed RAR) silently falls back to 7-Zip
 //! too, where one is installed.
 //!
@@ -157,6 +158,7 @@ impl<V: Clone> Cache<V> {
 pub struct Archives {
     fs: Arc<dyn LibraryFs>,
     configured_7z: Option<PathBuf>,
+    cache_dir: Option<PathBuf>,
     resolved_7z: OnceLock<std::result::Result<PathBuf, String>>,
     entries: Mutex<Cache<Vec<String>>>,
     infos: Mutex<Cache<Option<ComicInfo>>>,
@@ -222,6 +224,10 @@ fn is_7z_file(path: &Path) -> bool {
     matches!(extension(&path.to_string_lossy()).as_str(), "cb7" | "7z")
 }
 
+fn is_rar_file(path: &Path) -> bool {
+    matches!(extension(&path.to_string_lossy()).as_str(), "cbr" | "rar")
+}
+
 /// 7-Zip prints entry paths with the platform separator; mirror that for zip-crate listings so
 /// both backends return the same names (they are echoed in `/read/:uid`).
 fn native_separators(name: &str) -> String {
@@ -242,6 +248,7 @@ impl Archives {
         Self {
             fs,
             configured_7z,
+            cache_dir: None,
             resolved_7z: OnceLock::new(),
             entries: Mutex::new(Cache::new()),
             infos: Mutex::new(Cache::new()),
@@ -250,6 +257,44 @@ impl Archives {
 
     pub fn fs(&self) -> &Arc<dyn LibraryFs> {
         &self.fs
+    }
+
+    /// Directory for RAR copies made when the archive is not a real file on disk (e.g. an
+    /// Android content URI). Defaults to the OS temp dir.
+    pub fn with_cache_dir(mut self, dir: PathBuf) -> Self {
+        self.cache_dir = Some(dir);
+        self
+    }
+
+    /// The `rar-rs` reader only opens real paths. A path that is a file on disk is used as is;
+    /// anything else is copied once through the `LibraryFs` into the cache dir, keyed by path
+    /// and stamp so a changed archive gets a new copy.
+    fn local_rar(&self, path: &Path, stamp: FileStamp) -> Option<PathBuf> {
+        if std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false) {
+            return Some(path.to_path_buf());
+        }
+        use sha2::{Digest, Sha256};
+        let key = path.to_string_lossy();
+        let mut h = Sha256::new();
+        h.update(key.as_bytes());
+        h.update(format!("{stamp:?}"));
+        let name: String = h.finalize().iter().take(12).map(|b| format!("{b:02x}")).collect();
+        let dir = self
+            .cache_dir
+            .clone()
+            .unwrap_or_else(|| std::env::temp_dir().join("br-rar-cache"));
+        let dest = dir.join(format!("{name}.rar"));
+        if dest.is_file() {
+            return Some(dest);
+        }
+        std::fs::create_dir_all(&dir).ok()?;
+        let tmp = dir.join(format!("{name}.part"));
+        let mut src = self.fs.open(&key).ok()?;
+        let mut out = std::fs::File::create(&tmp).ok()?;
+        std::io::copy(&mut src, &mut out).ok()?;
+        drop(out);
+        std::fs::rename(&tmp, &dest).ok()?;
+        Some(dest)
     }
 
     fn seven_zip(&self) -> Result<&Path> {
@@ -285,6 +330,8 @@ impl Archives {
             list_zip(self.fs.as_ref(), path)
         } else if is_7z_file(path) {
             list_sevenz(self.fs.as_ref(), path)
+        } else if is_rar_file(path) {
+            self.local_rar(path, stamp).and_then(|p| list_rar(&p))
         } else {
             None
         };
@@ -354,6 +401,11 @@ impl Archives {
             read_zip_entry(self.fs.as_ref(), path, entry)
         } else if is_7z_file(path) {
             read_sevenz_entry(self.fs.as_ref(), path, entry)
+        } else if is_rar_file(path) {
+            let stamp = stamp_in(self.fs.as_ref(), path).ok();
+            stamp
+                .and_then(|st| self.local_rar(path, st))
+                .and_then(|p| read_rar_entry(&p, entry))
         } else {
             None
         };
@@ -406,7 +458,7 @@ impl Archives {
         if entries.is_empty() {
             return Ok(());
         }
-        if is_zip_file(path) || is_7z_file(path) {
+        if is_zip_file(path) || is_7z_file(path) || is_rar_file(path) {
             let extracted: Result<()> = entries.iter().try_for_each(|e| {
                 let bytes = self.read_entry(path, e)?;
                 let dest = out_dir.join(e.replace('\\', "/"));
@@ -537,6 +589,27 @@ fn read_sevenz_entry(fs: &dyn LibraryFs, path: &Path, entry: &str) -> Option<Vec
     reader.read_file(&slashed).ok()
 }
 
+fn list_rar(path: &Path) -> Option<Vec<String>> {
+    let reader = rar_rs::ArchiveReader::open(path).ok()?;
+    Some(
+        reader
+            .entries()
+            .filter(|e| !e.is_dir())
+            .map(|e| native_separators(&e.name().replace('\\', "/")))
+            .collect(),
+    )
+}
+
+fn read_rar_entry(path: &Path, entry: &str) -> Option<Vec<u8>> {
+    let mut reader = rar_rs::ArchiveReader::open(path).ok()?;
+    let slashed = entry.replace('\\', "/");
+    let id = reader
+        .entries()
+        .find(|e| !e.is_dir() && e.name().replace('\\', "/") == slashed)?
+        .id();
+    reader.read_entry(id).ok()
+}
+
 /// `7z l -slt -ba` output: blank-line separated `Key = Value` blocks.
 fn parse_7z_listing(output: &str) -> Vec<String> {
     output
@@ -639,6 +712,62 @@ mod tests {
                 b"n"
             );
         }
+    }
+
+    #[test]
+    fn rar_fixtures_are_read_in_process() {
+        for name in ["rar4.cbr", "rar4-solid.cbr", "rar5.cbr", "rar5-solid.cbr"] {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures")
+                .join(name);
+            let mut entries = list_rar(&path).expect(name);
+            entries.sort();
+            assert_eq!(
+                entries,
+                vec![
+                    "001.jpg",
+                    "002.jpg",
+                    "010.jpg",
+                    "ComicInfo.xml",
+                    native_separators("Extras/note.txt").as_str()
+                ],
+                "{name}"
+            );
+            assert_eq!(read_rar_entry(&path, "002.jpg").unwrap().len(), 409, "{name}");
+            assert_eq!(
+                read_rar_entry(&path, &native_separators("Extras/note.txt")).unwrap().len(),
+                5,
+                "{name}"
+            );
+            assert!(read_rar_entry(&path, "missing.jpg").is_none(), "{name}");
+        }
+    }
+
+    #[test]
+    fn rar_outside_real_paths_is_copied_to_the_cache_dir() {
+        struct Virtual(Vec<u8>);
+        impl LibraryFs for Virtual {
+            fn list_dir(&self, _: &str) -> std::io::Result<Vec<crate::fs::DirEntry>> {
+                Ok(vec![])
+            }
+            fn stat(&self, _: &str) -> std::io::Result<crate::fs::FileMeta> {
+                Ok(crate::fs::FileMeta { size: self.0.len() as u64, mtime_ms: 1.0, is_dir: false })
+            }
+            fn open(&self, _: &str) -> std::io::Result<Box<dyn crate::fs::ReadSeek>> {
+                Ok(Box::new(std::io::Cursor::new(self.0.clone())))
+            }
+        }
+        let bytes = std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rar5-solid.cbr"),
+        )
+        .unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let archives = Archives::with_fs(Some(PathBuf::from("no-such-7z")), Arc::new(Virtual(bytes)))
+            .with_cache_dir(cache.path().to_path_buf());
+        let uri = Path::new("content-uri-not-on-disk.cbr");
+        assert_eq!(archives.list_pages(uri).unwrap().len(), 3);
+        assert_eq!(archives.read_entry(uri, "001.jpg").unwrap().len(), 409);
+        assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 1);
     }
 
     #[test]
