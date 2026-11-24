@@ -37,7 +37,7 @@ pub fn init(app: &slint::android::AndroidApp) {
     let _ = ACTIVITY.set(app.activity_as_ptr() as usize);
 }
 
-fn activity<'a>() -> JObject<'a> {
+pub(crate) fn activity<'a>() -> JObject<'a> {
     // SAFETY: android-activity keeps a global reference to the Activity for the process lifetime.
     unsafe { JObject::from_raw(*ACTIVITY.get().expect("saf::init not called") as jni::sys::jobject) }
 }

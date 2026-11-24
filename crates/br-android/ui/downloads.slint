@@ -1,0 +1,64 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export struct JobRow {
+    label: string,
+    state: string,
+    detail: string,
+    percent: float,
+}
+
+export component DownloadsScreen inherits Rectangle {
+    in property <[JobRow]> jobs;
+    callback retry(int);
+    callback stop(int);
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        Text { text: "Downloads"; color: Theme.text; font-size: 24px; font-weight: 700; }
+        if root.jobs.length == 0: Text { text: "No downloads yet. Start one from the Store tab."; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+        ListView {
+            vertical-stretch: 1;
+            for job[i] in root.jobs: Rectangle {
+                height: 76px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        spacing: 4px;
+                        Text { text: job.label; color: Theme.text; font-size: 15px; font-weight: 700; overflow: elide; }
+                        Text { text: job.detail; color: Theme.muted; font-size: 12px; overflow: elide; }
+                        Rectangle {
+                            height: 4px;
+                            border-radius: 2px;
+                            background: Theme.surface;
+                            Rectangle {
+                                x: 0;
+                                width: parent.width * clamp(job.percent, 0, 100) / 100;
+                                border-radius: 2px;
+                                background: job.state == "error" ? #d9534f : Theme.accent;
+                            }
+                        }
+                    }
+                    if job.state == "error" || job.state == "running" || job.state == "queued": Rectangle {
+                        width: 80px;
+                        height: 40px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 20px;
+                        background: Theme.surface;
+                        Text {
+                            text: job.state == "error" ? "Retry" : "Stop";
+                            color: Theme.accent;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        TouchArea { clicked => { if job.state == "error" { root.retry(i); } else { root.stop(i); } } }
+                    }
+                }
+            }
+        }
+    }
+}

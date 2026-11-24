@@ -119,6 +119,26 @@ impl Backend {
         if status.is_success() { Ok(()) } else { Err(format!("{uri}: {status}")) }
     }
 
+    /// Sends `method` with an optional JSON body and returns the status with the JSON reply
+    /// (`Null` when the body is empty or not JSON), so callers can show server messages.
+    pub async fn send_json(
+        &self,
+        method: &str,
+        uri: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<(StatusCode, serde_json::Value), String> {
+        let mut rb = Request::builder().method(method).uri(uri);
+        let body = match body {
+            Some(b) => {
+                rb = rb.header("content-type", "application/json");
+                Body::from(b.to_string())
+            }
+            None => Body::empty(),
+        };
+        let (status, bytes) = self.request(rb.body(body).map_err(|e| e.to_string())?).await?;
+        Ok((status, serde_json::from_slice(&bytes).unwrap_or_default()))
+    }
+
     pub async fn get_bytes(&self, uri: &str) -> Result<Vec<u8>, String> {
         let (status, body) = self.request(Request::get(uri).body(Body::empty()).unwrap()).await?;
         if !status.is_success() {

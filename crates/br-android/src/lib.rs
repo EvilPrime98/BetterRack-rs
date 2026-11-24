@@ -5,6 +5,7 @@ mod lists_view;
 mod remote;
 mod reader_view;
 mod saf;
+mod store_view;
 mod vault;
 
 use backend::Backend;
@@ -86,6 +87,7 @@ fn android_main(app: slint::android::AndroidApp) {
                 library_view::register(&ui, server_backend.clone());
                 reader_view::register(&ui, server_backend.clone());
                 lists_view::register(&ui, server_backend.clone(), |weak, backend| refresh_ui(weak, backend, String::new()));
+                store_view::register(&ui, server_backend.clone(), server_dir.clone(), |weak, backend| refresh_ui(weak, backend, String::new()));
                 ui.set_remote_url(linked_url.clone().unwrap_or_default().into());
                 ui.set_remote_linked(linked_url.is_some());
                 let (weak, backend, dir) = (ui_weak.clone(), server_backend.clone(), server_dir.clone());

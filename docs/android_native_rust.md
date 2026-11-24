@@ -33,8 +33,9 @@ Decision record for building a native (non-WebView) Android version of the deskt
 | 8 | Done | `docs/android/phase-8.md` |
 | 9 | Audit done, slices 9a-9c ready | `docs/android/phase-9.md` |
 | 9a | Done (partial: shelves and refresh) | `docs/android/phase-9a.md` |
-| 9b, 9c | Ready (parallel) | |
-| 12 | Ready after 9b, 9c | |
+| 9b | Done (built, not tested against a real store) | `docs/android/phase-9b.md` |
+| 9c | Ready | |
+| 12 | Ready after 9c | |
 
 Facts from finished phases that later phases rely on:
 - `br-core`, `br-server` and `br-wiki` pass `cargo ndk -t arm64-v8a check` (NDK r27.3, `cargo-ndk` 4.1.2). Only `aarch64` and only `cargo check` so far.
@@ -49,6 +50,7 @@ Facts from finished phases that later phases rely on:
 - Phase 7: library is a series cover grid (`library_view.rs`, `ui/library.slint`, `ui/series.slint`) with search, filters, lazy thumbnails and series detail. Issue taps are unwired (Phase 8). Logs go to logcat via `tracing_subscriber`. Verified on the phone emulator.
 - Phase 8: reader is `reader_view.rs` + `ui/reader.slint` (tap zones, swipe, double-tap zoom, LTR/RTL, progress via `PATCH /api/comic-data`). `br-server` `pages_of` now stats through `LibraryFs`. CBZ and CB7 verified on the phone emulator; CBR pixels not (fixtures have no images); no pinch zoom.
 - Phase 9: audit found missing Browse lists (9a), Store and downloads (9b), and Metadata and pull list (9c) screens; each is one agent, spec in `docs/android/phase-9.md`. Mutations stay unsupported on `/saf` paths.
+- Phase 9b: Store and Downloads tabs (`store_view.rs`, `ui/store.slint`, `ui/downloads.slint`); on-device downloads go to `<data>/downloads`, registered as a library folder on first use. Not run against a real store.
 - Phase 9a: Browse tab (`lists_view.rs`, `ui/lists.slint`) with Keep reading and Recently added shelves and manual refresh; `reader_view::start(ui, backend, uid)` opens the reader from any screen, `library_view::ensure_cover` loads covers. Writer filter, sort, folder view and reader bookmarks not built.
 - On Windows, 3 `tests/run.sh` cases (`auth-header-key`, `auth-query-key`, `refuse-public-bind-without-key`) fail from CRLF in `env` files, unrelated to Android.
 

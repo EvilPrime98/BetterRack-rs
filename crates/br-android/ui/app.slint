@@ -5,6 +5,8 @@ import { Item } from "cover.slint";
 import { ListsScreen } from "lists.slint";
 import { SettingsScreen } from "settings.slint";
 import { Reader } from "reader.slint";
+import { StoreScreen, StoreRow } from "store.slint";
+import { DownloadsScreen, JobRow } from "downloads.slint";
 
 export component App inherits Window {
     in property <[Item]> series;
@@ -22,6 +24,20 @@ export component App inherits Window {
     in property <[Item]> reading;
     in property <[Item]> recent;
     in property <bool> refreshing;
+    in property <[StoreRow]> store-results;
+    in property <string> store-status;
+    in property <bool> store-needs-url;
+    in property <[string]> store-links;
+    in property <string> store-pick-title;
+    in-out property <string> store-url;
+    in property <[JobRow]> download-jobs;
+    callback store-search(string);
+    callback store-download(int);
+    callback store-pick-link(int);
+    callback store-cancel-pick();
+    callback store-save-url(string);
+    callback download-retry(int);
+    callback download-stop(int);
     callback refresh();
     callback list-cover-needed(int, int);
     callback open-list-item(int, int);
@@ -47,7 +63,7 @@ export component App inherits Window {
     callback disconnect-server();
 
     // One entry per destination; Phases 7-9 append here and add a branch to the `if` chain.
-    property <[string]> destinations: ["Library", "Browse", "Settings"];
+    property <[string]> destinations: ["Library", "Browse", "Store", "Downloads", "Settings"];
     property <int> tab: 0;
     property <bool> wide: self.width >= Theme.wide-breakpoint;
 
@@ -87,7 +103,25 @@ export component App inherits Window {
                     list-cover-needed(s, i) => { root.list-cover-needed(s, i); }
                     open-list-item(s, i) => { root.open-list-item(s, i); }
                 }
-                if root.tab == 2: SettingsScreen {
+                if root.tab == 2: StoreScreen {
+                    results: root.store-results;
+                    status: root.store-status;
+                    needs-url: root.store-needs-url;
+                    links: root.store-links;
+                    pick-title: root.store-pick-title;
+                    store-url <=> root.store-url;
+                    search(t) => { root.store-search(t); }
+                    download(i) => { root.store-download(i); }
+                    pick-link(i) => { root.store-pick-link(i); }
+                    cancel-pick => { root.store-cancel-pick(); }
+                    save-url(u) => { root.store-save-url(u); }
+                }
+                if root.tab == 3: DownloadsScreen {
+                    jobs: root.download-jobs;
+                    retry(i) => { root.download-retry(i); }
+                    stop(i) => { root.download-stop(i); }
+                }
+                if root.tab == 4: SettingsScreen {
                     server-status: root.server-status;
                     data-dir: root.data-dir;
                     folders: root.folders;

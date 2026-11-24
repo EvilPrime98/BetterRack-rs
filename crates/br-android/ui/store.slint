@@ -1,0 +1,94 @@
+import { Button, LineEdit, ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export struct StoreRow {
+    title: string,
+    subtitle: string,
+    state: string,
+}
+
+export component StoreScreen inherits Rectangle {
+    in property <[StoreRow]> results;
+    in property <string> status;
+    in property <bool> needs-url;
+    in property <[string]> links;
+    in property <string> pick-title;
+    in-out property <string> store-url;
+    callback search(string);
+    callback download(int);
+    callback pick-link(int);
+    callback cancel-pick();
+    callback save-url(string);
+    property <string> query;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        Text { text: "Store"; color: Theme.text; font-size: 24px; font-weight: 700; }
+        if root.needs-url: VerticalLayout {
+            spacing: 8px;
+            Text { text: "Set the store source address to browse and download comics."; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+            LineEdit { placeholder-text: "Store API address"; text <=> root.store-url; }
+            Button { text: "Save"; clicked => { root.save-url(root.store-url); } }
+        }
+        if !root.needs-url: LineEdit {
+            placeholder-text: "Search the store";
+            text <=> root.query;
+            accepted(t) => { root.search(t); }
+        }
+        if root.status != "": Text { text: root.status; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+        ListView {
+            vertical-stretch: 1;
+            for row[i] in root.results: Rectangle {
+                height: 64px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        Text { text: row.title; color: Theme.text; font-size: 15px; font-weight: 700; overflow: elide; }
+                        Text { text: row.subtitle; color: Theme.muted; font-size: 12px; overflow: elide; }
+                    }
+                    Rectangle {
+                        width: 104px;
+                        height: 40px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 20px;
+                        background: Theme.surface;
+                        Text {
+                            text: row.state == "" ? "Download" : row.state;
+                            color: row.state == "" ? Theme.accent : Theme.muted;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        TouchArea { enabled: row.state == "" || row.state == "Retry"; clicked => { root.download(i); } }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.links.length > 0: Rectangle {
+        background: #000000a0;
+        TouchArea { clicked => { root.cancel-pick(); } }
+        Rectangle {
+            width: min(parent.width - 32px, 420px);
+            height: min(parent.height - 64px, 80px + root.links.length * 52px);
+            background: Theme.bg;
+            border-radius: 12px;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 8px;
+                Text { text: "Choose a link for " + root.pick-title; color: Theme.text; font-size: 16px; font-weight: 700; wrap: word-wrap; }
+                for l[i] in root.links: Rectangle {
+                    height: 44px;
+                    border-radius: 8px;
+                    background: Theme.surface;
+                    Text { x: 12px; width: parent.width - 24px; text: l; color: Theme.text; font-size: 14px; vertical-alignment: center; overflow: elide; }
+                    TouchArea { clicked => { root.pick-link(i); } }
+                }
+            }
+        }
+    }
+}
