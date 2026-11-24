@@ -10,7 +10,11 @@ export component App inherits Window {
     in property <string> data-dir;
     in property <[string]> folders;
     in property <string> folder-status;
+    in-out property <string> remote-url;
+    in property <bool> remote-linked;
     callback add-folder();
+    callback connect-server(string, string);
+    callback disconnect-server();
 
     // One entry per destination; Phases 7-9 append here and add a branch to the `if` chain.
     property <[string]> destinations: ["Library", "Settings"];
@@ -40,7 +44,11 @@ export component App inherits Window {
                     data-dir: root.data-dir;
                     folders: root.folders;
                     folder-status: root.folder-status;
+                    remote-url <=> root.remote-url;
+                    remote-linked: root.remote-linked;
                     add-folder => { root.add-folder(); }
+                    connect-server(url, key) => { root.connect-server(url, key); }
+                    disconnect-server => { root.disconnect-server(); }
                 }
             }
         }

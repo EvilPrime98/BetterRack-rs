@@ -9,12 +9,33 @@ use br_server::state::{AppState, NetOptions};
 use http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 use tower::ServiceExt;
 
+const API_KEY_HEADER: &str = "x-br-api-key";
+
+/// A linked BetterRack server (the source of truth while linked).
+#[derive(Clone)]
+struct Remote {
+    http: reqwest::Client,
+    base: String,
+    api_key: Option<String>,
+}
+
+/// `http://` is prepended when the scheme is missing; the trailing `/` is stripped.
+pub fn normalize_base_url(raw: &str) -> String {
+    let s = raw.trim();
+    let s = if s.contains("://") { s.to_string() } else { format!("http://{s}") };
+    s.trim_end_matches('/').to_string()
+}
+
+/// The on-device server, plus an optional remote one that takes over while linked.
+/// The local router stays alive so unlinking (or going offline) is instant.
 #[derive(Clone)]
 pub struct Backend {
     router: Router,
+    remote: Arc<RwLock<Option<Remote>>>,
 }
 
 impl Backend {
@@ -34,10 +55,47 @@ impl Backend {
         let archives = Archives::with_fs(None, fs).with_cache_dir(data_dir.join("cache"));
         let net = NetOptions { archives: Some(Arc::new(archives)), ..NetOptions::default() };
         let state = AppState::open_with(config, Arc::new(NoWiki), net).map_err(|e| e.to_string())?;
-        Ok(Self { router: br_server::app(state) })
+        Ok(Self { router: br_server::app(state), remote: Arc::default() })
+    }
+
+    /// Sends every later request to `url` (with `api_key`) instead of the on-device router.
+    pub fn link_remote(&self, url: &str, api_key: Option<String>) -> Result<(), String> {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let api_key = api_key.filter(|k| !k.is_empty());
+        *self.remote.write().unwrap() = Some(Remote { http, base: normalize_base_url(url), api_key });
+        Ok(())
+    }
+
+    pub fn unlink_remote(&self) {
+        *self.remote.write().unwrap() = None;
+    }
+
+    pub fn is_remote(&self) -> bool {
+        self.remote.read().unwrap().is_some()
+    }
+
+    async fn request_remote(remote: Remote, req: Request<Body>) -> Result<(StatusCode, Vec<u8>), String> {
+        let (parts, body) = req.into_parts();
+        let bytes = body.collect().await.map_err(|e| e.to_string())?.to_bytes();
+        let path = parts.uri.path_and_query().map_or("/", |p| p.as_str());
+        let mut rb = remote.http.request(parts.method, format!("{}{path}", remote.base)).headers(parts.headers).body(bytes);
+        if let Some(key) = &remote.api_key {
+            rb = rb.header(API_KEY_HEADER, key);
+        }
+        let res = rb.send().await.map_err(|e| e.to_string())?;
+        let status = res.status();
+        let body = res.bytes().await.map_err(|e| e.to_string())?;
+        Ok((status, body.to_vec()))
     }
 
     pub async fn request(&self, req: Request<Body>) -> Result<(StatusCode, Vec<u8>), String> {
+        let remote = self.remote.read().unwrap().clone();
+        if let Some(remote) = remote {
+            return Self::request_remote(remote, req).await;
+        }
         let res = self.router.clone().oneshot(req).await.map_err(|e| e.to_string())?;
         let status = res.status();
         let bytes = res.into_body().collect().await.map_err(|e| e.to_string())?.to_bytes();

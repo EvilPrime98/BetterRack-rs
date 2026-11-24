@@ -523,6 +523,8 @@ dependencies = [
  "http-body-util",
  "jni 0.21.1",
  "ndk-context",
+ "reqwest",
+ "serde",
  "serde_json",
  "sha2 0.10.9",
  "slint",

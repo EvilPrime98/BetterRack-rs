@@ -25,7 +25,7 @@ const PICKER_CLASS: &str = "dev.betterrack.android.SafPicker";
 const DIR_MIME: &str = "vnd.android.document/directory";
 const COLUMNS: [&str; 5] = ["document_id", "_display_name", "mime_type", "_size", "last_modified"];
 
-fn vm() -> JavaVM {
+pub(crate) fn vm() -> JavaVM {
     // SAFETY: android-activity initialises `ndk_context` with the process JavaVM before `android_main`.
     unsafe { JavaVM::from_raw(ndk_context::android_context().vm().cast()) }.expect("JavaVM")
 }
@@ -51,7 +51,7 @@ fn io_err(env: &mut JNIEnv, e: JniError) -> io::Error {
 }
 
 /// Runs `f` on an attached thread, inside a local reference frame.
-fn with_env<R>(f: impl FnOnce(&mut JNIEnv) -> jni::errors::Result<R>) -> io::Result<R> {
+pub(crate) fn with_env<R>(f: impl FnOnce(&mut JNIEnv) -> jni::errors::Result<R>) -> io::Result<R> {
     let vm = vm();
     let mut env = vm.attach_current_thread().map_err(|e| io::Error::other(e.to_string()))?;
     let result = env.with_local_frame(32, |env| f(env));
@@ -296,19 +296,31 @@ extern "system" fn on_picked(mut env: JNIEnv, _class: JClass, uri: JString) {
     }
 }
 
+static LOADER: OnceLock<GlobalRef> = OnceLock::new();
+
+/// Loads a class from the embedded dex (one shared class loader for all of this app's Java).
+pub fn dex_class<'l>(env: &mut JNIEnv<'l>, name: &str) -> jni::errors::Result<JObject<'l>> {
+    let loader = match LOADER.get() {
+        Some(l) => l.clone(),
+        None => {
+            let parent = env.call_method(&activity(), "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
+            // SAFETY: the dex bytes are `'static`; the loader only reads them.
+            let buffer = unsafe { env.new_direct_byte_buffer(PICKER_DEX.as_ptr() as *mut u8, PICKER_DEX.len())? };
+            let loader = env.new_object(
+                "dalvik/system/InMemoryDexClassLoader",
+                "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V",
+                &[(&buffer).into(), (&parent).into()],
+            )?;
+            let global = env.new_global_ref(&loader)?;
+            LOADER.get_or_init(|| global).clone()
+        }
+    };
+    let name = env.new_string(name)?;
+    env.call_method(loader.as_obj(), "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[(&name).into()])?.l()
+}
+
 fn load_picker(env: &mut JNIEnv) -> jni::errors::Result<GlobalRef> {
-    let parent = env.call_method(&activity(), "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
-    // SAFETY: the dex bytes are `'static`; the loader only reads them.
-    let buffer = unsafe { env.new_direct_byte_buffer(PICKER_DEX.as_ptr() as *mut u8, PICKER_DEX.len())? };
-    let loader = env.new_object(
-        "dalvik/system/InMemoryDexClassLoader",
-        "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V",
-        &[(&buffer).into(), (&parent).into()],
-    )?;
-    let name = env.new_string(PICKER_CLASS)?;
-    let class = env
-        .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[(&name).into()])?
-        .l()?;
+    let class = dex_class(env, PICKER_CLASS)?;
     // SAFETY: `loadClass` returned a `java.lang.Class`.
     let class_ref = unsafe { JClass::from_raw(class.as_raw() as jclass) };
     env.register_native_methods(

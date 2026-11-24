@@ -1,4 +1,4 @@
-import { Button } from "std-widgets.slint";
+import { Button, LineEdit } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 
 export component SettingsScreen inherits Rectangle {
@@ -6,7 +6,12 @@ export component SettingsScreen inherits Rectangle {
     in property <string> data-dir;
     in property <[string]> folders;
     in property <string> folder-status;
+    in-out property <string> remote-url;
+    in property <bool> remote-linked;
+    property <string> key-text;
     callback add-folder();
+    callback connect-server(string, string);
+    callback disconnect-server();
     VerticalLayout {
         padding: 16px;
         spacing: 12px;
@@ -21,7 +26,21 @@ export component SettingsScreen inherits Rectangle {
             font-size: 14px;
             wrap: word-wrap;
         }
-        Button { text: "Add library folder"; clicked => { root.add-folder(); } }
+        if !root.remote-linked: Button { text: "Add library folder"; clicked => { root.add-folder(); } }
+        Text { text: "BetterRack server"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        if root.remote-linked: Text {
+            text: "Linked to " + root.remote-url + ". The server is the source of truth.";
+            color: Theme.text;
+            font-size: 14px;
+            wrap: word-wrap;
+        }
+        if root.remote-linked: Button { text: "Unlink server"; clicked => { root.disconnect-server(); } }
+        if !root.remote-linked: LineEdit { placeholder-text: "Server address (host:port)"; text <=> root.remote-url; }
+        if !root.remote-linked: LineEdit { placeholder-text: "API key (optional)"; text <=> root.key-text; input-type: password; }
+        if !root.remote-linked: Button {
+            text: "Link server";
+            clicked => { root.connect-server(root.remote-url, root.key-text); }
+        }
         if root.folder-status != "": Text { text: root.folder-status; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
     }
 }

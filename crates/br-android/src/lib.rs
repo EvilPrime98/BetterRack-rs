@@ -1,5 +1,7 @@
 mod backend;
+mod remote;
 mod saf;
+mod vault;
 
 use backend::Backend;
 use slint::{ModelRc, SharedString, VecModel};
@@ -24,11 +26,17 @@ fn show_library(ui: &App, names: Vec<String>, folders: Vec<String>) {
 
 /// Reloads the library list and folder list from the server and shows them.
 async fn refresh_ui(weak: slint::Weak<App>, backend: Backend, folder_status: String) {
-    let names = backend.library_names().await.unwrap_or_default();
+    let names = backend.library_names().await;
     let folders = backend.folders().await.unwrap_or_default();
+    let folder_status = match (&names, backend.is_remote()) {
+        (Err(e), true) => format!("Server unreachable: {e}. Unlink it in Settings to use the on-device library."),
+        _ => folder_status,
+    };
+    let remote = backend.is_remote();
     let _ = weak.upgrade_in_event_loop(move |ui| {
-        show_library(&ui, names, folders);
+        show_library(&ui, names.unwrap_or_default(), folders);
         ui.set_folder_status(folder_status.into());
+        ui.set_remote_linked(remote);
     });
 }
 
@@ -67,7 +75,34 @@ fn android_main(app: slint::android::AndroidApp) {
         Ok(backend) => {
             let ui_weak = weak.clone();
             let picker_backend = backend.clone();
+            let server_backend = backend.clone();
+            let server_dir = base.clone();
+            let linked_url = remote::restore(&base, &backend);
             let _ = weak.upgrade_in_event_loop(move |ui| {
+                ui.set_remote_url(linked_url.clone().unwrap_or_default().into());
+                ui.set_remote_linked(linked_url.is_some());
+                let (weak, backend, dir) = (ui_weak.clone(), server_backend.clone(), server_dir.clone());
+                ui.on_connect_server(move |url, key| {
+                    let (weak, backend, dir) = (weak.clone(), backend.clone(), dir.clone());
+                    let (url, key) = (url.to_string(), key.to_string());
+                    runtime().spawn(async move {
+                        let status = match remote::connect(&dir, &backend, &url, &key).await {
+                            Ok(url) => format!("Linked to {url}"),
+                            Err(e) => format!("Could not link: {e}"),
+                        };
+                        refresh_ui(weak, backend, status).await;
+                    });
+                });
+                let (weak, backend, dir) = (ui_weak.clone(), server_backend.clone(), server_dir.clone());
+                ui.on_disconnect_server(move || {
+                    let (weak, backend, dir) = (weak.clone(), backend.clone(), dir.clone());
+                    runtime().spawn(async move {
+                        remote::disconnect(&dir, &backend);
+                        let _ = weak.upgrade_in_event_loop(|ui| ui.set_remote_url("".into()));
+                        let _ = backend.rescan().await;
+                        refresh_ui(weak, backend, "Back to the on-device library".into()).await;
+                    });
+                });
                 ui.on_add_folder(move || {
                     let (weak, backend, saf) = (ui_weak.clone(), picker_backend.clone(), saf.clone());
                     let launched = saf::pick_folder(move |picked| {
