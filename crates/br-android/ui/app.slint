@@ -1,10 +1,15 @@
 import { Theme } from "theme.slint";
 import { NavRail, NavBar } from "nav.slint";
 import { LibraryScreen } from "library.slint";
+import { Item } from "cover.slint";
 import { SettingsScreen } from "settings.slint";
 
 export component App inherits Window {
-    in property <[string]> comics;
+    in property <[Item]> series;
+    in property <[Item]> issues;
+    in property <bool> detail-open;
+    in property <string> detail-title;
+    in-out property <int> filter;
     in property <bool> loading;
     in property <string> server-status;
     in property <string> data-dir;
@@ -12,6 +17,11 @@ export component App inherits Window {
     in property <string> folder-status;
     in-out property <string> remote-url;
     in property <bool> remote-linked;
+    callback search(string);
+    callback set-filter(int);
+    callback open-series(int);
+    callback close-series();
+    callback cover-needed(bool, int);
     callback add-folder();
     callback connect-server(string, string);
     callback disconnect-server();
@@ -36,8 +46,17 @@ export component App inherits Window {
             Rectangle {
                 horizontal-stretch: 1;
                 if root.tab == 0: LibraryScreen {
-                    comics: root.comics;
+                    series: root.series;
+                    issues: root.issues;
                     loading: root.loading;
+                    detail-open: root.detail-open;
+                    detail-title: root.detail-title;
+                    filter <=> root.filter;
+                    search(t) => { root.search(t); }
+                    set-filter(f) => { root.set-filter(f); }
+                    open-series(i) => { root.open-series(i); }
+                    close-series => { root.close-series(); }
+                    cover-needed(d, i) => { root.cover-needed(d, i); }
                 }
                 if root.tab == 1: SettingsScreen {
                     server-status: root.server-status;

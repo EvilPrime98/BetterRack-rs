@@ -110,15 +110,12 @@ impl Backend {
         serde_json::from_slice(&body).map_err(|e| e.to_string())
     }
 
-    /// Entry names of the library, in group order.
-    pub async fn library_names(&self) -> Result<Vec<String>, String> {
-        let page = self.get_json("/api/library").await?;
-        let groups = page["groups"].as_array().ok_or("library: no groups")?;
-        Ok(groups
-            .iter()
-            .flat_map(|g| g["entries"].as_array().into_iter().flatten())
-            .filter_map(|e| e["name"].as_str().map(str::to_owned))
-            .collect())
+    pub async fn get_bytes(&self, uri: &str) -> Result<Vec<u8>, String> {
+        let (status, body) = self.request(Request::get(uri).body(Body::empty()).unwrap()).await?;
+        if !status.is_success() {
+            return Err(format!("{uri}: {status}"));
+        }
+        Ok(body)
     }
 
     /// Adds a library folder (a path the configured `LibraryFs` can list) and rescans.

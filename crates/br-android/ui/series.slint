@@ -1,0 +1,53 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Item, Cover } from "cover.slint";
+
+// Issues of one series, with a back button.
+export component SeriesDetail inherits Rectangle {
+    in property <string> title;
+    in property <[Item]> issues;
+    callback back();
+    callback cover-needed(int);
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 12px;
+            Rectangle {
+                width: 72px;
+                height: 40px;
+                border-radius: 20px;
+                background: Theme.surface;
+                Text { text: "Back"; color: Theme.accent; font-size: 16px; horizontal-alignment: center; vertical-alignment: center; }
+                TouchArea { clicked => { root.back(); } }
+            }
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: 22px;
+                font-weight: 700;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        ListView {
+            vertical-stretch: 1;
+            for item[i] in root.issues: Rectangle {
+                height: 96px;
+                init => { root.cover-needed(i); }
+                HorizontalLayout {
+                    spacing: 12px;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+                    Cover { width: 56px; source: item.cover; loaded: item.has-cover; }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        Text { text: item.title; color: Theme.text; font-size: 16px; overflow: elide; }
+                        if item.subtitle != "": Text { text: item.subtitle; color: Theme.muted; font-size: 14px; overflow: elide; }
+                    }
+                }
+            }
+        }
+    }
+}

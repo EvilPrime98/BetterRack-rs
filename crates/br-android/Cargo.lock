@@ -521,6 +521,7 @@ dependencies = [
  "br-server",
  "http",
  "http-body-util",
+ "image",
  "jni 0.21.1",
  "ndk-context",
  "reqwest",
@@ -531,6 +532,8 @@ dependencies = [
  "slint-build",
  "tokio",
  "tower",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

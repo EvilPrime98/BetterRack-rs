@@ -1,5 +1,6 @@
 mod backend;
 mod keepalive;
+mod library_view;
 mod remote;
 mod saf;
 mod vault;
@@ -17,25 +18,23 @@ fn runtime() -> &'static Runtime {
     RUNTIME.get_or_init(|| tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap())
 }
 
-fn show_library(ui: &App, names: Vec<String>, folders: Vec<String>) {
-    let names: Vec<SharedString> = names.into_iter().map(Into::into).collect();
+fn show_folders(ui: &App, folders: Vec<String>) {
     let folders: Vec<SharedString> = folders.into_iter().map(Into::into).collect();
-    ui.set_comics(ModelRc::new(VecModel::from(names)));
     ui.set_folders(ModelRc::new(VecModel::from(folders)));
     ui.set_loading(false);
 }
 
-/// Reloads the library list and folder list from the server and shows them.
+/// Reloads the library and folder list from the server and shows them.
 async fn refresh_ui(weak: slint::Weak<App>, backend: Backend, folder_status: String) {
-    let names = backend.library_names().await;
+    let loaded = library_view::reload(&weak, &backend).await;
     let folders = backend.folders().await.unwrap_or_default();
-    let folder_status = match (&names, backend.is_remote()) {
+    let folder_status = match (&loaded, backend.is_remote()) {
         (Err(e), true) => format!("Server unreachable: {e}. Unlink it in Settings to use the on-device library."),
         _ => folder_status,
     };
     let remote = backend.is_remote();
     let _ = weak.upgrade_in_event_loop(move |ui| {
-        show_library(&ui, names.unwrap_or_default(), folders);
+        show_folders(&ui, folders);
         ui.set_folder_status(folder_status.into());
         ui.set_remote_linked(remote);
     });
@@ -63,6 +62,7 @@ fn android_main(app: slint::android::AndroidApp) {
     // SAFETY: runs before this process starts any other thread of its own.
     unsafe { std::env::set_var("TMPDIR", &cache) };
 
+    tracing_subscriber::fmt().with_ansi(false).with_max_level(tracing::Level::INFO).init();
     saf::init(&app);
     slint::android::init(app).unwrap();
     let ui = App::new().unwrap();
@@ -80,6 +80,7 @@ fn android_main(app: slint::android::AndroidApp) {
             let server_dir = base.clone();
             let linked_url = remote::restore(&base, &backend);
             let _ = weak.upgrade_in_event_loop(move |ui| {
+                library_view::register(&ui, server_backend.clone());
                 ui.set_remote_url(linked_url.clone().unwrap_or_default().into());
                 ui.set_remote_linked(linked_url.is_some());
                 let (weak, backend, dir) = (ui_weak.clone(), server_backend.clone(), server_dir.clone());
