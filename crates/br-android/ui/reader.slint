@@ -1,0 +1,171 @@
+import { Slider } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+// Full-screen page viewer. Tap the left/right third to turn pages (swapped in right-to-left
+// mode), tap the middle to show or hide the bars, swipe to turn, double-tap to zoom, drag to pan
+// while zoomed.
+export component Reader inherits Rectangle {
+    in property <image> page;
+    in property <bool> has-page;
+    in property <string> message;
+    in property <int> total;
+    in property <int> current;
+    in property <bool> rtl;
+    in property <length> inset-top;
+    in property <length> inset-bottom;
+    callback close();
+    // +1 = next page in reading order, -1 = previous.
+    callback step(int);
+    callback seek(int);
+    callback toggle-direction();
+
+    property <float> zoom: 1;
+    property <length> pan-x: 0;
+    property <length> pan-y: 0;
+    property <length> base-x;
+    property <length> base-y;
+    property <length> drag-x;
+    property <length> drag-y;
+    property <bool> chrome: true;
+    property <length> tap-x;
+    property <length> max-pan-x: root.width * (root.zoom - 1) / 2;
+    property <length> max-pan-y: root.height * (root.zoom - 1) / 2;
+
+    background: #000000;
+    clip: true;
+
+    // A new page starts unzoomed.
+    changed current => {
+        root.zoom = 1;
+        root.pan-x = 0;
+        root.pan-y = 0;
+    }
+
+    function clamp-pan(v: length, limit: length) -> length {
+        return max(-limit, min(limit, v));
+    }
+
+    function turn(dir: int) {
+        root.step(root.rtl ? -dir : dir);
+    }
+
+    function tap() {
+        if root.tap-x < root.width / 3 {
+            root.turn(-1);
+        } else if root.tap-x > root.width * 2 / 3 {
+            root.turn(1);
+        } else {
+            root.chrome = !root.chrome;
+        }
+    }
+
+    Image {
+        source: root.page;
+        visible: root.has-page;
+        image-fit: contain;
+        width: root.width * root.zoom;
+        height: root.height * root.zoom;
+        x: (root.width - self.width) / 2 + root.pan-x;
+        y: (root.height - self.height) / 2 + root.pan-y;
+    }
+    Text {
+        visible: !root.has-page;
+        x: 24px;
+        width: root.width - 48px;
+        text: root.message;
+        color: Theme.muted;
+        font-size: 16px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+
+    // Distinguishes a single tap (acted on after the double-tap window) from a double tap.
+    tap-timer := Timer {
+        interval: 400ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.tap();
+        }
+    }
+
+    TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.base-x = root.pan-x;
+                root.base-y = root.pan-y;
+                root.drag-x = 0;
+                root.drag-y = 0;
+            } else if e.kind == PointerEventKind.up {
+                if abs(root.drag-x) < 12px && abs(root.drag-y) < 12px {
+                    if tap-timer.running {
+                        tap-timer.running = false;
+                        root.zoom = root.zoom > 1 ? 1 : 2.5;
+                        root.pan-x = 0;
+                        root.pan-y = 0;
+                    } else {
+                        root.tap-x = self.mouse-x;
+                        tap-timer.running = true;
+                    }
+                } else if root.zoom <= 1 && abs(root.drag-x) > 60px && abs(root.drag-x) > 2 * abs(root.drag-y) {
+                    root.turn(root.drag-x < 0 ? 1 : -1);
+                }
+            }
+        }
+        moved => {
+            root.drag-x = self.mouse-x - self.pressed-x;
+            root.drag-y = self.mouse-y - self.pressed-y;
+            if root.zoom > 1 {
+                root.pan-x = root.clamp-pan(root.base-x + root.drag-x, root.max-pan-x);
+                root.pan-y = root.clamp-pan(root.base-y + root.drag-y, root.max-pan-y);
+            }
+        }
+    }
+
+    if root.chrome: Rectangle {
+        y: 0;
+        height: 56px + root.inset-top;
+        background: #000000b0;
+        HorizontalLayout {
+            padding-top: root.inset-top;
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 12px;
+            Rectangle {
+                width: 72px;
+                Text { text: "Close"; color: Theme.accent; font-size: 16px; horizontal-alignment: center; vertical-alignment: center; }
+                TouchArea { clicked => { root.close(); } }
+            }
+            Text {
+                text: root.total > 0 ? root.current + " / " + root.total : "";
+                color: Theme.text;
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                width: 72px;
+                Text { text: root.rtl ? "RTL" : "LTR"; color: Theme.accent; font-size: 16px; horizontal-alignment: center; vertical-alignment: center; }
+                TouchArea { clicked => { root.toggle-direction(); } }
+            }
+        }
+    }
+    if root.chrome && root.total > 1: Rectangle {
+        y: root.height - self.height;
+        height: 56px + root.inset-bottom;
+        background: #000000b0;
+        VerticalLayout {
+            padding-bottom: root.inset-bottom;
+            padding-left: 20px;
+            padding-right: 20px;
+            alignment: center;
+            Slider {
+                minimum: 1;
+                maximum: root.total;
+                value: root.current;
+                released(v) => { root.seek(Math.round(v)); }
+            }
+        }
+    }
+}

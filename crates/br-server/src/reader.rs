@@ -50,7 +50,12 @@ fn pages_of(s: &AppState, uid: &str) -> CoreResult<(std::path::PathBuf, Vec<Stri
         .path_of(uid)
         .ok_or_else(|| invalid("File not found in library"))?;
     let path = std::path::PathBuf::from(path);
-    if !path.is_file() {
+    let is_file = s
+        .archives
+        .fs()
+        .stat(&path.to_string_lossy())
+        .is_ok_and(|m| !m.is_dir);
+    if !is_file {
         return Err(invalid("File not found"));
     }
     let pages = s.archives.list_pages(&path)?;

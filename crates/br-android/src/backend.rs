@@ -110,6 +110,15 @@ impl Backend {
         serde_json::from_slice(&body).map_err(|e| e.to_string())
     }
 
+    pub async fn patch_json(&self, uri: &str, body: &serde_json::Value) -> Result<(), String> {
+        let req = Request::patch(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap();
+        let (status, _) = self.request(req).await?;
+        if status.is_success() { Ok(()) } else { Err(format!("{uri}: {status}")) }
+    }
+
     pub async fn get_bytes(&self, uri: &str) -> Result<Vec<u8>, String> {
         let (status, body) = self.request(Request::get(uri).body(Body::empty()).unwrap()).await?;
         if !status.is_success() {

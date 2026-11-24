@@ -49,6 +49,7 @@ export component LibraryScreen inherits Rectangle {
     callback search(string);
     callback set-filter(int);
     callback open-series(int);
+    callback open-issue(int);
     callback close-series();
     callback cover-needed(bool, int);
 
@@ -61,6 +62,7 @@ export component LibraryScreen inherits Rectangle {
         issues: root.issues;
         back => { root.close-series(); }
         cover-needed(i) => { root.cover-needed(true, i); }
+        open-issue(i) => { root.open-issue(i); }
     }
     if !root.detail-open: VerticalLayout {
         padding: 16px;

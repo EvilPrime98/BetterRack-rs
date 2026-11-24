@@ -8,6 +8,7 @@ export component SeriesDetail inherits Rectangle {
     in property <[Item]> issues;
     callback back();
     callback cover-needed(int);
+    callback open-issue(int);
     VerticalLayout {
         padding: 16px;
         spacing: 12px;
@@ -35,6 +36,7 @@ export component SeriesDetail inherits Rectangle {
             for item[i] in root.issues: Rectangle {
                 height: 96px;
                 init => { root.cover-needed(i); }
+                TouchArea { clicked => { root.open-issue(i); } }
                 HorizontalLayout {
                     spacing: 12px;
                     padding-top: 6px;

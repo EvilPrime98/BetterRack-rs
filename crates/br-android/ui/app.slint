@@ -3,6 +3,7 @@ import { NavRail, NavBar } from "nav.slint";
 import { LibraryScreen } from "library.slint";
 import { Item } from "cover.slint";
 import { SettingsScreen } from "settings.slint";
+import { Reader } from "reader.slint";
 
 export component App inherits Window {
     in property <[Item]> series;
@@ -20,6 +21,18 @@ export component App inherits Window {
     callback search(string);
     callback set-filter(int);
     callback open-series(int);
+    callback open-issue(int);
+    in property <bool> reader-open;
+    in property <image> reader-page;
+    in property <bool> reader-has-page;
+    in property <string> reader-message;
+    in property <int> reader-total;
+    in property <int> reader-current;
+    in property <bool> reader-rtl;
+    callback reader-close();
+    callback reader-step(int);
+    callback reader-seek(int);
+    callback reader-toggle-direction();
     callback close-series();
     callback cover-needed(bool, int);
     callback add-folder();
@@ -55,6 +68,7 @@ export component App inherits Window {
                     search(t) => { root.search(t); }
                     set-filter(f) => { root.set-filter(f); }
                     open-series(i) => { root.open-series(i); }
+                    open-issue(i) => { root.open-issue(i); }
                     close-series => { root.close-series(); }
                     cover-needed(d, i) => { root.cover-needed(d, i); }
                 }
@@ -75,5 +89,22 @@ export component App inherits Window {
             items: root.destinations;
             current <=> root.tab;
         }
+    }
+
+    if root.reader-open: Reader {
+        width: root.width;
+        height: root.height;
+        page: root.reader-page;
+        has-page: root.reader-has-page;
+        message: root.reader-message;
+        total: root.reader-total;
+        current: root.reader-current;
+        rtl: root.reader-rtl;
+        inset-top: root.safe-area-insets.top;
+        inset-bottom: root.safe-area-insets.bottom;
+        close => { root.reader-close(); }
+        step(d) => { root.reader-step(d); }
+        seek(n) => { root.reader-seek(n); }
+        toggle-direction => { root.reader-toggle-direction(); }
     }
 }

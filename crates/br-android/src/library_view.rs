@@ -211,6 +211,13 @@ fn load_cover(weak: Weak<App>, backend: Backend, uid: String) {
     });
 }
 
+/// Uid of the issue at `index` in the open series' detail list.
+pub fn issue_uid(index: i32) -> Option<String> {
+    let st = state().lock().unwrap();
+    let index = usize::try_from(index).ok()?;
+    open_series(&st)?.issues.get(index).map(|i| i.uid.clone())
+}
+
 /// Called when Slint creates a row: start loading its cover unless known or in flight.
 fn cover_needed(weak: Weak<App>, backend: Backend, detail: bool, index: i32) {
     let Ok(index) = usize::try_from(index) else { return };

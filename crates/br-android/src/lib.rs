@@ -2,6 +2,7 @@ mod backend;
 mod keepalive;
 mod library_view;
 mod remote;
+mod reader_view;
 mod saf;
 mod vault;
 
@@ -81,6 +82,7 @@ fn android_main(app: slint::android::AndroidApp) {
             let linked_url = remote::restore(&base, &backend);
             let _ = weak.upgrade_in_event_loop(move |ui| {
                 library_view::register(&ui, server_backend.clone());
+                reader_view::register(&ui, server_backend.clone());
                 ui.set_remote_url(linked_url.clone().unwrap_or_default().into());
                 ui.set_remote_linked(linked_url.is_some());
                 let (weak, backend, dir) = (ui_weak.clone(), server_backend.clone(), server_dir.clone());
