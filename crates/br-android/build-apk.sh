@@ -19,3 +19,25 @@ for pair in arm64-v8a:aarch64-linux-android x86_64:x86_64-linux-android; do
   cp "$LIBS/${pair##*:}/libc++_shared.so" "runtime_libs/${pair%%:*}/"
 done
 cargo apk build --lib "$@"
+
+# cargo-apk cannot declare a Service or pack Java, so repack: patch the manifest it generated
+# (code present, KeepAliveService), rebuild the APK with `java/service.dex` as classes.dex, then
+# align and sign with the debug key. Skipped for release builds, which Phase 12 signs itself.
+PROFILE=debug
+for a in "$@"; do [ "$a" = "--release" ] && PROFILE=release; done
+APK_DIR="target/$PROFILE/apk"
+if [ "$PROFILE" = debug ]; then
+  BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+  mkdir -p "$APK_DIR/patched"
+  sed -e 's/android:hasCode="false"/android:hasCode="true"/' \
+      -e 's#</application>#<service android:name="dev.betterrack.android.KeepAliveService" android:exported="false" android:foregroundServiceType="dataSync"/></application>#' \
+      "$APK_DIR/AndroidManifest.xml" > "$APK_DIR/patched/AndroidManifest.xml"
+  rm -f "$APK_DIR/repacked.apk" "$APK_DIR/aligned.apk"
+  "$BT/aapt" package -f -F "$APK_DIR/repacked.apk" -M "$APK_DIR/patched/AndroidManifest.xml" -I "$ANDROID_JAR"
+  cp java/service.dex "$APK_DIR/classes.dex"
+  (cd "$APK_DIR" && "$BT/aapt" add repacked.apk classes.dex $(find lib -type f) >/dev/null)
+  "$BT/zipalign" -f -p 4 "$APK_DIR/repacked.apk" "$APK_DIR/aligned.apk"
+  KS="${DEBUG_KEYSTORE:-$HOME/.android/debug.keystore}"
+  "$BT/apksigner.bat" sign --ks "$KS" --ks-pass pass:android --out "$APK_DIR/br-android.apk" "$APK_DIR/aligned.apk"
+  rm -f "$APK_DIR/repacked.apk" "$APK_DIR/aligned.apk" "$APK_DIR/classes.dex"
+fi

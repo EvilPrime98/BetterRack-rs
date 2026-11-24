@@ -1,4 +1,5 @@
 mod backend;
+mod keepalive;
 mod remote;
 mod saf;
 mod vault;
@@ -115,6 +116,7 @@ fn android_main(app: slint::android::AndroidApp) {
                     }
                 });
             });
+            runtime().spawn(keepalive::watch(backend.clone()));
             runtime().spawn(async move {
                 let ok = backend.healthy().await;
                 let _ = weak.upgrade_in_event_loop(move |ui| {
