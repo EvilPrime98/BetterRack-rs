@@ -1,5 +1,7 @@
 [workspace]
-members = [".", "crates/*"]
+members = [".", "crates/br-core", "crates/br-server", "crates/br-wiki"]
+# crates/br-android and spikes/ are their own workspaces (Android only, see docs/android).
+exclude = ["crates/br-android", "spikes"]
 
 [workspace.package]
 edition = "2024"

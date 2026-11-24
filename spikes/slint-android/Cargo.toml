@@ -1,0 +1,35 @@
+[package]
+name = "slint-spike"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+slint = { version = "1", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06", "renderer-femtovg"] }
+br-core = { path = "../../crates/br-core" }
+br-server = { path = "../../crates/br-server" }
+axum = "0.8"
+tower = { version = "0.5", features = ["util"] }
+http = "1"
+http-body-util = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+serde_json = "1"
+
+[build-dependencies]
+slint-build = "1"
+[package.metadata.android]
+package = "dev.betterrack.slintspike"
+build_targets = ["x86_64-linux-android"]
+runtime_libs = "runtime_libs"
+
+[package.metadata.android.sdk]
+min_sdk_version = 26
+target_sdk_version = 34
+
+[package.metadata.android.application]
+label = "BR Slint spike"

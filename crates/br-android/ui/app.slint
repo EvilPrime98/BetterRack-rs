@@ -1,0 +1,52 @@
+import { Theme } from "theme.slint";
+import { NavRail, NavBar } from "nav.slint";
+import { LibraryScreen } from "library.slint";
+import { SettingsScreen } from "settings.slint";
+
+export component App inherits Window {
+    in property <[string]> comics;
+    in property <bool> loading;
+    in property <string> server-status;
+    in property <string> data-dir;
+    in property <[string]> folders;
+    in property <string> folder-status;
+    callback add-folder();
+
+    // One entry per destination; Phases 7-9 append here and add a branch to the `if` chain.
+    property <[string]> destinations: ["Library", "Settings"];
+    property <int> tab: 0;
+    property <bool> wide: self.width >= Theme.wide-breakpoint;
+
+    background: Theme.bg;
+
+    VerticalLayout {
+        padding-top: root.safe-area-insets.top;
+        padding-bottom: root.safe-area-insets.bottom;
+        padding-left: root.safe-area-insets.left;
+        padding-right: root.safe-area-insets.right;
+        HorizontalLayout {
+            if root.wide: NavRail {
+                items: root.destinations;
+                current <=> root.tab;
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                if root.tab == 0: LibraryScreen {
+                    comics: root.comics;
+                    loading: root.loading;
+                }
+                if root.tab == 1: SettingsScreen {
+                    server-status: root.server-status;
+                    data-dir: root.data-dir;
+                    folders: root.folders;
+                    folder-status: root.folder-status;
+                    add-folder => { root.add-folder(); }
+                }
+            }
+        }
+        if !root.wide: NavBar {
+            items: root.destinations;
+            current <=> root.tab;
+        }
+    }
+}

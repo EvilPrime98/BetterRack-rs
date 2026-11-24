@@ -1,0 +1,55 @@
+[package]
+name = "br-android"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+# Own workspace (and lockfile): the root workspace builds GPUI, which does not target Android.
+# The root `Cargo.toml` excludes this directory.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+slint = { version = "1", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06", "renderer-femtovg"] }
+br-core = { path = "../br-core" }
+br-server = { path = "../br-server" }
+axum = "0.8"
+tower = { version = "0.5", features = ["util"] }
+http = "1"
+http-body-util = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+ndk-context = "0.1"
+
+[build-dependencies]
+slint-build = "1"
+
+[package.metadata.android]
+package = "dev.betterrack.android"
+build_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+runtime_libs = "runtime_libs"
+
+[package.metadata.android.sdk]
+min_sdk_version = 26
+target_sdk_version = 34
+
+[package.metadata.android.application]
+label = "BetterRack"
+
+# Without this the debug APK is ~800 MB (full DWARF for Skia and the server stack).
+[profile.dev]
+debug = 0
+strip = "debuginfo"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true

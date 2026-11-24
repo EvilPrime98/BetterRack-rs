@@ -1,0 +1,29 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export component LibraryScreen inherits Rectangle {
+    in property <[string]> comics;
+    in property <bool> loading;
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        Text { text: "Library"; color: Theme.text; font-size: 24px; font-weight: 700; }
+        if root.comics.length == 0: Text {
+            text: root.loading ? "Loading..." : "No comics yet. Add a library folder in Settings.";
+            color: Theme.muted;
+            font-size: 16px;
+            wrap: word-wrap;
+        }
+        ListView {
+            vertical-stretch: 1;
+            for name in root.comics: Text {
+                text: name;
+                color: Theme.text;
+                font-size: 18px;
+                height: 44px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

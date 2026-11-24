@@ -1,0 +1,27 @@
+import { Button } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export component SettingsScreen inherits Rectangle {
+    in property <string> server-status;
+    in property <string> data-dir;
+    in property <[string]> folders;
+    in property <string> folder-status;
+    callback add-folder();
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        alignment: start;
+        Text { text: "Settings"; color: Theme.text; font-size: 24px; font-weight: 700; }
+        Text { text: "Embedded server: " + root.server-status; color: Theme.text; font-size: 16px; wrap: word-wrap; }
+        Text { text: "Data: " + root.data-dir; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+        Text { text: "Library folders"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        for folder in root.folders: Text {
+            text: folder;
+            color: Theme.text;
+            font-size: 14px;
+            wrap: word-wrap;
+        }
+        Button { text: "Add library folder"; clicked => { root.add-folder(); } }
+        if root.folder-status != "": Text { text: root.folder-status; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+    }
+}
