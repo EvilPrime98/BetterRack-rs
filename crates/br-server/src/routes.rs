@@ -69,7 +69,7 @@ pub async fn add_library_folder(
         let resolved = br_core::uid::resolve_in(&path, &cwd);
         let mut paths = library_paths(&s)?;
         if !paths.contains(&resolved) {
-            if !std::path::Path::new(&resolved).is_dir() {
+            if !s.archives.fs().stat(&resolved).is_ok_and(|m| m.is_dir) {
                 return Ok(Err("Folder does not exist.".to_string()));
             }
             paths.push(resolved);

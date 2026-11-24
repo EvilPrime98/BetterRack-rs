@@ -44,6 +44,8 @@ pub struct NetOptions {
     pub rotating: Option<(u32, u64, u64)>,
     /// `(host with port, scheme)` standing in for pixeldrain.com.
     pub pixeldrain: Option<(String, String)>,
+    /// Archive reader with a platform `LibraryFs` (Android SAF). `None` reads real paths.
+    pub archives: Option<Arc<Archives>>,
 }
 
 impl Default for NetOptions {
@@ -53,6 +55,7 @@ impl Default for NetOptions {
             download_retry: RetryOpts::default(),
             rotating: None,
             pixeldrain: None,
+            archives: None,
         }
     }
 }
@@ -76,7 +79,10 @@ impl AppState {
         let prefs = Arc::new(Preferences::open(&config.preferences_db())?);
         let comic_data = Arc::new(ComicDataStore::open(&config.comic_data_db())?);
         let jobs = JobStore::open(&config.jobs_db())?;
-        let archives = Arc::new(Archives::new(config.seven_zip_path.clone()));
+        let archives = net
+            .archives
+            .clone()
+            .unwrap_or_else(|| Arc::new(Archives::new(config.seven_zip_path.clone())));
         let cwd = config.data_dir.to_string_lossy().into_owned();
         let library = Library::new(
             prefs.clone(),
