@@ -1,5 +1,3 @@
-import { API_URL } from './library.service';
-import { authHeaders, withAuthQuery } from './server-config.service';
 import type { IStoreLink, IStorePost, TStoreProgressEvent, TStoreStrat } from '../store.types';
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
@@ -18,9 +16,7 @@ export async function searchComics(params: {
     if (params.page) searchParams.set('page', String(params.page));
     if (params.perPage) searchParams.set('perPage', String(params.perPage));
     if (params.exact) searchParams.set('exact', 'true');
-    const response = await fetch(`${API_URL}/api/comics?${searchParams}`, {
-        headers: authHeaders(),
-    });
+    const response = await fetch(`/api/comics?${searchParams}`);
     return parseJsonResponse(response);
 }
 
@@ -37,16 +33,12 @@ export async function getLatestComics(params?: {
     }
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.perPage) searchParams.set('perPage', String(params.perPage));
-    const response = await fetch(`${API_URL}/api/comics?${searchParams}`, {
-        headers: authHeaders(),
-    });
+    const response = await fetch(`/api/comics?${searchParams}`);
     return parseJsonResponse(response);
 }
 
 export async function getComicLinks(id: number, strat: TStoreStrat = 'all'): Promise<IStoreLink[]> {
-    const response = await fetch(`${API_URL}/api/comics/${id}/links?strat=${strat}`, {
-        headers: authHeaders(),
-    });
+    const response = await fetch(`/api/comics/${id}/links?strat=${strat}`);
     const data = await parseJsonResponse<{ error: boolean; message: string; links: IStoreLink[] }>(
         response,
     );
@@ -71,15 +63,13 @@ export async function downloadComic({
     const searchParams = new URLSearchParams({ id: String(id), title, uuid, outputDir });
     if (strat) searchParams.set('strat', strat);
 
-    const response = await fetch(`${API_URL}/api/downloads?${searchParams}`, {
-        headers: authHeaders(),
-    });
+    const response = await fetch(`/api/downloads?${searchParams}`);
     const { jobId } = await parseJsonResponse<{ error: boolean; jobId: string; state: string }>(
         response,
     );
 
     return new Promise((resolve, reject) => {
-        const es = new EventSource(withAuthQuery(`${API_URL}/api/downloads/${jobId}/stream`));
+        const es = new EventSource(`/api/downloads/${jobId}/stream`);
 
         es.onmessage = (e) => {
             const { progress }: { progress?: TStoreProgressEvent } = JSON.parse(e.data);
@@ -110,23 +100,21 @@ export type TJobStatus = {
 };
 
 export async function getDownloadJobs(): Promise<TJobStatus[]> {
-    const response = await fetch(`${API_URL}/api/downloads/jobs`, { headers: authHeaders() });
+    const response = await fetch(`/api/downloads/jobs`);
     const data = await parseJsonResponse<{ error: boolean; jobs: TJobStatus[] }>(response);
     return data.jobs;
 }
 
 export async function retryDownloadJob(jobId: string): Promise<{ jobId: string; state: string }> {
-    const response = await fetch(`${API_URL}/api/downloads/${jobId}/retry`, {
+    const response = await fetch(`/api/downloads/${jobId}/retry`, {
         method: 'POST',
-        headers: authHeaders(),
     });
     return parseJsonResponse<{ error: boolean; jobId: string; state: string }>(response);
 }
 
 export async function cancelDownloadJob(jobId: string): Promise<{ jobId: string }> {
-    const response = await fetch(`${API_URL}/api/downloads/${jobId}`, {
+    const response = await fetch(`/api/downloads/${jobId}`, {
         method: 'DELETE',
-        headers: authHeaders(),
     });
     return parseJsonResponse<{ error: boolean; jobId: string }>(response);
 }
@@ -144,9 +132,9 @@ export async function startDownloadJob({
     outputDir: string;
     strat?: TStoreStrat;
 }): Promise<{ jobId: string; state: string }> {
-    const response = await fetch(`${API_URL}/api/downloads`, {
+    const response = await fetch(`/api/downloads`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, title, uuid, outputDir, strat }),
     });
 

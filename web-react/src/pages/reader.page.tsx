@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { toggleFullscreen } from '@/services/fullscreen.service';
-import { setImmersiveMode } from '@/services/immersive.service';
 import styles from './reader.page.module.css';
 import { RENDER_AHEAD, RENDER_BEHIND } from '../utils/reader.page.utils';
 import { ImageElement } from '@/components/reader-page-image/reader-page-image';
@@ -53,11 +52,6 @@ export function ReaderPage() {
     }, []);
 
     useEffect(() => {
-        setImmersiveMode(true);
-        return () => setImmersiveMode(false);
-    }, []);
-
-    useEffect(() => {
         setTitle('Reader');
     }, [setTitle]);
 
@@ -67,11 +61,7 @@ export function ReaderPage() {
     const next = numPages > 0 && currentPage === numPages;
 
     return (
-        <section
-            className={styles.page}
-            onWheel={onWheel}
-            ref={pageRef}
-        >
+        <section className={styles.page} onWheel={onWheel} ref={pageRef}>
             <div className={`${styles.headerOverlay} ${isHeaderVisible ? '' : styles.hidden}`}>
                 <ReaderPageHeader
                     title={title}

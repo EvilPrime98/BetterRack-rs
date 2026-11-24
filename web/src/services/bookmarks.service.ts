@@ -1,5 +1,3 @@
-import { API_URL } from './library.service';
-import { authHeaders } from './server-config.service';
 import type { IStoreBookmark, IStorePost } from '../store.types';
 
 async function parse<T>(response: Response): Promise<T> {
@@ -8,12 +6,12 @@ async function parse<T>(response: Response): Promise<T> {
     return data;
 }
 
-const jsonHeaders = () => ({ 'Content-Type': 'application/json', ...authHeaders() });
+const jsonHeaders = () => ({ 'Content-Type': 'application/json' });
 const url = (key?: string) =>
-    `${API_URL}/api/bookmarks${key === undefined ? '' : `/${encodeURIComponent(key)}`}`;
+    `/api/bookmarks${key === undefined ? '' : `/${encodeURIComponent(key)}`}`;
 
 export async function getBookmarks(): Promise<IStoreBookmark[]> {
-    return parse(await fetch(url(), { headers: authHeaders() }));
+    return parse(await fetch(url()));
 }
 
 export async function addBookmark(post: IStorePost, folder?: string): Promise<IStoreBookmark> {
@@ -40,5 +38,5 @@ export async function patchBookmark(
 }
 
 export async function deleteBookmark(key: string): Promise<void> {
-    await parse(await fetch(url(key), { method: 'DELETE', headers: authHeaders() }));
+    await parse(await fetch(url(key), { method: 'DELETE' }));
 }

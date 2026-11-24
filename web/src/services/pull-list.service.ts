@@ -1,5 +1,3 @@
-import { API_URL } from './library.service';
-import { authHeaders } from './server-config.service';
 import type { IPullEntry } from '../store.types';
 
 async function parse<T>(response: Response): Promise<T> {
@@ -8,12 +6,12 @@ async function parse<T>(response: Response): Promise<T> {
     return data;
 }
 
-const jsonHeaders = () => ({ 'Content-Type': 'application/json', ...authHeaders() });
+const jsonHeaders = () => ({ 'Content-Type': 'application/json' });
 const url = (id?: string) =>
-    `${API_URL}/api/pull-list${id === undefined ? '' : `/${encodeURIComponent(id)}`}`;
+    `/api/pull-list${id === undefined ? '' : `/${encodeURIComponent(id)}`}`;
 
 export async function getPullList(): Promise<IPullEntry[]> {
-    return parse(await fetch(url(), { headers: authHeaders() }));
+    return parse(await fetch(url()));
 }
 
 export async function addPullEntry(keyword: string): Promise<IPullEntry> {
@@ -40,5 +38,5 @@ export async function patchPullEntry(
 }
 
 export async function deletePullEntry(id: string): Promise<void> {
-    await parse(await fetch(url(id), { method: 'DELETE', headers: authHeaders() }));
+    await parse(await fetch(url(id), { method: 'DELETE' }));
 }

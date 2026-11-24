@@ -5,14 +5,12 @@ import { useLibraryStore } from '@/stores/library.store';
 import { useComicCacheStore } from '@/stores/comicCache.store';
 import { useComicsTypeStore } from '@/stores/comicsTypes.store';
 import { useSettingsStore } from '@/stores/settings.store';
-import { useServerModalStore } from '@/stores/serverModal.store';
 import { useBookmarksStore } from '@/stores/bookmarks.store';
 import { usePullListStore } from '@/stores/pullList.store';
 import { useDownloadedStore } from '@/stores/downloaded.store';
 import { PullListPage } from '@/pages/pull-list.page';
 import { useUserPrefStore } from '@/stores/userPref.store';
 import { AppLoader } from '@/components/app-loader/app-loader';
-import { ServerModal } from '@/components/server-modal/server-modal';
 import { LibraryPage } from '@/pages/library-page';
 import { ReaderPage } from '@/pages/reader.page';
 import { SettingsPage } from '@/pages/settings.page';
@@ -37,8 +35,6 @@ export function App() {
 
     useEffect(() => {
         (async () => {
-            await useServerModalStore.getState().ensureServerConfigured();
-
             setIsLoading(true);
 
             try {
@@ -84,8 +80,6 @@ export function App() {
                     <Route path="*" element={<LibraryPage />} />
                 </Routes>
             )}
-
-            <ServerModal />
         </>
     );
 }
