@@ -1,8 +1,8 @@
 //! `GET /api/directories`: every folder under the download dir and library roots.
 //! Directory listing under the library roots.
 
-use std::cmp::Ordering;
 use crate::fs::{LibraryFs, StdFs};
+use std::cmp::Ordering;
 
 /// Roots first-seen order, each followed by its subfolders depth-first; duplicates dropped.
 /// Unreadable folders are skipped silently.

@@ -55,7 +55,11 @@ fn not_found(path: &str) -> io::Error {
 
 impl<P: DocumentProvider> TreeFs<P> {
     pub fn new(provider: P) -> Self {
-        Self { provider, roots: RwLock::default(), seen: Mutex::default() }
+        Self {
+            provider,
+            roots: RwLock::default(),
+            seen: Mutex::default(),
+        }
     }
 
     pub fn provider(&self) -> &P {
@@ -64,14 +68,20 @@ impl<P: DocumentProvider> TreeFs<P> {
 
     /// Makes `/saf/<key>/...` resolvable. Returns the root's virtual path.
     pub fn register(&self, key: &str, label: &str, root_doc_id: &str) -> String {
-        self.roots.write().unwrap().insert(key.to_string(), root_doc_id.to_string());
+        self.roots
+            .write()
+            .unwrap()
+            .insert(key.to_string(), root_doc_id.to_string());
         root_path(key, label)
     }
 
     pub fn unregister(&self, key: &str) {
         self.roots.write().unwrap().remove(key);
         let prefix = format!("{PREFIX}/{key}/");
-        self.seen.lock().unwrap().retain(|p, _| !p.starts_with(&prefix));
+        self.seen
+            .lock()
+            .unwrap()
+            .retain(|p, _| !p.starts_with(&prefix));
     }
 
     fn root_doc(&self, key: &str) -> io::Result<String> {
@@ -105,7 +115,9 @@ impl<P: DocumentProvider> TreeFs<P> {
         let dir = dir.trim_end_matches('/');
         let (key, doc) = self.document(dir)?;
         let doc_id = match doc {
-            Some(d) if !d.is_dir => return Err(io::Error::other(format!("not a directory: {dir}"))),
+            Some(d) if !d.is_dir => {
+                return Err(io::Error::other(format!("not a directory: {dir}")));
+            }
             Some(d) => d.id,
             None => self.root_doc(&key)?,
         };
@@ -118,7 +130,11 @@ impl<P: DocumentProvider> TreeFs<P> {
             .into_iter()
             .map(|d| {
                 let path = format!("{prefix}{}", d.name);
-                let entry = DirEntry { name: d.name.clone(), path: path.clone(), is_dir: d.is_dir };
+                let entry = DirEntry {
+                    name: d.name.clone(),
+                    path: path.clone(),
+                    is_dir: d.is_dir,
+                };
                 seen.insert(path, d);
                 entry
             })
@@ -128,7 +144,11 @@ impl<P: DocumentProvider> TreeFs<P> {
 
 impl<P: DocumentProvider> LibraryFs for TreeFs<P> {
     fn list_dir(&self, dir: &str) -> io::Result<Vec<DirEntry>> {
-        if dir.starts_with(PREFIX) { self.list(dir) } else { StdFs.list_dir(dir) }
+        if dir.starts_with(PREFIX) {
+            self.list(dir)
+        } else {
+            StdFs.list_dir(dir)
+        }
     }
 
     fn stat(&self, path: &str) -> io::Result<FileMeta> {
@@ -136,8 +156,16 @@ impl<P: DocumentProvider> LibraryFs for TreeFs<P> {
             return StdFs.stat(path);
         }
         Ok(match self.document(path)?.1 {
-            None => FileMeta { is_dir: true, size: 0, mtime_ms: 0.0 },
-            Some(d) => FileMeta { is_dir: d.is_dir, size: d.size, mtime_ms: d.mtime_ms },
+            None => FileMeta {
+                is_dir: true,
+                size: 0,
+                mtime_ms: 0.0,
+            },
+            Some(d) => FileMeta {
+                is_dir: d.is_dir,
+                size: d.size,
+                mtime_ms: d.mtime_ms,
+            },
         })
     }
 
@@ -159,13 +187,22 @@ mod tests {
 
     struct Fake;
     fn doc(id: &str, name: &str, is_dir: bool, size: u64) -> Document {
-        Document { id: id.into(), name: name.into(), is_dir, size, mtime_ms: 5.0 }
+        Document {
+            id: id.into(),
+            name: name.into(),
+            is_dir,
+            size,
+            mtime_ms: 5.0,
+        }
     }
     impl DocumentProvider for Fake {
         fn children(&self, tree: &str, id: &str) -> io::Result<Vec<Document>> {
             assert_eq!(tree, "k1");
             Ok(match id {
-                "root" => vec![doc("d1", "Series", true, 0), doc("f0", "loose.cbz", false, 9)],
+                "root" => vec![
+                    doc("d1", "Series", true, 0),
+                    doc("f0", "loose.cbz", false, 9),
+                ],
                 "d1" => vec![doc("f1", "a.cbz", false, 3)],
                 _ => return Err(not_found(id)),
             })
@@ -202,7 +239,9 @@ mod tests {
         assert_eq!(fs.read("/saf/k1/Comics/Series/a.cbz").unwrap(), b"body-f1");
         assert!(fs.stat("/saf/k1/Comics/Series").unwrap().is_dir);
         assert_eq!(
-            fs.stat("/saf/k1/Comics/Series/nope.cbz").unwrap_err().kind(),
+            fs.stat("/saf/k1/Comics/Series/nope.cbz")
+                .unwrap_err()
+                .kind(),
             io::ErrorKind::NotFound
         );
         assert!(fs.stat("/saf/other/Comics").is_err());

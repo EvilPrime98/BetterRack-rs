@@ -13,6 +13,7 @@ use crate::archive::Archives;
 use crate::comic_data::{ComicDataStore, ComicRecord};
 use crate::comic_info::{js_number, to_wiki_comic};
 use crate::directories::natural_cmp;
+use crate::fs::{LibraryFs, StdFs};
 use crate::series::series_of;
 use crate::settings::Preferences;
 use crate::sync::{Semaphore, SingleFlight};
@@ -22,7 +23,6 @@ use crate::{CoreError, Result};
 use serde_json::{Map, Number, Value, json};
 use std::collections::HashMap;
 use std::path::Path;
-use crate::fs::{LibraryFs, StdFs};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 
 pub const COMIC_EXTENSIONS: [&str; 4] = ["cbz", "cbr", "cb7", "cbt"];

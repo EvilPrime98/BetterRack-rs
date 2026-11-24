@@ -270,7 +270,10 @@ impl Archives {
     /// anything else is copied once through the `LibraryFs` into the cache dir, keyed by path
     /// and stamp so a changed archive gets a new copy.
     fn local_rar(&self, path: &Path, stamp: FileStamp) -> Option<PathBuf> {
-        if std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false) {
+        if std::fs::metadata(path)
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+        {
             return Some(path.to_path_buf());
         }
         use sha2::{Digest, Sha256};
@@ -278,7 +281,12 @@ impl Archives {
         let mut h = Sha256::new();
         h.update(key.as_bytes());
         h.update(format!("{stamp:?}"));
-        let name: String = h.finalize().iter().take(12).map(|b| format!("{b:02x}")).collect();
+        let name: String = h
+            .finalize()
+            .iter()
+            .take(12)
+            .map(|b| format!("{b:02x}"))
+            .collect();
         let dir = self
             .cache_dir
             .clone()
@@ -579,8 +587,7 @@ fn list_sevenz(fs: &dyn LibraryFs, path: &Path) -> Option<Vec<String>> {
 }
 
 fn read_sevenz_entry(fs: &dyn LibraryFs, path: &Path, entry: &str) -> Option<Vec<u8>> {
-    let mut reader =
-        sevenz_rust2::ArchiveReader::new(
+    let mut reader = sevenz_rust2::ArchiveReader::new(
         fs.open(&path.to_string_lossy()).ok()?,
         sevenz_rust2::Password::empty(),
     )
@@ -700,7 +707,10 @@ mod tests {
                 b"n",
                 "{name}"
             );
-            assert!(read_sevenz_entry(&StdFs, &path, "missing.jpg").is_none(), "{name}");
+            assert!(
+                read_sevenz_entry(&StdFs, &path, "missing.jpg").is_none(),
+                "{name}"
+            );
             let a = Archives::new(None);
             assert_eq!(a.list_pages(&path).unwrap().len(), 4, "{name}");
             assert!(a.comic_info(&path).unwrap().is_some(), "{name}");
@@ -733,9 +743,15 @@ mod tests {
                 ],
                 "{name}"
             );
-            assert_eq!(read_rar_entry(&path, "002.jpg").unwrap().len(), 409, "{name}");
             assert_eq!(
-                read_rar_entry(&path, &native_separators("Extras/note.txt")).unwrap().len(),
+                read_rar_entry(&path, "002.jpg").unwrap().len(),
+                409,
+                "{name}"
+            );
+            assert_eq!(
+                read_rar_entry(&path, &native_separators("Extras/note.txt"))
+                    .unwrap()
+                    .len(),
                 5,
                 "{name}"
             );
@@ -751,7 +767,11 @@ mod tests {
                 Ok(vec![])
             }
             fn stat(&self, _: &str) -> std::io::Result<crate::fs::FileMeta> {
-                Ok(crate::fs::FileMeta { size: self.0.len() as u64, mtime_ms: 1.0, is_dir: false })
+                Ok(crate::fs::FileMeta {
+                    size: self.0.len() as u64,
+                    mtime_ms: 1.0,
+                    is_dir: false,
+                })
             }
             fn open(&self, _: &str) -> std::io::Result<Box<dyn crate::fs::ReadSeek>> {
                 Ok(Box::new(std::io::Cursor::new(self.0.clone())))
@@ -762,8 +782,9 @@ mod tests {
         )
         .unwrap();
         let cache = tempfile::tempdir().unwrap();
-        let archives = Archives::with_fs(Some(PathBuf::from("no-such-7z")), Arc::new(Virtual(bytes)))
-            .with_cache_dir(cache.path().to_path_buf());
+        let archives =
+            Archives::with_fs(Some(PathBuf::from("no-such-7z")), Arc::new(Virtual(bytes)))
+                .with_cache_dir(cache.path().to_path_buf());
         let uri = Path::new("content-uri-not-on-disk.cbr");
         assert_eq!(archives.list_pages(uri).unwrap().len(), 3);
         assert_eq!(archives.read_entry(uri, "001.jpg").unwrap().len(), 409);
