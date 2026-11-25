@@ -11,8 +11,10 @@ export function DownloadComicButton({ uid, name }: { uid: string; name: string }
         const $button = e.currentTarget as HTMLElement;
         if ($button.getAttribute('aria-busy') === 'true') return;
         $button.setAttribute('aria-busy', 'true');
-        Promise.resolve()
-            .then(() => downloadComic(uid, name))
+        downloadComic(uid, name)
+            .then((savedPath) => {
+                if (savedPath) toast.success(`Saved to ${savedPath}`);
+            })
             .catch((e) => {
                 toast.error(
                     e instanceof Error ? e.message : 'There was an error downloading the comic.',

@@ -1,9 +1,11 @@
+import { API_URL, authHeaders } from './server-config.service';
+
 let cachedDirectories: string[] | null = null;
 let inFlightRefresh: Promise<string[]> | null = null;
 let cacheGeneration = 0;
 
 async function fetchDirectories(): Promise<string[]> {
-    const response = await fetch(`/api/directories`);
+    const response = await fetch(`${API_URL}/api/directories`, { headers: authHeaders() });
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || 'Failed to load directories.');
     return data.directories ?? [];

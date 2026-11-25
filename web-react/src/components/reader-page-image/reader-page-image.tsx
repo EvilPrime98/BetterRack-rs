@@ -1,6 +1,8 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
 import styles from '../../pages/reader.page.module.css';
 import { ImageGen } from '../image-generic/image-generic';
+import { API_URL } from '../../services/library.service';
+import { withAuthQuery } from '../../services/server-config.service';
 
 const MAX_SNAP_OVERFLOW = 1.2;
 
@@ -57,7 +59,7 @@ export const ImageElement = memo(function ImageElement({
         >
             {active ? (
                 <ImageGen
-                    src={`/read/${uid}/pages/${ind}`}
+                    src={withAuthQuery(`${API_URL}/read/${uid}/pages/${ind}`)}
                     alt={`${uid} — page ${index} of ${total}`}
                     loading="eager"
                     onLoad={(e) => {

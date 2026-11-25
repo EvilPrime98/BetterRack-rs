@@ -1,5 +1,7 @@
 import { UltraActivity, UltraComponent, ultraNavigate, ultraState } from 'ultra-light-js';
-import { reader, readerBookmarks, readerRefresh } from '../services/library.service';
+import { API_URL, reader, readerBookmarks, readerRefresh } from '../services/library.service';
+import { withAuthQuery } from '../services/server-config.service';
+import { setImmersiveMode } from '../services/immersive.service';
 import type { IBookmark } from '../library.types';
 import styles from './reader.page.module.css';
 import { ImageElement } from '../components/reader-page-image/reader-page-image';
@@ -75,7 +77,7 @@ export function ReaderPage({ uid }: { uid: string }) {
                     requested.add(page);
                     const img = new Image();
                     img.onload = img.onerror = () => resolve();
-                    img.src = `/read/${uid}/pages/${page}`;
+                    img.src = withAuthQuery(`${API_URL}/read/${uid}/pages/${page}`);
                 }),
         );
         return Promise.all(loads).then(() => undefined);
@@ -516,6 +518,10 @@ export function ReaderPage({ uid }: { uid: string }) {
                         USER_PREF.setPref({ zoom: zoomValue });
                     }
                 };
+            },
+            () => {
+                setImmersiveMode(true);
+                return () => setImmersiveMode(false);
             },
             ($page: HTMLElement) => {
                 $page.dataset.mode = readingMode();

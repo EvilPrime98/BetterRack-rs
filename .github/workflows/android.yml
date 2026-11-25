@@ -10,9 +10,6 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
-permissions:
-  contents: write
-
 jobs:
   apk:
     name: Build APK
@@ -68,9 +65,3 @@ jobs:
         with:
           name: br-android-apk
           path: crates/br-android/target/*/apk/br-android.apk
-
-      - name: Attach to the GitHub release
-        if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: crates/br-android/target/*/apk/br-android.apk
