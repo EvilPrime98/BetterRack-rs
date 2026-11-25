@@ -1,3 +1,6 @@
+import { API_URL } from '@/services/library.service';
+import { withAuthQuery } from '@/services/server-config.service';
+
 export const PRELOAD_WINDOW = 2;
 export const RENDER_BEHIND = 3;
 export const RENDER_AHEAD = 6;
@@ -19,7 +22,7 @@ export async function preloadWindow(uid: string, numPages: number, savedPage: nu
             new Promise<void>((resolve) => {
                 const img = new Image();
                 img.onload = img.onerror = () => resolve();
-                img.src = `/read/${uid}/pages/${ind}`;
+                img.src = withAuthQuery(`${API_URL}/read/${uid}/pages/${ind}`);
             }),
         );
     }

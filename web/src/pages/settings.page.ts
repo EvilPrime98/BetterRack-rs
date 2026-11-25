@@ -10,7 +10,15 @@ import { DOWNLOAD_DIR_MODAL_CTX } from '../context/download-dir-modal.context';
 import { DOCUMENT_TITLE_CONTEXT } from '../context/document-title.context';
 import { BRButton } from '../components/br-button/br-button';
 import { BRCheckbox } from '../components/br-checkbox/br-checkbox';
+import {
+    clearRemoteServer,
+    getStoredApiKey,
+    getStoredServerUrl,
+    setStoredApiKey,
+    isRemoteModeEnabled,
+} from '../services/server-config.service';
 import { LIBRARY_CONTEXT } from '../context/library.context';
+import { SERVER_MODAL_CTX } from '../context/server-modal.context';
 import { CONFIRM_MODAL_CTX } from '../context/confirm-modal.context';
 
 export function SettingsPage() {
@@ -134,6 +142,18 @@ export function SettingsPage() {
         LIBRARY_CONTEXT.reidentifyAll();
     }
 
+    async function onUnlinkServer() {
+        const confirmed = await CONFIRM_MODAL_CTX.confirmDialog({
+            title: 'Unlink from remote server?',
+            message:
+                'The app will disconnect from the remote server and go back to your local library.',
+            confirmLabel: 'Unlink',
+        });
+        if (!confirmed) return;
+        clearRemoteServer();
+        window.location.reload();
+    }
+
     async function onSave() {
         const partial: Partial<Omit<IAppSettings, 'outputDirs'>> = {
             apiUrl: fieldsState.apiUrl.get(),
@@ -224,7 +244,65 @@ export function SettingsPage() {
                                 children: [
                                     `<h2 class="${styles.sectionTitle}">Server</h2>`,
 
+                                    UltraComponent({
+                                        component: `<p class="${styles.empty}"></p>`,
+                                        onMount: [
+                                            ($p: HTMLElement) => {
+                                                $p.textContent =
+                                                    getStoredServerUrl() || 'No server configured';
+                                            },
+                                        ],
+                                    }),
+
+                                    UltraComponent({
+                                        component: '<div></div>',
+                                        className: [styles.field],
+                                        children: [
+                                            `<label class="${styles.label}" for="settings-server-api-key">Server API key</label>`,
+                                            UltraComponent({
+                                                component:
+                                                    '<input id="settings-server-api-key" type="password" autocomplete="off" />',
+                                                className: [styles.input],
+                                                attributes: {
+                                                    placeholder:
+                                                        'Only needed if the server sets BR_API_KEY',
+                                                },
+                                                onMount: [
+                                                    ($el: HTMLElement) => {
+                                                        ($el as HTMLInputElement).value =
+                                                            getStoredApiKey();
+                                                    },
+                                                ],
+                                                eventHandler: {
+                                                    input: (e: Event) =>
+                                                        setStoredApiKey(
+                                                            (
+                                                                e.target as HTMLInputElement
+                                                            ).value.trim(),
+                                                        ),
+                                                },
+                                            }),
+                                        ],
+                                    }),
+
                                     ServerInfo(),
+
+                                    BRButton({
+                                        text: 'Change server',
+                                        eventHandler: {
+                                            click: () => SERVER_MODAL_CTX.openServerModal(),
+                                        },
+                                    }),
+
+                                    ...(isRemoteModeEnabled()
+                                        ? [
+                                              BRButton({
+                                                  text: 'Unlink server',
+                                                  variant: 'secondary',
+                                                  eventHandler: { click: onUnlinkServer },
+                                              }),
+                                          ]
+                                        : []),
                                 ],
                             }),
 

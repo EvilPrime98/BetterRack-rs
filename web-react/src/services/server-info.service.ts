@@ -1,3 +1,6 @@
+import { API_URL } from './library.service';
+import { authHeaders } from './server-config.service';
+
 export interface IServerUpdateInfo {
     current: string;
     latest: string | null;
@@ -6,7 +9,7 @@ export interface IServerUpdateInfo {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-    const response = await fetch(`${path}`);
+    const response = await fetch(`${API_URL}${path}`, { headers: authHeaders() });
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || 'Request failed');
     return data;

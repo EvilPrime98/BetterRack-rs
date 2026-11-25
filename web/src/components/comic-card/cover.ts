@@ -4,6 +4,8 @@ import { NO_IMAGE_URL } from '../../data';
 import { type WikiComic } from 'better-wiki';
 import styles from './comic-card.module.css';
 import { ImageGen } from '../image-generic/image-generic';
+import { API_URL } from '@/services/library.service';
+import { withAuthQuery } from '@/services/server-config.service';
 
 export function ComicCardCover({
     item,
@@ -23,7 +25,7 @@ export function ComicCardCover({
 
     const coverSrc = () => {
         const versionQuery = coverVersion() ? `?v=${coverVersion()}` : '';
-        return `/api/thumbnail/${item.uid}${versionQuery}`;
+        return withAuthQuery(`${API_URL}/api/thumbnail/${item.uid}${versionQuery}`);
     };
 
     const onCoverMount = ($img: HTMLElement) => {

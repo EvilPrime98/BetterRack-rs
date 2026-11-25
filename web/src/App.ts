@@ -2,10 +2,13 @@ import { UltraComponent, UltraFragment } from 'ultra-light-js';
 import { AppLoader, LOADER_HINT_SELECTOR } from './components/app-loader/app-loader';
 import { APP_CTX } from './context/app.context';
 import { LIBRARY_CONTEXT } from './context/library.context';
+import { SERVER_MODAL_CTX } from './context/server-modal.context';
+import { ServerModal } from './components/server-modal/server-modal';
 import { bootstrap } from './app/bootstrap';
 import { mountRoot } from './app/root-switcher';
 
 async function onMount() {
+    await SERVER_MODAL_CTX.ensureServerConfigured();
     APP_CTX.isLoading.set(true);
     try {
         await bootstrap();
@@ -56,6 +59,7 @@ export function App() {
                     },
                 ],
             }),
+            ServerModal(),
         ],
     });
 }
