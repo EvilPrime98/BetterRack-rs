@@ -71,7 +71,7 @@ The server then serves the app at `/` on the same origin, so the client needs no
 
 The desktop app serves the web client itself, over the same library and data as its own window, at `http://127.0.0.1:3000/` (`PORT`, `BR_BIND_ADDR` and `BR_API_KEY` apply as for the headless server). It looks for the client in `BR_WEB_DIR`, then in a `web/` folder next to the app (where release packages put it), then in `web-react/dist` of the working directory. If none exists, or the port is taken, the app starts without it.
 
-The Android app uses Capacitor and talks to a remote `br-server`. The server address is set in the app; to preset it, build with `VITE_DEFAULT_API_URL` (see `web-react/.env.example`). From `web-react/`: `pnpm android:apk` builds a debug APK (needs JDK 21 and the Android SDK). Releases attach the debug APK.
+The Android app uses Capacitor and talks to a remote `br-server`. The server address is set in the app; to preset it, build with `VITE_DEFAULT_API_URL` (see `web-react/.env.example`). From `web-react/`: `pnpm android:apk` builds a debug APK (needs JDK 21 and the Android SDK). Releases attach the debug APK. `pnpm android:apk:release` builds a release APK, signed if `android/keystore.properties` exists (copy `android/keystore.properties.example`) and unsigned otherwise.
 
 ### Build distributables
 

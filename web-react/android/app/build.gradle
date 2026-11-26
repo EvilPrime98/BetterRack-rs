@@ -1,5 +1,17 @@
 apply plugin: 'com.android.application'
 
+// Release signing comes from the untracked android/keystore.properties (see
+// keystore.properties.example). Without that file the release APK is left unsigned.
+def keystoreFile = rootProject.file('keystore.properties')
+def keystore = new Properties()
+if (keystoreFile.exists()) {
+    keystoreFile.withInputStream { keystore.load(it) }
+    def missing = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].findAll { !keystore[it] }
+    if (missing) {
+        throw new GradleException("keystore.properties is missing: ${missing.join(', ')}")
+    }
+}
+
 android {
     namespace = "com.amin.BetterRackweb"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +28,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (keystoreFile.exists()) {
+            release {
+                storeFile rootProject.file(keystore.storeFile)
+                storePassword keystore.storePassword
+                keyAlias keystore.keyAlias
+                keyPassword keystore.keyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.findByName('release')
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
