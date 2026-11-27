@@ -1,6 +1,6 @@
 [workspace]
 members = [".", "crates/br-core", "crates/br-server", "crates/br-wiki"]
-# crates/br-android and spikes/ are their own workspaces (Android only, see docs/android).
+# crates/br-android and spikes/ are their own workspaces (Android only).
 exclude = ["crates/br-android", "spikes"]
 
 [workspace.package]
