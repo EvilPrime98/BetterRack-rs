@@ -5,6 +5,8 @@ import { ArrowLeftIcon } from '../../icons/arrow-left.icon';
 import { BookmarkIcon } from '../../icons/bookmark.icon';
 import { RefreshIcon } from '../../icons/refresh-icon';
 import type { IBookmark } from '../../library.types';
+import type { TReadingMode } from '../../stores/userPref.store';
+import { BRDropdown } from '../br-dropdown/br-dropdown';
 
 export function ReaderPageHeader({
     title,
@@ -12,6 +14,8 @@ export function ReaderPageHeader({
     totalPages,
     bookmarks,
     isRefreshing,
+    readingMode,
+    onReadingModeChange,
     goToPage,
     goBack,
     onRefresh,
@@ -21,6 +25,8 @@ export function ReaderPageHeader({
     totalPages: number;
     bookmarks: IBookmark[];
     isRefreshing: boolean;
+    readingMode: TReadingMode;
+    onReadingModeChange: (mode: TReadingMode) => void;
     goToPage: (page: number) => void;
     goBack: () => void;
     onRefresh: () => void;
@@ -58,7 +64,12 @@ export function ReaderPageHeader({
 
     return (
         <header className={styles.toolbar}>
-            <button type="button" className={styles.toolButton} onClick={goBack}>
+            <button
+                type="button"
+                className={styles.toolButton}
+                aria-label="Library"
+                onClick={goBack}
+            >
                 <ArrowLeftIcon size={16} />
                 <span>Library</span>
             </button>
@@ -68,6 +79,7 @@ export function ReaderPageHeader({
                     <button
                         type="button"
                         className={styles.toolButton}
+                        aria-label="Bookmarks"
                         aria-expanded={menuOpen}
                         onClick={() => setMenuOpen((open) => !open)}
                     >
@@ -98,6 +110,19 @@ export function ReaderPageHeader({
             <h1 className={styles.title} title={title}>
                 {title}
             </h1>
+
+            <BRDropdown<TReadingMode>
+                className={styles.readingMode}
+                fit
+                alignRight
+                aria-label="Reading mode"
+                value={readingMode}
+                options={[
+                    { value: 'vertical', label: 'Vertical' },
+                    { value: 'horizontal', label: 'Horizontal' },
+                ]}
+                onChange={onReadingModeChange}
+            />
 
             <span className={styles.counter}>
                 <input

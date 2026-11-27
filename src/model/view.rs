@@ -11,6 +11,15 @@ pub enum ComicsType {
     Detail,
 }
 
+/// How the reader lays out pages. Default `Vertical`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReadingMode {
+    #[default]
+    Vertical,
+    Horizontal,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReadFilter {
@@ -61,6 +70,15 @@ impl ReadFilter {
             Self::Read => "read",
             Self::Unread => "unread",
             Self::Reading => "reading",
+        }
+    }
+}
+
+impl ReadingMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Vertical => "vertical",
+            Self::Horizontal => "horizontal",
         }
     }
 }
