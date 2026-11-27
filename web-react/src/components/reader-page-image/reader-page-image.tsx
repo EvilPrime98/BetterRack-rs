@@ -9,14 +9,12 @@ const MAX_SNAP_OVERFLOW = 1.2;
 export const ImageElement = memo(function ImageElement({
     uid,
     ind,
-    index,
     total,
     active,
     onRatio,
 }: {
     uid: string;
     ind: number;
-    index: number;
     total: number;
     active: boolean;
     onRatio: (ratio: number) => void;
@@ -60,7 +58,7 @@ export const ImageElement = memo(function ImageElement({
             {active ? (
                 <ImageGen
                     src={withAuthQuery(`${API_URL}/read/${uid}/pages/${ind}`)}
-                    alt={`${uid} — page ${index} of ${total}`}
+                    alt={`${uid} — page ${ind} of ${total}`}
                     loading="eager"
                     onLoad={(e) => {
                         const { naturalWidth, naturalHeight } = e.currentTarget;

@@ -10,6 +10,7 @@ import type { IStoreBookmark } from '../store.types';
 import { bookmarksInFolder, folderDir, mergeBookmarks, onlyNewComic, postKey } from './bookmarks';
 import { keywordFromTitle, matches } from './pull-list';
 import { dayStart, parseDay, rangeLabel, weekStart } from './week';
+import { getWindowRange } from './page-window';
 
 const item = (uid: string, writers: string[], did = false) =>
     ({ uid, did, name: uid, comic: { credits: { writers } } }) as unknown as ILibraryResponseItem;
@@ -247,6 +248,26 @@ describe('pull list', () => {
         expect(keywordFromTitle('Batman_Beyond 012 (2024)')).toBe('Batman Beyond');
         expect(keywordFromTitle('Saga #54')).toBe('Saga');
         expect(keywordFromTitle('Maus')).toBe('Maus');
+    });
+});
+
+describe('page window', () => {
+    it('is empty without pages', () => {
+        expect(getWindowRange(0, 1)).toBeNull();
+    });
+
+    it('covers a one-page comic', () => {
+        expect(getWindowRange(1, 1)).toEqual({ targetInd: 1, start: 1, end: 1 });
+    });
+
+    it('surrounds the saved page and reaches both ends', () => {
+        expect(getWindowRange(8, 1)).toEqual({ targetInd: 1, start: 1, end: 3 });
+        expect(getWindowRange(8, 5)).toEqual({ targetInd: 5, start: 3, end: 7 });
+        expect(getWindowRange(8, 8)).toEqual({ targetInd: 8, start: 6, end: 8 });
+    });
+
+    it('clamps a saved page past the end', () => {
+        expect(getWindowRange(8, 20)).toEqual({ targetInd: 8, start: 6, end: 8 });
     });
 });
 
