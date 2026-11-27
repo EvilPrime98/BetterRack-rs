@@ -56,8 +56,7 @@ export function ReaderPage() {
     }, []);
 
     const alignCurrentPage = useEffectEvent((block: ScrollLogicalPosition) => {
-        const $page = viewerRef.current?.children[currentPage - 2] as HTMLElement | undefined;
-        $page?.scrollIntoView({ block, inline: 'start' });
+        goToPage(currentPage, block);
     });
     useLayoutEffect(() => {
         alignCurrentPage('start');
@@ -145,17 +144,16 @@ export function ReaderPage() {
                 onClick={toggleHeader}
                 onDoubleClick={toggleFullscreen}
             >
-                {Array.from({ length: Math.max(0, numPages - 1) }, (_, i) => i + 1).map((i) => (
+                {Array.from({ length: numPages }, (_, i) => i + 1).map((i) => (
                     <ImageElement
                         key={i}
                         uid={uid}
                         ind={i}
-                        index={i + 1}
                         total={numPages}
                         active={
                             activePage !== null &&
-                            i + 1 >= activePage - RENDER_BEHIND &&
-                            i + 1 <= activePage + RENDER_AHEAD
+                            i >= activePage - RENDER_BEHIND &&
+                            i <= activePage + RENDER_AHEAD
                         }
                         onRatio={onPageRatio}
                     />

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { useComicCacheStore } from '@/stores/comicCache.store';
-import { getWindowRange } from '@/utils/reader.page.utils';
+import { getWindowRange } from '@/lib/page-window';
 
 export function useReaderPageTracking(
     uid: string | undefined,
@@ -13,9 +13,9 @@ export function useReaderPageTracking(
     const observerRef = useRef<IntersectionObserver | null>(null);
 
     const goToPage = useCallback(
-        (page: number) => {
+        (page: number, block: ScrollLogicalPosition = 'start') => {
             const $page = viewerRef.current?.children[page - 1] as HTMLElement | undefined;
-            $page?.scrollIntoView({ block: 'start', inline: 'start' });
+            $page?.scrollIntoView({ block, inline: 'start' });
         },
         [viewerRef],
     );
@@ -24,21 +24,20 @@ export function useReaderPageTracking(
         observerRef.current?.disconnect();
 
         const $section = viewerRef.current;
-        if (!uid || !$section || pages.length === 0) return;
+        if (!uid || !$section) return;
 
-        const numPages = pages.length;
         const savedPage = useComicCacheStore.getState().getCacheById(uid)?.currentPage || 1;
-        const range = getWindowRange(numPages, savedPage);
+        const range = getWindowRange(pages.length, savedPage);
+        if (!range) return;
 
-        setCurrentPage(savedPage);
+        setCurrentPage(range.targetInd);
         setIsReady(true);
 
         const elements = Array.from($section.children) as HTMLElement[];
         const pageOf = new Map<HTMLElement, number>();
-        elements.forEach((el, i) => pageOf.set(el, i + 2));
+        elements.forEach((el, i) => pageOf.set(el, i + 1));
 
-        const targetEl = range ? elements[range.targetInd - 1] : undefined;
-        targetEl?.scrollIntoView({ block: 'start', inline: 'start' });
+        goToPage(range.targetInd);
 
         const observer = new IntersectionObserver(
             (entries) => {
@@ -56,7 +55,7 @@ export function useReaderPageTracking(
         observerRef.current = observer;
 
         return () => observer.disconnect();
-    }, [pages, uid, viewerRef]);
+    }, [pages, uid, viewerRef, goToPage]);
 
     return { currentPage, isReady, goToPage };
 }
