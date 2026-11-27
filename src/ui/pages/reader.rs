@@ -1,22 +1,23 @@
-//! Reader: continuous vertical scroll of page images, resume position, zoom, bookmarks, progress
-//! saving.
+//! Reader: page images as a continuous vertical scroll or one horizontal page at a time, resume
+//! position, zoom, bookmarks, progress saving.
 //!
 //! **Page numbering.** The server is 1-based with `totalPages = N`. Items use a
 //! clean 1..N model: item `i` is server page `i + 1`.
 //!
-//! The viewer is a GPUI variable-height `list`. Each page's height is `width * aspect`, where the
-//! aspect comes from the image header (`PageImages`) and defaults to [`DEFAULT_ASPECT`] until known.
+//! The vertical viewer is a GPUI variable-height `list`. Each page's height is `width * aspect`,
+//! where the aspect comes from the image header (`PageImages`) and defaults to [`DEFAULT_ASPECT`]
+//! until known. The list's scroll position also holds the current page in horizontal mode.
 
 use gpui::{
-    AnyElement, App, Context, DispatchPhase, EventEmitter, FocusHandle, Focusable,
+    AnyElement, App, Context, DispatchPhase, EventEmitter, FocusHandle, Focusable, HitboxBehavior,
     InteractiveElement, IntoElement, KeyDownEvent, ListAlignment, ListOffset, ListState, ObjectFit,
-    ParentElement, Render, ScrollDelta, ScrollHandle, ScrollWheelEvent, StatefulInteractiveElement,
-    Styled, StyledImage as _, Task, Window, WindowControlArea, canvas, div, img, list, prelude::*,
-    px, relative, rgb, rgba,
+    ParentElement, Point, Render, ScrollDelta, ScrollHandle, ScrollWheelEvent,
+    StatefulInteractiveElement, Styled, StyledImage as _, Task, Window, WindowControlArea, canvas,
+    div, img, list, point, prelude::*, px, relative, rgb, rgba,
 };
 
 use crate::api::ApiClient;
-use crate::model::{Bookmark, LibraryEntry};
+use crate::model::{Bookmark, LibraryEntry, ReadingMode};
 use crate::route::{GoBack, Navigate, Route};
 use crate::runtime;
 use crate::state::Stores;
@@ -26,6 +27,7 @@ use crate::ui::components::button::{ButtonVariant, button};
 use crate::ui::components::tab_bar::TabBar;
 use crate::ui::components::text_input::{TextInput, TextInputEvent};
 use crate::ui::icons::{Icon, icon};
+use crate::ui::pages::common::prefs_dropdown;
 use crate::ui::pages::settings::HoverTip;
 use crate::ui::shell::window_controls::window_controls;
 use crate::ui::theme;
@@ -42,6 +44,10 @@ const TOOLBAR_HEIGHT: f32 = 56.0;
 const WHEEL_LINE_PX: f32 = 24.0;
 /// Time constant of the scroll easing: ~63 % of the remaining distance is covered per `TAU`.
 const SCROLL_TAU: f32 = 0.08;
+/// Horizontal mode fits a page to the width when fitting its height overflows by at most this much.
+const MAX_SNAP_OVERFLOW: f32 = 1.2;
+/// Touchpad scroll events closer together than this are one swipe, which turns at most one page.
+const SWIPE_GAP: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// `floor(min(3, viewerWidth / 900) * 100) / 100`, never below 1 (`useReaderZoom`).
 pub fn max_zoom(viewer_w: f32) -> f32 {
@@ -54,6 +60,18 @@ pub fn clamp_zoom(zoom: f32, viewer_w: f32) -> f32 {
 
 pub fn page_width(zoom: f32, viewer_w: f32) -> f32 {
     (BASE_WIDTH * zoom).min(viewer_w.max(1.0))
+}
+
+/// `(width, height)` of a horizontal-mode page: it fills the viewer's height unless it only barely
+/// overflows the width, in which case it fills the width.
+pub fn horizontal_page_size(aspect: f32, zoom: f32, viewer_w: f32, viewer_h: f32) -> (f32, f32) {
+    let overflow = viewer_h / aspect / viewer_w.max(1.0);
+    let h = if overflow > 1.0 && overflow <= MAX_SNAP_OVERFLOW {
+        viewer_w * aspect
+    } else {
+        viewer_h
+    };
+    (h / aspect * zoom, h * zoom)
 }
 
 /// Pages (1-based, inclusive) to warm around `saved`.
@@ -180,6 +198,10 @@ pub struct ReaderPage {
     viewer_h: f32,
     last_page_w: f32,
     scroll: Scroll,
+    mode: ReadingMode,
+    /// Scroll position inside the horizontal-mode page.
+    page_scroll: ScrollHandle,
+    last_swipe: Option<std::time::Instant>,
     focus: FocusHandle,
     page_input: gpui::Entity<TextInput>,
     _task: Option<Task<()>>,
@@ -212,6 +234,7 @@ impl ReaderPage {
         })
         .detach();
         cx.observe(&stores.library, |_, _, cx| cx.notify()).detach();
+        cx.observe(&stores.prefs, |_, _, cx| cx.notify()).detach();
 
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
@@ -247,7 +270,8 @@ impl ReaderPage {
             this.page_input.update(cx, |i, cx| i.select_all(cx));
         })
         .detach();
-        let zoom = stores.prefs.read(cx).prefs.zoom;
+        let prefs = &stores.prefs.read(cx).prefs;
+        let (zoom, mode) = (prefs.zoom, prefs.reading_mode);
         let size = window.viewport_size();
         let mut this = Self {
             source,
@@ -265,6 +289,9 @@ impl ReaderPage {
             viewer_h: f32::from(size.height),
             last_page_w: 0.0,
             scroll: Scroll::Idle,
+            mode,
+            page_scroll: ScrollHandle::new(),
+            last_swipe: None,
             focus,
             page_input,
             _task: None,
@@ -513,6 +540,50 @@ impl ReaderPage {
         }
     }
 
+    /// Move `delta` pages from the one the list is positioned on.
+    fn turn_page(&mut self, delta: i32, cx: &mut Context<Self>) {
+        let Some(list) = self.list() else {
+            return;
+        };
+        let page = list.logical_scroll_top().item_ix as i32 + 1;
+        self.go_to_page((page + delta).max(1) as u32, cx);
+    }
+
+    /// Horizontal mode: the wheel scrolls within the page and turns it once the page cannot scroll
+    /// further that way. Returns whether the event was used up.
+    fn wheel_page(&mut self, ev: &ScrollWheelEvent, cx: &mut Context<Self>) -> bool {
+        let delta = ev.delta.pixel_delta(px(20.0));
+        let (dx, dy) = (f32::from(delta.x), f32::from(delta.y));
+        let offset = self.page_scroll.offset();
+        let max = self.page_scroll.max_offset();
+        let (d, offset, max) = if dy.abs() > dx.abs() {
+            (dy, f32::from(offset.y), f32::from(max.y))
+        } else {
+            (dx, f32::from(offset.x), f32::from(max.x))
+        };
+        if d == 0.0 {
+            return false;
+        }
+        let same_swipe = matches!(ev.delta, ScrollDelta::Pixels(_)) && {
+            let now = std::time::Instant::now();
+            self.last_swipe
+                .replace(now)
+                .is_some_and(|t| now - t < SWIPE_GAP)
+        };
+        let can_scroll = if d < 0.0 {
+            offset > 0.5 - max
+        } else {
+            offset < -0.5
+        };
+        if can_scroll {
+            return false;
+        }
+        if !same_swipe {
+            self.turn_page(if d < 0.0 { 1 } else { -1 }, cx);
+        }
+        true
+    }
+
     fn zoom_to(&mut self, zoom: f32, cx: &mut Context<Self>) {
         let zoom = clamp_zoom(zoom, self.viewer_w);
         if (zoom - self.zoom).abs() < 1e-4 {
@@ -589,7 +660,12 @@ impl ReaderPage {
             return;
         }
         let page_px = self.viewer_h * 0.9;
+        let horizontal = self.mode == ReadingMode::Horizontal;
         match key {
+            "pagedown" | "down" if horizontal => self.turn_page(1, cx),
+            "pageup" | "up" if horizontal => self.turn_page(-1, cx),
+            "space" if horizontal => self.turn_page(if m.shift { -1 } else { 1 }, cx),
+            "end" if horizontal => self.go_to_page(self.total(), cx),
             "escape" if self.bookmarks_open => {
                 self.bookmarks_open = false;
                 cx.notify();
@@ -740,6 +816,15 @@ impl ReaderPage {
                     )
                     .child(format!("/ {}", self.total())),
             )
+            .child(prefs_dropdown(
+                "reading-mode",
+                [ReadingMode::Vertical, ReadingMode::Horizontal].map(|v| (v, v.label())),
+                self.mode,
+                true,
+                &self.stores.prefs,
+                cx,
+                |p, v, cx| p.update(cx, |p| p.reading_mode = v),
+            ))
             .when(is_library, |s| {
                 s.child(
                     tool_button("reader-refresh")
@@ -940,25 +1025,19 @@ impl ReaderPage {
 }
 
 /// One page: a fixed-size frame (so layout never jumps), with the image, a spinner or a retry.
-fn page_item(
-    ix: usize,
-    page_w: f32,
-    images: &gpui::Entity<PageImages>,
-    cx: &mut App,
-) -> AnyElement {
+fn page_frame(ix: usize, w: f32, h: f32, images: &gpui::Entity<PageImages>, cx: &App) -> gpui::Div {
     let page = ix as u32 + 1;
     let store = images.read(cx);
-    let h = page_w * store.aspect(page).unwrap_or(DEFAULT_ASPECT);
     let frame = div()
         .relative()
         .flex_none()
-        .w(px(page_w))
+        .w(px(w))
         .h(px(h))
         .bg(theme::bg_panel());
-    let frame = match store.get(page) {
+    match store.get(page) {
         Some(PageImg::Ready(image)) => frame.child(
             img(image.clone())
-                .w(px(page_w))
+                .w(px(w))
                 .h(px(h))
                 .object_fit(ObjectFit::Fill),
         ),
@@ -988,12 +1067,17 @@ fn page_item(
             .justify_center()
             .text_color(theme::text_muted())
             .child(format!("{page}")),
-    };
+    }
+}
+
+fn page_item(ix: usize, page_w: f32, images: &gpui::Entity<PageImages>, cx: &App) -> AnyElement {
+    let aspect = images.read(cx).aspect(ix as u32 + 1);
+    let h = page_w * aspect.unwrap_or(DEFAULT_ASPECT);
     div()
         .w_full()
         .flex()
         .justify_center()
-        .child(frame)
+        .child(page_frame(ix, page_w, h, images, cx))
         .into_any_element()
 }
 
@@ -1005,6 +1089,20 @@ impl Render for ReaderPage {
         // Re-clamp on resize without touching the saved preference.
         let zoom = self.zoom.clamp(ZOOM_MIN, max_zoom(self.viewer_w));
         let page_w = page_width(zoom, self.viewer_w);
+
+        let mode = self.stores.prefs.read(cx).prefs.reading_mode;
+        if mode != self.mode {
+            self.mode = mode;
+            self.scroll = Scroll::Idle;
+            self.page_scroll.set_offset(Point::default());
+            if let Some(list) = self.list() {
+                list.scroll_to(ListOffset {
+                    item_ix: self.current as usize - 1,
+                    offset_in_item: px(0.0),
+                });
+            }
+        }
+        let horizontal = mode == ReadingMode::Horizontal;
 
         let mut viewer = None;
         let ready = match &self.load {
@@ -1020,7 +1118,9 @@ impl Render for ReaderPage {
 
             let top = list_state.logical_scroll_top();
             let total = total_pages as usize;
-            let current_ix = {
+            let current_ix = if horizontal {
+                top.item_ix.min(total - 1)
+            } else {
                 let store = self.images.read(cx);
                 most_visible(
                     top.item_ix,
@@ -1033,6 +1133,7 @@ impl Render for ReaderPage {
             let page = current_ix as u32 + 1;
             if page != self.current {
                 self.current = page;
+                self.page_scroll.set_offset(point(px(0.0), px(0.0)));
                 // Side effects (progress write) must not run inside render.
                 cx.spawn(async move |this, cx| {
                     this.update(cx, |t, cx| t.on_page_changed(cx)).ok();
@@ -1042,7 +1143,11 @@ impl Render for ReaderPage {
 
             // Prefetch what is about to scroll into view; the list only builds visible items.
             let first = top.item_ix as u32 + 1;
-            let visible = (self.viewer_h / (page_w * DEFAULT_ASPECT)).ceil() as u32 + 1;
+            let visible = if horizontal {
+                1
+            } else {
+                (self.viewer_h / (page_w * DEFAULT_ASPECT)).ceil() as u32 + 1
+            };
             let (lo, hi) = (
                 first.saturating_sub(1).max(1),
                 (first + visible + 2).min(total_pages),
@@ -1051,6 +1156,26 @@ impl Render for ReaderPage {
 
             let images = self.images.clone();
             let me = cx.entity();
+            let content = if horizontal {
+                let aspect = images.read(cx).aspect(page).unwrap_or(DEFAULT_ASPECT);
+                let (w, h) = horizontal_page_size(aspect, zoom, self.viewer_w, self.viewer_h);
+                div()
+                    .id("reader-page")
+                    .track_scroll(&self.page_scroll)
+                    // Repaint so the next wheel event sees the new offset.
+                    .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
+                    .size_full()
+                    .flex()
+                    .overflow_scroll()
+                    .child(page_frame(current_ix, w, h, &images, cx).m_auto())
+                    .into_any_element()
+            } else {
+                list(list_state, move |ix, _, cx| {
+                    page_item(ix, page_w, &images, cx)
+                })
+                .size_full()
+                .into_any_element()
+            };
             viewer = Some(
                 div()
                     .id("reader-viewer")
@@ -1066,10 +1191,12 @@ impl Render for ReaderPage {
                     // the list never sees the event.
                     .child(
                         canvas(
-                            |_, _, _| (),
-                            move |_, _, window, _| {
+                            |bounds, window, _| {
+                                window.insert_hitbox(bounds, HitboxBehavior::Normal)
+                            },
+                            move |_, hitbox, window, _| {
                                 window.on_mouse_event(
-                                    move |ev: &ScrollWheelEvent, phase, _, cx| {
+                                    move |ev: &ScrollWheelEvent, phase, window, cx| {
                                         if phase != DispatchPhase::Capture {
                                             return;
                                         }
@@ -1085,6 +1212,13 @@ impl Render for ReaderPage {
                                                 me.update(cx, |t, cx| t.zoom_by(step, cx));
                                             }
                                             cx.stop_propagation();
+                                        } else if horizontal {
+                                            // Wheeling over the header must not turn pages.
+                                            if hitbox.is_hovered(window)
+                                                && me.update(cx, |t, cx| t.wheel_page(ev, cx))
+                                            {
+                                                cx.stop_propagation();
+                                            }
                                         } else if let ScrollDelta::Lines(lines) = ev.delta {
                                             // Notched wheels jump; ease them. Touchpads (pixel deltas)
                                             // are already smooth and go straight to the list.
@@ -1100,12 +1234,7 @@ impl Render for ReaderPage {
                         .absolute()
                         .size_full(),
                     )
-                    .child(
-                        list(list_state, move |ix, _, cx| {
-                            page_item(ix, page_w, &images, cx)
-                        })
-                        .size_full(),
-                    ),
+                    .child(content),
             );
         }
 
@@ -1155,6 +1284,19 @@ mod tests {
         assert_eq!(page_width(1.0, 1240.0), 900.0);
         assert_eq!(page_width(1.0, 700.0), 700.0);
         assert_eq!(page_width(0.5, 1240.0), 450.0);
+    }
+
+    #[test]
+    fn horizontal_page_fits_height_unless_it_barely_overflows() {
+        assert_eq!(
+            horizontal_page_size(1.5, 1.0, 1200.0, 900.0),
+            (600.0, 900.0)
+        );
+        assert_eq!(horizontal_page_size(1.0, 1.0, 800.0, 900.0), (800.0, 800.0));
+        assert_eq!(
+            horizontal_page_size(0.5, 2.0, 800.0, 900.0),
+            (3600.0, 1800.0)
+        );
     }
 
     #[test]

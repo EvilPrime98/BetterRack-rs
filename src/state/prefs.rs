@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{ComicsType, FilterOption, LibraryStructure, ReadFilter};
+use crate::model::{ComicsType, FilterOption, LibraryStructure, ReadFilter, ReadingMode};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -14,6 +14,7 @@ pub struct Prefs {
     pub comic_type: ComicsType,
     pub ask_stop_downloads: bool,
     pub zoom: f32,
+    pub reading_mode: ReadingMode,
     pub structure: LibraryStructure,
     pub sidebar_compact: bool,
     pub sidebar_collapsed: bool,
@@ -28,6 +29,7 @@ impl Default for Prefs {
             comic_type: ComicsType::Detail,
             ask_stop_downloads: true,
             zoom: 1.0,
+            reading_mode: ReadingMode::Vertical,
             structure: LibraryStructure::Folders,
             sidebar_compact: false,
             sidebar_collapsed: false,
