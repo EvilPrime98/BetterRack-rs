@@ -129,6 +129,16 @@
     color: #fff;
 }
 
+.readingMode {
+    flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+    .toolButton span {
+        display: none;
+    }
+}
+
 .counter {
     display: flex;
     flex-shrink: 0;
@@ -243,4 +253,52 @@
     to {
         transform: rotate(360deg);
     }
+}
+
+.page[data-mode='horizontal'] {
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x pan-y;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+}
+
+.page[data-mode='horizontal'] .viewer {
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: flex-start;
+    max-width: none;
+    height: 100%;
+    margin-inline: 0;
+}
+
+.page[data-mode='horizontal'] .pageWrapper {
+    flex: 0 0 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: none;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    touch-action: pan-x pan-y;
+}
+
+.page[data-mode='horizontal'] .pageWrapper img {
+    flex: none;
+    width: calc(max(100%, 100dvh * var(--img-ratio, 0)) * var(--reader-zoom, 1));
+    max-width: none;
+    height: calc(100dvh * var(--reader-zoom, 1));
+    object-fit: contain;
+    margin: auto;
+}
+
+.page[data-mode='horizontal'] .pageWrapper[data-snap] img {
+    width: calc(100% * var(--reader-zoom, 1));
+}
+
+.page[data-mode='horizontal'] .pageWrapper::-webkit-scrollbar {
+    display: none;
 }

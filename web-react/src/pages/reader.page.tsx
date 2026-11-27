@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { toggleFullscreen } from '@/services/fullscreen.service';
 import { setImmersiveMode } from '@/services/immersive.service';
@@ -15,6 +15,8 @@ import { useReaderPageTracking } from '@/hooks/useReaderPageTracking';
 import { useReaderProgress } from '@/hooks/useReaderProgress';
 import { useReaderZoom } from '@/hooks/useReaderZoom';
 import { BRButton } from '@/components/br-button/br-button';
+import { useUserPrefStore } from '@/stores/userPref.store';
+import type { TReadingMode } from '@/stores/userPref.store';
 import { useReaderKeys } from '@/hooks/useReaderKeys';
 import { useSettledValue } from '@/hooks/useSettledValue';
 
@@ -46,6 +48,43 @@ export function ReaderPage() {
 
     useReaderKeys({ pageRef });
 
+    const readingMode = useUserPrefStore((s) => s.pref.readingMode);
+    const isHorizontal = readingMode === 'horizontal';
+
+    const onReadingModeChange = useCallback((mode: TReadingMode) => {
+        useUserPrefStore.getState().setPref({ readingMode: mode });
+    }, []);
+
+    const alignCurrentPage = useEffectEvent((block: ScrollLogicalPosition) => {
+        const $page = viewerRef.current?.children[currentPage - 2] as HTMLElement | undefined;
+        $page?.scrollIntoView({ block, inline: 'start' });
+    });
+    useLayoutEffect(() => {
+        alignCurrentPage('start');
+    }, [readingMode]);
+
+    useEffect(() => {
+        if (!isHorizontal) return;
+        const realign = () => alignCurrentPage('nearest');
+        window.addEventListener('resize', realign);
+        return () => window.removeEventListener('resize', realign);
+    }, [isHorizontal]);
+
+    const onPageWheel = useCallback(
+        (e: React.WheelEvent) => {
+            onWheel(e);
+            if (!isHorizontal || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+            const $figure = (e.target as HTMLElement).closest('figure');
+            if (!$figure) return;
+            const canScrollY =
+                e.deltaY < 0
+                    ? $figure.scrollTop > 0
+                    : $figure.scrollTop + $figure.clientHeight < $figure.scrollHeight - 1;
+            if (!canScrollY) pageRef.current?.scrollBy({ left: e.deltaY });
+        },
+        [onWheel, isHorizontal],
+    );
+
     const [isHeaderVisible, setIsHeaderVisible] = useState(true);
 
     const toggleHeader = useCallback(() => {
@@ -69,7 +108,8 @@ export function ReaderPage() {
     return (
         <section
             className={styles.page}
-            onWheel={onWheel}
+            data-mode={readingMode}
+            onWheel={onPageWheel}
             ref={pageRef}
         >
             <div className={`${styles.headerOverlay} ${isHeaderVisible ? '' : styles.hidden}`}>
@@ -79,6 +119,8 @@ export function ReaderPage() {
                     totalPages={pages.length}
                     bookmarks={bookmarks}
                     isRefreshing={isRefreshing}
+                    readingMode={readingMode}
+                    onReadingModeChange={onReadingModeChange}
                     goToPage={goToPage}
                     goBack={goBack}
                     onRefresh={refreshComic}
